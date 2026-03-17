@@ -258,34 +258,305 @@ router.put('/negocios/:id/dias-uso', async (req, res) => {
     }
 });
 
-// GET /api/superadmin/negocios/:id/acceso
-// Permite al superadmin obtener token de acceso a otro negocio
-router.get('/negocios/:id/acceso', async (req, res) => {
+// GET /api/superadmin/alertas
+router.get('/alertas', async (req, res) => {
+    try {
+        const resultado = await db.query(`
+            SELECT 
+                a.*,
+                n.nombre as negocio_nombre
+            FROM alertas a
+            LEFT JOIN negocios n ON n.id = a.negocio_id
+            WHERE a.resuelta = false
+            ORDER BY 
+                CASE 
+                    WHEN a.severidad = 'crítica' THEN 1
+                    WHEN a.severidad = 'alta' THEN 2
+                    WHEN a.severidad = 'media' THEN 3
+                    ELSE 4
+                END,
+                a.fecha DESC
+            LIMIT 100
+        `);
+        res.json(resultado.rows);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener alertas' });
+    }
+});
+
+// PUT /api/superadmin/alertas/:id/marcar-leida
+router.put('/alertas/:id/marcar-leida', async (req, res) => {
     try {
         const { id } = req.params;
+        await db.query('UPDATE alertas SET leida = true WHERE id = $1', [id]);
+        res.json({ mensaje: 'Alerta marcada como leída' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al marcar alerta' });
+    }
+});
 
-        // Obtener info del negocio
+// PUT /api/superadmin/alertas/:id/resolver
+router.put('/alertas/:id/resolver', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query(
+            'UPDATE alertas SET resuelta = true, fecha_resolucion = NOW() WHERE id = $1',
+            [id]
+        );
+        res.json({ mensaje: 'Alerta resuelta' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al resolver alerta' });
+    }
+});
+
+// GET /api/superadmin/salud/:negocio_id
+router.get('/salud/:negocio_id', async (req, res) => {
+    try {
+        const { negocio_id } = req.params;
+        
+        // Obtener datos de salud
         const negocio = await db.query(`
-            SELECT id, nombre, estado FROM negocios WHERE id = $1
-        `, [id]);
+            SELECT id, nombre, ultima_actividad, errores_24h FROM negocios WHERE id = $1
+        `, [negocio_id]);
 
         if (!negocio.rows[0]) {
             return res.status(404).json({ error: 'Negocio no encontrado' });
         }
 
-        if (negocio.rows[0].estado !== 'activo') {
-            return res.status(403).json({ error: 'Negocio no está activo' });
-        }
+        const n = negocio.rows[0];
 
-        // Retornar información para acceso
+        // Calcular días sin actividad
+        const ultimaActividad = n.ultima_actividad ? new Date(n.ultima_actividad) : null;
+        const diasSinActividad = ultimaActividad 
+            ? Math.floor((new Date() - ultimaActividad) / (1000 * 60 * 60 * 24))
+            : null;
+
+        // Contar transacciones de hoy
+        const ventas = await db.query(`
+            SELECT COUNT(*) as total FROM ventas 
+            WHERE negocio_id = $1 
+            AND DATE(created_at) = CURRENT_DATE
+        `, [negocio_id]);
+
+        // Usuarios activos hoy
+        const usuarios = await db.query(`
+            SELECT COUNT(DISTINCT usuario_id) as total FROM salud_negocio
+            WHERE negocio_id = $1 
+            AND tipo_evento IN ('venta', 'login')
+            AND DATE(fecha) = CURRENT_DATE
+        `, [negocio_id]);
+
+        // Almacenamiento usado (agrupado por tabla)
+        const almacenamiento = await db.query(`
+            SELECT 
+                pg_size_pretty(pg_total_relation_size('productos')) as productos_size,
+                pg_size_pretty(pg_total_relation_size('ventas')) as ventas_size,
+                pg_size_pretty(pg_total_relation_size('categorias')) as categorias_size,
+                pg_size_pretty(SUM(pg_total_relation_size(tablename::regclass))) as total_size
+            FROM pg_tables 
+            WHERE schemaname = 'public'
+        `);
+
         res.json({
-            negocio_id: negocio.rows[0].id,
-            nombre: negocio.rows[0].nombre,
-            acceso_permitido: true
+            negocio: {
+                id: n.id,
+                nombre: n.nombre,
+                ultima_actividad: n.ultima_actividad,
+                dias_sin_actividad: diasSinActividad,
+                errores_24h: n.errores_24h || 0
+            },
+            transacciones_hoy: parseInt(ventas.rows[0]?.total) || 0,
+            usuarios_activos_hoy: parseInt(usuarios.rows[0]?.total) || 0,
+            estado: diasSinActividad === null ? 'nunca_usado' : diasSinActividad > 7 ? 'inactivo' : 'activo',
+            almacenamiento: almacenamiento.rows[0]
         });
     } catch (error) {
         console.error('Error:', error);
-        res.status(500).json({ error: 'Error al verificar acceso' });
+        res.status(500).json({ error: 'Error al obtener salud del negocio' });
+    }
+});
+
+// POST /api/superadmin/tickets
+router.post('/tickets', async (req, res) => {
+    try {
+        const { negocio_id, usuario_id, titulo, descripcion, categoria } = req.body;
+
+        if (!negocio_id || !titulo || !descripcion) {
+            return res.status(400).json({ error: 'Campos obligatorios faltantes' });
+        }
+
+        const resultado = await db.query(`
+            INSERT INTO tickets_soporte (negocio_id, usuario_id, titulo, descripcion, categoria)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [negocio_id, usuario_id, titulo, descripcion, categoria || 'otro']);
+
+        res.status(201).json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al crear ticket' });
+    }
+});
+
+// GET /api/superadmin/tickets
+router.get('/tickets', async (req, res) => {
+    try {
+        const { estado, negocio_id } = req.query;
+        let query = 'SELECT t.*, n.nombre as negocio_nombre, u.nombre as usuario_nombre FROM tickets_soporte t LEFT JOIN negocios n ON n.id = t.negocio_id LEFT JOIN usuarios u ON u.id = t.usuario_id WHERE 1=1';
+        const params = [];
+
+        if (estado) {
+            params.push(estado);
+            query += ` AND t.estado = $${params.length}`;
+        }
+        if (negocio_id) {
+            params.push(negocio_id);
+            query += ` AND t.negocio_id = $${params.length}`;
+        }
+
+        query += ' ORDER BY t.fecha_creacion DESC LIMIT 100';
+
+        const resultado = await db.query(query, params);
+        res.json(resultado.rows);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener tickets' });
+    }
+});
+
+// PUT /api/superadmin/tickets/:id
+router.put('/tickets/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { estado, respuesta } = req.body;
+
+        const updates = [];
+        const params = [];
+        let paramCount = 1;
+
+        if (estado) {
+            updates.push(`estado = $${paramCount}`);
+            params.push(estado);
+            paramCount++;
+        }
+        if (respuesta) {
+            updates.push(`respuesta = $${paramCount}`);
+            params.push(respuesta);
+            paramCount++;
+        }
+        if (estado === 'resuelto' || estado === 'cerrado') {
+            updates.push(`fecha_resolucion = NOW()`);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No hay campos para actualizar' });
+        }
+
+        params.push(id);
+        const query = `UPDATE tickets_soporte SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+
+        const resultado = await db.query(query, params);
+        res.json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar ticket' });
+    }
+});
+
+// POST /api/superadmin/generar-alertas (endpoint para cron job)
+router.post('/generar-alertas', async (req, res) => {
+    try {
+        // Alertas de vencimiento
+        const vencimientos = await db.query(`
+            SELECT id, nombre FROM negocios 
+            WHERE estado = 'activo'
+            AND fecha_vencimiento < NOW() + INTERVAL '5 days'
+            AND fecha_vencimiento > NOW()
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas 
+                WHERE negocio_id = negocios.id 
+                AND tipo = 'vencimiento'
+                AND resuelta = false
+                AND DATE(fecha) = CURRENT_DATE
+            )
+        `);
+
+        for (const neg of vencimientos.rows) {
+            const diasFaltantes = Math.ceil((new Date(neg.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24));
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'vencimiento', $2, $3, $4)
+            `, [
+                neg.id,
+                `⏰ Vencimiento próximo`,
+                `${neg.nombre} vence en ${diasFaltantes} días. Renova la suscripción.`,
+                diasFaltantes <= 2 ? 'crítica' : 'alta'
+            ]);
+        }
+
+        // Alertas de vencimiento ya pasado
+        const vencidos = await db.query(`
+            SELECT id, nombre FROM negocios 
+            WHERE estado = 'activo'
+            AND fecha_vencimiento < NOW()
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas 
+                WHERE negocio_id = negocios.id 
+                AND tipo = 'vencimiento_vencido'
+                AND resuelta = false
+            )
+        `);
+
+        for (const neg of vencidos.rows) {
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'vencimiento_vencido', $2, $3, 'crítica')
+            `, [
+                neg.id,
+                `🚨 Suscripción VENCIDA`,
+                `${neg.nombre} está vencido. El negocio debería estar bloqueado.`
+            ]);
+        }
+
+        // Alertas de sin actividad
+        const inactivos = await db.query(`
+            SELECT id, nombre, ultima_actividad FROM negocios 
+            WHERE estado = 'activo'
+            AND (ultima_actividad IS NULL OR ultima_actividad < NOW() - INTERVAL '7 days')
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas 
+                WHERE negocio_id = negocios.id 
+                AND tipo = 'sin_actividad'
+                AND resuelta = false
+                AND DATE(fecha) = CURRENT_DATE
+            )
+        `);
+
+        for (const neg of inactivos.rows) {
+            const dias = neg.ultima_actividad 
+                ? Math.floor((new Date() - new Date(neg.ultima_actividad)) / (1000 * 60 * 60 * 24))
+                : '∞';
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'sin_actividad', $2, $3, 'media')
+            `, [
+                neg.id,
+                `💾 Sin actividad por ${dias} días`,
+                `${neg.nombre} no ha registrado ventas en ${dias} días. ¿Error o abandono?`
+            ]);
+        }
+
+        res.json({ 
+            mensaje: 'Alertas generadas correctamente',
+            vencimientos: vencimientos.rows.length,
+            inactivos: inactivos.rows.length
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al generar alertas' });
     }
 });
 

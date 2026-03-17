@@ -23,10 +23,21 @@ function Superadmin() {
   const [mostrarModalHistorial, setMostrarModalHistorial] = useState(null);
   const [mostrarModalRenovar, setMostrarModalRenovar] = useState(null);
   const [mostrarModalDias, setMostrarModalDias] = useState(null);
+  const [mostrarModalSalud, setMostrarModalSalud] = useState(null);
+  const [mostrarModalTickets, setMostrarModalTickets] = useState(null);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
   const [historialPagos, setHistorialPagos] = useState([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [alertas, setAlertas] = useState([]);
+  const [cargandoAlertas, setCargandoAlertas] = useState(false);
+  const [saludNegocio, setSaludNegocio] = useState(null);
+  const [cargandoSalud, setCargandoSalud] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [cargandoTickets, setCargandoTickets] = useState(false);
+  const [nuevoTicket, setNuevoTicket] = useState({
+    titulo: '', descripcion: '', categoria: 'bug'
+  });
 
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', email: '', telefono: '', direccion: '',
@@ -43,6 +54,10 @@ function Superadmin() {
 
   useEffect(() => {
     cargarDatos();
+    cargarAlertas();
+    // Recargar alertas cada 30 segundos
+    const interval = setInterval(cargarAlertas, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const cargarDatos = async () => {
@@ -141,6 +156,70 @@ function Superadmin() {
     }
   };
 
+  const cargarAlertas = async () => {
+    try {
+      const res = await api.get('/api/superadmin/alertas');
+      setAlertas(res.data || []);
+    } catch (err) {
+      console.error('Error:', err);
+    }
+  };
+
+  const cargarSaludNegocio = async (negocioId) => {
+    try {
+      setCargandoSalud(true);
+      const res = await api.get(`/api/superadmin/salud/${negocioId}`);
+      setSaludNegocio(res.data);
+    } catch (err) {
+      console.error('Error:', err);
+      setError('Error al cargar salud del negocio');
+    } finally {
+      setCargandoSalud(false);
+    }
+  };
+
+  const cargarTickets = async () => {
+    try {
+      setCargandoTickets(true);
+      const res = await api.get('/api/superadmin/tickets?estado=abierto');
+      setTickets(res.data || []);
+    } catch (err) {
+      console.error('Error:', err);
+      setTickets([]);
+    } finally {
+      setCargandoTickets(false);
+    }
+  };
+
+  const crearTicket = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/superadmin/tickets', {
+        negocio_id: mostrarModalTickets.id,
+        titulo: nuevoTicket.titulo,
+        descripcion: nuevoTicket.descripcion,
+        categoria: nuevoTicket.categoria
+      });
+      setExito('Ticket creado correctamente');
+      setMostrarModalTickets(null);
+      setNuevoTicket({ titulo: '', descripcion: '', categoria: 'bug' });
+      cargarTickets();
+    } catch (err) {
+      setError('Error al crear ticket');
+    }
+  };
+
+  const resolverAlerta = async (alertaId) => {
+    try {
+      await api.put(`/api/superadmin/alertas/${alertaId}/resolver`);
+      cargarAlertas();
+      setExito('Alerta resuelta');
+      setTimeout(() => setExito(''), 2000);
+    } catch (err) {
+      setError('Error al resolver alerta');
+    }
+  };
+
   const diasRestantes = (fecha) => {
     if (!fecha) return 0;
     const diff = new Date(fecha) - new Date();
@@ -178,6 +257,41 @@ function Superadmin() {
         {/* Mensajes */}
         {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">✅ {exito}</div>}
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
+
+        {/* Widget Alertas */}
+        {alertas.length > 0 && (
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 rounded-xl p-5 shadow">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <span className="text-2xl">🚨</span> 
+                ALERTAS ({alertas.length})
+              </h3>
+              <button onClick={cargarAlertas}
+                className="text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg transition-colors">
+                🔄 Actualizar
+              </button>
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {alertas.slice(0, 10).map(alerta => (
+                <div key={alerta.id} className={`p-3 rounded-lg flex items-start justify-between gap-3 ${
+                  alerta.severidad === 'crítica' ? 'bg-red-100 border-l-4 border-red-500' :
+                  alerta.severidad === 'alta' ? 'bg-orange-100 border-l-4 border-orange-500' :
+                  'bg-yellow-100 border-l-4 border-yellow-500'
+                }`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-800 text-sm">{alerta.titulo}</p>
+                    <p className="text-xs text-gray-600">{alerta.negocio_nombre}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{alerta.descripcion}</p>
+                  </div>
+                  <button onClick={() => resolverAlerta(alerta.id)}
+                    className="text-xs bg-white hover:bg-gray-100 text-gray-700 px-2 py-1 rounded whitespace-nowrap transition-colors">
+                    ✓ Resolver
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tarjetas de stats */}
         {stats && (
@@ -290,6 +404,26 @@ function Superadmin() {
                             className="bg-cyan-100 hover:bg-cyan-200 text-cyan-700 px-2 py-1 rounded text-xs font-medium transition-colors"
                             title="Ver historial de pagos">
                             📊 Historial
+                          </button>
+
+                          {/* Salud */}
+                          <button onClick={() => {
+                            setMostrarModalSalud(negocio);
+                            cargarSaludNegocio(negocio.id);
+                          }}
+                            className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Ver estado de salud">
+                            ❤️ Salud
+                          </button>
+
+                          {/* Tickets */}
+                          <button onClick={() => {
+                            setMostrarModalTickets(negocio);
+                            cargarTickets();
+                          }}
+                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Crear ticket de soporte">
+                            🎫 Ticket
                           </button>
 
                           {/* Bloquear/Activar */}
@@ -598,6 +732,150 @@ function Superadmin() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Salud del Negocio */}
+      {mostrarModalSalud && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b bg-green-50">
+              <h3 className="text-lg font-bold text-gray-800">❤️ Salud del Negocio</h3>
+              <button onClick={() => setMostrarModalSalud(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {cargandoSalud ? (
+                <div className="text-center py-8 text-gray-400">Cargando...</div>
+              ) : saludNegocio ? (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-gray-800">{saludNegocio.negocio.nombre}</h4>
+                      <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                        saludNegocio.estado === 'activo' ? 'bg-green-100 text-green-700' :
+                        saludNegocio.estado === 'inactivo' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {saludNegocio.estado === 'activo' ? '✅ Operativo' : 
+                         saludNegocio.estado === 'inactivo' ? '⚠️ Inactivo' :
+                         '❌ Nunca usado'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <p className="text-gray-500 text-xs">Última Actividad</p>
+                        <p className="font-semibold text-gray-800">{saludNegocio.negocio.ultima_actividad ? new Date(saludNegocio.negocio.ultima_actividad).toLocaleDateString('es-AR') : 'Nunca'}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <p className="text-gray-500 text-xs">Días sin Actividad</p>
+                        <p className="font-semibold text-gray-800">{saludNegocio.negocio.dias_sin_actividad !== null ? saludNegocio.negocio.dias_sin_actividad + ' días' : '∞'}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <p className="text-gray-500 text-xs">Transacciones Hoy</p>
+                        <p className="font-semibold text-gray-800">{saludNegocio.transacciones_hoy}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-green-100">
+                        <p className="text-gray-500 text-xs">Usuarios Activos Hoy</p>
+                        <p className="font-semibold text-gray-800">{saludNegocio.usuarios_activos_hoy}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-red-100">
+                        <p className="text-gray-500 text-xs">Errores (24h)</p>
+                        <p className="font-semibold text-red-600">{saludNegocio.negocio.errores_24h}</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg border border-blue-100">
+                        <p className="text-gray-500 text-xs">Almacenamiento</p>
+                        <p className="font-semibold text-gray-800">{saludNegocio.almacenamiento?.total_size || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {saludNegocio.negocio.errores_24h > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                      <p className="font-semibold text-red-700 text-sm mb-2">⚠️ Errores Detectados</p>
+                      <p className="text-sm text-red-600">Se han registrado {saludNegocio.negocio.errores_24h} errores en las últimas 24 horas. Revisa los logs.</p>
+                    </div>
+                  )}
+
+                  {saludNegocio.negocio.dias_sin_actividad > 7 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                      <p className="font-semibold text-yellow-700 text-sm mb-2">💾 Sin Actividad</p>
+                      <p className="text-sm text-yellow-600">Este negocio lleva {saludNegocio.negocio.dias_sin_actividad} días sin actividad. Posible abandono o error técnico.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">Error al cargar datos</div>
+              )}
+            </div>
+
+            <div className="p-5 border-t bg-gray-50">
+              <button onClick={() => setMostrarModalSalud(null)}
+                className="w-full py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Crear Ticket */}
+      {mostrarModalTickets && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b bg-indigo-50">
+              <h3 className="text-lg font-bold text-gray-800">🎫 Crear Ticket de Soporte</h3>
+              <button onClick={() => setMostrarModalTickets(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <form onSubmit={crearTicket} className="p-5 space-y-4">
+              <div className="bg-indigo-100 p-3 rounded-lg text-sm text-indigo-700">
+                📌 <strong>{mostrarModalTickets?.nombre}</strong>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Título del Problema *</label>
+                <input type="text" value={nuevoTicket.titulo}
+                  onChange={(e) => setNuevoTicket(p => ({ ...p, titulo: e.target.value }))}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Ej: Error al registrar ventas" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción *</label>
+                <textarea value={nuevoTicket.descripcion}
+                  onChange={(e) => setNuevoTicket(p => ({ ...p, descripcion: e.target.value }))}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  rows="4"
+                  placeholder="Describe el problema en detalle..." />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <select value={nuevoTicket.categoria}
+                  onChange={(e) => setNuevoTicket(p => ({ ...p, categoria: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="bug">🐛 Bug/Error</option>
+                  <option value="pregunta">❓ Pregunta</option>
+                  <option value="lentitud">⏱️ Lentitud</option>
+                  <option value="acceso">🔐 Problema de Acceso</option>
+                  <option value="otro">❓ Otro</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalTickets(null)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors">
+                  ✅ Crear Ticket
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
