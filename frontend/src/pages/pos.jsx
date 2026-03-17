@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { ModalGasto } from '../components/admin/Gastos';
+import ModalDetalleVenta from '../components/admin/DetalleVenta';
 import { imprimirTicket } from '../components/ticket';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
@@ -180,77 +181,169 @@ function ModalVentaRapida({ onAgregar, onCerrar }) {
 function ModalHistorial({ turno, onCerrar }) {
   const [ventas, setVentas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [actualizando, setActualizando] = useState(false);
+  const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
+  const [detalleVenta, setDetalleVenta] = useState(null);
+
+  // Función para cargar ventas del turno actual
+  const cargarVentas = async () => {
+    try {
+      setCargando(true);
+      const res = await api.get(`/api/reportes/historial?turno_id=${turno.id}`);
+      setVentas(res.data.ventas || []);
+    } catch (err) {
+      console.error('Error al cargar ventas:', err);
+    } finally {
+      setCargando(false);
+    }
+  };
 
   useEffect(() => {
-    const cargar = async () => {
-      try {
-       const fechaApertura = new Date(turno.fecha_apertura);
-      const offset = fechaApertura.getTimezoneOffset() * 60000;
-      const local = new Date(fechaApertura - offset);
-      const desde = local.toISOString().split('T')[0];
-      const hasta = desde;
-        const res = await api.get(`/api/reportes/historial?fecha_desde=${desde}&fecha_hasta=${hasta}`);
-        setVentas(res.data.ventas || []);
-      } catch { }
-      finally { setCargando(false); }
-    };
-    cargar();
+    cargarVentas();
+    
+    // Actualizar cada 5 segundos mientras el modal esté abierto
+    const interval = setInterval(cargarVentas, 5000);
+    return () => clearInterval(interval);
   }, []);
+
+  // Función para cargar el detalle de una venta
+  const cargarDetalleVenta = async (ventaId) => {
+    try {
+      const res = await api.get(`/api/ventas/${ventaId}`);
+      setDetalleVenta(res.data);
+      setVentaSeleccionada(ventaId);
+    } catch (err) {
+      console.error('Error al cargar detalle de venta:', err);
+      alert('Error al cargar el detalle de la venta');
+    }
+  };
+
+  // Función para eliminar venta
+  const eliminarVenta = async (id, total) => {
+    if (!window.confirm(`¿Eliminar esta venta de ${fmt(total)}?`)) return;
+    try {
+      setActualizando(true);
+      await api.delete(`/api/ventas/${id}`);
+      cargarVentas(); // Refrescar lista
+      if (ventaSeleccionada === id) {
+        setDetalleVenta(null);
+        setVentaSeleccionada(null);
+      }
+    } catch (err) {
+      alert('Error al eliminar venta');
+    } finally {
+      setActualizando(false);
+    }
+  };
+
+  // Función para reimprimir ticket
+  const reimprimirTicket = async (venta) => {
+    try {
+      setActualizando(true);
+      const res = await api.get(`/api/ventas/${venta.id}/ticket`);
+      imprimirTicket({
+        venta: res.data,
+        items: res.data.items,
+        config,
+      });
+    } catch (err) {
+      alert('Error al reimprimir ticket');
+    } finally {
+      setActualizando(false);
+    }
+  };
 
   const totalDelTurno = ventas.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b bg-gray-800 text-white">
-          <div>
-            <h3 className="text-lg font-bold">📋 Historial del Turno</h3>
-            <p className="text-gray-400 text-xs mt-0.5">F5 · {turno?.nombre}</p>
-          </div>
-          <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
-        </div>
-        <div className="p-4 bg-gray-50 border-b flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-500">Total del turno</p>
-            <p className="text-2xl font-bold text-gray-800">{fmt(totalDelTurno)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Ventas</p>
-            <p className="text-2xl font-bold text-gray-800">{ventas.length}</p>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {cargando ? (
-            <p className="text-center text-gray-400 py-8">Cargando...</p>
-          ) : ventas.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-4xl mb-2">🛒</p>
-              <p>No hay ventas en este turno</p>
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b bg-gray-800 text-white">
+            <div>
+              <h3 className="text-lg font-bold">📋 Historial del Turno</h3>
+              <p className="text-gray-400 text-xs mt-0.5">F5 · {turno?.nombre} · Actualiza cada 5s</p>
             </div>
-          ) : (
-            ventas.map(venta => (
-              <div key={venta.id} className="bg-gray-50 rounded-xl p-3 flex items-center justify-between border border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-green-100 text-green-700 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0">
-                    #{venta.id}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {venta.metodo_pago === 'efectivo' ? '💵' : venta.metodo_pago === 'tarjeta' ? '💳' : venta.metodo_pago === 'mercadopago' ? '📱' : '🏦'} {venta.metodo_pago}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {new Date(venta.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                      {venta.es_fiado && <span className="ml-2 bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-xs">Fiado</span>}
-                    </p>
-                  </div>
-                </div>
-                <p className="font-bold text-gray-800">{fmt(venta.total)}</p>
+            <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
+          </div>
+          <div className="p-4 bg-gray-50 border-b flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500">Total del turno</p>
+              <p className="text-2xl font-bold text-gray-800">{fmt(totalDelTurno)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Ventas</p>
+              <p className="text-2xl font-bold text-gray-800">{ventas.length}</p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {cargando ? (
+              <p className="text-center text-gray-400 py-8">Cargando...</p>
+            ) : ventas.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-2">🛒</p>
+                <p>No hay ventas en este turno</p>
               </div>
-            ))
+            ) : (
+              ventas.map(venta => (
+                <div key={venta.id} className="bg-gray-50 rounded-xl p-3 flex items-center justify-between border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => cargarDetalleVenta(venta.id)}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-green-100 text-green-700 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0">
+                      #{venta.id}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {venta.metodo_pago === 'efectivo' ? '💵' : venta.metodo_pago === 'tarjeta' ? '💳' : venta.metodo_pago === 'mercadopago' ? '📱' : '🏦'} {venta.metodo_pago}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(venta.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                        {venta.es_fiado && <span className="ml-2 bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-xs">Fiado</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      reimprimirTicket(venta);
+                    }}
+                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors">
+                      🖨️ Reimprimir
+                    </button>
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      eliminarVenta(venta.id, venta.total);
+                    }}
+                      className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors">
+                      🗑️ Eliminar
+                    </button>
+                  </div>
+                  <p className="font-bold text-gray-800">{fmt(venta.total)}</p>
+                </div>
+              ))
+            )}
+          </div>
+          {actualizando && (
+            <div className="p-3 bg-gray-50 border-t flex items-center justify-center">
+              <p className="text-sm text-gray-500">Procesando...</p>
+            </div>
           )}
         </div>
       </div>
-    </div>
+
+      {/* Modal de Detalle de Venta */}
+      {detalleVenta && (
+        <ModalDetalleVenta
+          venta={detalleVenta}
+          onClose={() => {
+            setDetalleVenta(null);
+            setVentaSeleccionada(null);
+          }}
+          onReimprimir={reimprimirTicket}
+          onEliminar={eliminarVenta}
+        />
+      )}
+    </>
   );
 }
 
@@ -479,45 +572,63 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-60 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b bg-gray-800 text-white rounded-t-2xl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-t-2xl">
           <div>
-            <h3 className="text-lg font-bold">💵 Contar Billetes</h3>
-            <p className="text-gray-400 text-xs">Ingresá la cantidad de cada billete</p>
-          </div>
-          <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
-        </div>
-        <div className="p-4 space-y-2">
-          {BILLETES.map(b => (
-            <div key={b} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2">
-              <span className="text-sm font-medium text-gray-700 w-24">
-                ${b >= 1000 ? (b / 1000) + '.000' : b}
-              </span>
-              <span className="text-gray-400 text-sm">×</span>
-              <input type="number" min="0"
-                value={cantidades[b] || ''}
-                onChange={(e) => setCantidades(p => ({ ...p, [b]: e.target.value }))}
-                className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-center"
-                placeholder="0" />
-              <span className="text-gray-400 text-sm">=</span>
-              <span className="text-sm font-medium text-gray-700 ml-auto">
-                {fmt((parseInt(cantidades[b] || 0) * b))}
-              </span>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                <span className="text-2xl">💵</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Contar Billetes</h3>
+                <p className="text-gray-200 text-sm">Ingresá la cantidad de cada billete</p>
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="p-4 border-t bg-gray-50">
-          <div className="flex justify-between items-center mb-3">
-            <span className="font-medium text-gray-700">Total contado</span>
-            <span className="text-2xl font-bold text-gray-900">{fmt(total)}</span>
           </div>
+          <button onClick={onCerrar} className="text-gray-300 hover:text-white text-2xl transition-colors">×</button>
+        </div>
+        
+        <div className="p-6">
+          <div className="space-y-3">
+            {BILLETES.map(b => (
+              <div key={b} className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold text-gray-800">
+                      ${b >= 1000 ? (b / 1000) + '.000' : b}
+                    </span>
+                    <span className="text-gray-500 text-sm">×</span>
+                    <input type="number" min="0"
+                      value={cantidades[b] || ''}
+                      onChange={(e) => setCantidades(p => ({ ...p, [b]: e.target.value }))}
+                      className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-center font-medium"
+                      placeholder="0" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-gray-800">{fmt((parseInt(cantidades[b] || 0) * b))}</p>
+                    <p className="text-xs text-gray-500">Subtotal</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+            <div className="flex justify-between items-center">
+              <span className="font-semibold text-gray-800">Total contado</span>
+              <span className="text-2xl font-bold text-gray-900">{fmt(total)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 bg-gray-50 border-t">
           <div className="flex gap-3">
             <button onClick={onCerrar}
-              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-100 transition-colors">
+              className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-100 transition-colors font-semibold">
               Cancelar
             </button>
             <button onClick={() => onConfirmar(total)}
-              className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold transition-colors">
+              className="flex-1 py-3 bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-xl font-semibold hover:from-gray-900 hover:to-black transition-all shadow-lg">
               ✅ Usar {fmt(total)}
             </button>
           </div>
@@ -550,7 +661,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
 
   const cargarResumen = async () => {
     try {
-const fechaApertura = new Date(turno.fecha_apertura);
+      const fechaApertura = new Date(turno.fecha_apertura);
       const offset = fechaApertura.getTimezoneOffset() * 60000;
       const local = new Date(fechaApertura - offset);
       const desde = local.toISOString().split('T')[0];
@@ -1225,14 +1336,31 @@ function POS() {
     try {
       const itemsReales = carritoActivo.filter(item => !item.esRapida);
       const itemsRapidos = carritoActivo.filter(item => item.esRapida);
-      const resVenta = await api.post('/api/ventas', {
-        turno_id: turno?.id,
-        items: itemsReales.map(item => ({ producto_id: item.producto_id, nombre_producto: item.nombre_producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario, subtotal: item.subtotal })),
-        metodo_pago: metodoPago, descuento, recargo, total: totalFinal,
-        cliente_id: clienteId || null, es_fiado: esFiado || false,
-      });
-      if (itemsRapidos.length > 0) {
-        await api.post('/api/ventas', {
+      
+      let resVenta;
+      
+      if (itemsReales.length > 0) {
+        // Si hay productos regulares, crear la venta con ellos
+        resVenta = await api.post('/api/ventas', {
+          turno_id: turno?.id,
+          items: itemsReales.map(item => ({ producto_id: item.producto_id, nombre_producto: item.nombre_producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario, subtotal: item.subtotal })),
+          metodo_pago: metodoPago, descuento, recargo, total: totalFinal,
+          cliente_id: clienteId || null, es_fiado: esFiado || false,
+        });
+        
+        // Si también hay productos rápidos, crear una segunda venta para ellos
+        if (itemsRapidos.length > 0) {
+          await api.post('/api/ventas', {
+            turno_id: turno?.id,
+            items: itemsRapidos.map(i => ({ producto_id: null, nombre_producto: i.nombre_producto, cantidad: i.cantidad, precio_unitario: i.precio_unitario, subtotal: i.subtotal })),
+            metodo_pago: metodoPago, descuento: 0, recargo: 0,
+            total: itemsRapidos.reduce((acc, i) => acc + i.subtotal, 0),
+            cliente_id: null, es_fiado: false,
+          });
+        }
+      } else if (itemsRapidos.length > 0) {
+        // Si solo hay productos rápidos, crear la venta directamente con ellos
+        resVenta = await api.post('/api/ventas', {
           turno_id: turno?.id,
           items: itemsRapidos.map(i => ({ producto_id: null, nombre_producto: i.nombre_producto, cantidad: i.cantidad, precio_unitario: i.precio_unitario, subtotal: i.subtotal })),
           metodo_pago: metodoPago, descuento: 0, recargo: 0,
@@ -1240,6 +1368,7 @@ function POS() {
           cliente_id: null, es_fiado: false,
         });
       }
+      
       const nuevoNumero = contadorVentas + 1;
       setContadorVentas(nuevoNumero);
       setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p));
@@ -1258,7 +1387,7 @@ function POS() {
     } catch (err) { alert(err.response?.data?.error || 'Error al registrar la venta'); }
   };
 
-const oscuro = config?.modo_oscuro !== false;
+  const oscuro = config?.modo_oscuro !== false;
 
   const estilos = {
     panelBusqueda: oscuro ? { background: '#111827', borderRight: '0.5px solid rgba(255,255,255,0.08)' } : { background: '#fff', borderRight: '0.5px solid #e5e7eb' },

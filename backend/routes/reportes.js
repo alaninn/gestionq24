@@ -5,19 +5,24 @@ const db = require('../config/database');
 router.get('/historial', async (req, res) => {
     try {
         const negocio_id = req.usuario.negocio_id || 1;
-        const { fecha_desde, fecha_hasta } = req.query;
+        const { fecha_desde, fecha_hasta, turno_id } = req.query;
 
-        const ventas = await db.query(`
+        let consulta = `
             SELECT v.*, COUNT(vi.id) as cantidad_items,
                 SUM(vi.cantidad * vi.precio_unitario) as subtotal_items
             FROM ventas v
             LEFT JOIN venta_items vi ON v.id = vi.venta_id
-            WHERE v.fecha::date >= $1::date 
-              AND v.fecha::date <= $2::date 
-              AND v.negocio_id = $3
-            GROUP BY v.id
-            ORDER BY v.fecha DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+            WHERE v.negocio_id = $1
+        `;
+        let valores = [negocio_id];
+        let contador = 2;
+
+        if (fecha_desde) { consulta += ` AND v.fecha::date >= $${contador}`; valores.push(fecha_desde); contador++; }
+        if (fecha_hasta) { consulta += ` AND v.fecha::date <= $${contador}`; valores.push(fecha_hasta); contador++; }
+        if (turno_id) { consulta += ` AND v.turno_id = $${contador}`; valores.push(turno_id); contador++; }
+
+        consulta += ' GROUP BY v.id ORDER BY v.fecha DESC';
+        const ventas = await db.query(consulta, valores);
 
         const totalVendido = ventas.rows.reduce((acc, v) => acc + parseFloat(v.total), 0);
         const totalVentas = ventas.rows.length;

@@ -94,4 +94,70 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
     }
 });
 
+// Endpoint para editar una venta
+router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado } = req.body;
+    
+    // Validar que el turno esté abierto
+    const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+    
+    // Validar que el turno esté abierto
+    const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+    if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
+      return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
+    }
+    
+    // Actualizar venta
+    await db.query('UPDATE ventas SET items = $1, metodo_pago = $2, descuento = $3, recargo = $4, total = $5, cliente_id = $6, es_fiado = $7 WHERE id = $8 AND negocio_id = $9',
+      [items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]);
+    
+    res.json({ mensaje: 'Venta actualizada correctamente' });
+  } catch (error) {
+    console.error('Error al editar venta:', error);
+    res.status(500).json({ error: 'Error al editar venta' });
+  }
+});
+
+// Endpoint para eliminar una venta
+router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validar que el turno esté abierto y la venta pertenezca al turno actual
+    const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+    
+    // Validar que el turno esté abierto
+    const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+    if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
+      return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
+    }
+    
+    // Eliminar venta
+    await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+    res.json({ mensaje: 'Venta eliminada correctamente' });
+  } catch (error) {
+    console.error('Error al eliminar venta:', error);
+    res.status(500).json({ error: 'Error al eliminar venta' });
+  }
+});
+
+// Endpoint para obtener datos de ticket para reimprimir
+router.get('/:id/ticket', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const venta = await db.query('SELECT * FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+    
+    // Devolver datos para imprimir ticket
+    res.json(venta.rows[0]);
+  } catch (error) {
+    console.error('Error al obtener datos del ticket:', error);
+    res.status(500).json({ error: 'Error al obtener datos del ticket' });
+  }
+});
+
 module.exports = router;
