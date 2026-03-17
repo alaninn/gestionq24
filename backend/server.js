@@ -1,4 +1,3 @@
-
 process.env.TZ = 'America/Argentina/Buenos_Aires';
 
 require('dotenv').config();
@@ -6,6 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const schedule = require('node-schedule');
 
 const rutasAuth = require('./routes/auth');
 const rutasCategorias = require('./routes/categorias');
@@ -74,4 +74,15 @@ const PUERTO = process.env.PORT || 3001;
 app.listen(PUERTO, '0.0.0.0', () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PUERTO}`);
     console.log(`📦 API disponible en http://localhost:${PUERTO}/api`);
+});
+
+schedule.scheduleJob('*/5 * * * *', async () => {
+    try {
+        await fetch('http://localhost:3001/api/superadmin/generar-alertas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (err) {
+        console.error('Error generando alertas:', err);
+    }
 });
