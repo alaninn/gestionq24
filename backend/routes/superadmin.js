@@ -352,12 +352,10 @@ router.get('/salud/:negocio_id', async (req, res) => {
         // Almacenamiento usado (agrupado por tabla)
         const almacenamiento = await db.query(`
             SELECT 
-                pg_size_pretty(pg_total_relation_size('productos')) as productos_size,
-                pg_size_pretty(pg_total_relation_size('ventas')) as ventas_size,
-                pg_size_pretty(pg_total_relation_size('categorias')) as categorias_size,
                 pg_size_pretty(SUM(pg_total_relation_size(tablename::regclass))) as total_size
             FROM pg_tables 
             WHERE schemaname = 'public'
+            AND tablename IN ('productos', 'ventas', 'categorias', 'usuarios', 'negocios')
         `);
 
         res.json({
@@ -371,7 +369,9 @@ router.get('/salud/:negocio_id', async (req, res) => {
             transacciones_hoy: parseInt(ventas.rows[0]?.total) || 0,
             usuarios_activos_hoy: parseInt(usuarios.rows[0]?.total) || 0,
             estado: diasSinActividad === null ? 'nunca_usado' : diasSinActividad > 7 ? 'inactivo' : 'activo',
-            almacenamiento: almacenamiento.rows[0]
+            almacenamiento: {
+                total_size: almacenamiento.rows[0]?.total_size || '0 bytes'
+            }
         });
     } catch (error) {
         console.error('Error:', error);
