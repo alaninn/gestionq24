@@ -338,7 +338,7 @@ router.get('/salud/:negocio_id', async (req, res) => {
         const ventas = await db.query(`
             SELECT COUNT(*) as total FROM ventas 
             WHERE negocio_id = $1 
-            AND DATE(created_at) = CURRENT_DATE
+            AND DATE(fecha) = CURRENT_DATE
         `, [negocio_id]);
 
         // Usuarios activos hoy
