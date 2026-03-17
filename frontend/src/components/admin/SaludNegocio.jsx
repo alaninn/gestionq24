@@ -14,7 +14,7 @@ function SaludNegocio({ esAccesoSuperadmin }) {
 
   const cargarSalud = async () => {
     try {
-      const res = await api.get('/api/superadmin/salud/self');
+      const res = await api.get('/api/salud');
       setSalud(res.data);
     } catch (err) {
       console.error('Error:', err);
