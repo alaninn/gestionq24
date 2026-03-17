@@ -149,7 +149,7 @@ function Superadmin() {
       if (res.data.acceso_permitido) {
         // Guardar que estamos accediendo como superadmin a otro negocio
         localStorage.setItem('acceso_superadmin_negocio', negocioId);
-        window.location.href = `/admin?negocio=${negocioId}`;
+        window.location.href = `/admin`;
       }
     } catch (err) {
       setError('No se puede acceder a este negocio');

@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import SaludNegocio from './SaludNegocio';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -96,6 +97,9 @@ function Dashboard() {
           🔄 Actualizar
         </button>
       </div>
+
+      {/* Widget de Salud del Negocio */}
+      <SaludNegocio />
 
       {/* Tarjetas de stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

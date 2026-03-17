@@ -560,4 +560,27 @@ router.post('/generar-alertas', async (req, res) => {
     }
 });
 
+// GET /api/superadmin/negocios/:id/acceso
+router.get('/negocios/:id/acceso', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const negocio = await db.query(`
+            SELECT id, nombre, estado FROM negocios WHERE id = $1
+        `, [id]);
+
+        if (!negocio.rows[0]) {
+            return res.status(404).json({ error: 'Negocio no encontrado' });
+        }
+
+        res.json({ 
+            acceso_permitido: true,
+            negocio: negocio.rows[0]
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al verificar acceso' });
+    }
+});
+
 module.exports = router;
