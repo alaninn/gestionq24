@@ -742,7 +742,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     const ok = Math.abs(resultadoCierre.diferencia) < 1;
     return (
       <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
           <div className={`p-6 text-white text-center ${ok ? 'bg-green-600' : 'bg-red-500'}`}>
             <p className="text-5xl mb-3">{ok ? '✅' : '⚠️'}</p>
             <h3 className="text-2xl font-bold">{ok ? '¡Cierre perfecto!' : 'Hay diferencias'}</h3>
@@ -750,21 +750,21 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
               {ok ? 'Los valores coinciden exactamente' : 'Los valores no coinciden con el sistema'}
             </p>
           </div>
-          <div className="p-5 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-gray-500">Vos declaraste</p>
-                <p className="text-xl font-bold text-gray-800">{fmt(resultadoCierre.totalDeclaro)}</p>
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 rounded-xl p-4 text-center">
+                <p className="text-sm text-gray-500">Vos declaraste</p>
+                <p className="text-2xl font-bold text-gray-800">{fmt(resultadoCierre.totalDeclaro)}</p>
               </div>
-              <div className="bg-gray-50 rounded-xl p-3 text-center">
-                <p className="text-xs text-gray-500">Sistema registró</p>
-                <p className="text-xl font-bold text-gray-800">{fmt(resultadoCierre.totalSistema)}</p>
+              <div className="bg-gray-50 rounded-xl p-4 text-center">
+                <p className="text-sm text-gray-500">Sistema registró</p>
+                <p className="text-2xl font-bold text-gray-800">{fmt(resultadoCierre.totalSistema)}</p>
               </div>
             </div>
 
             {!ok && (
               <>
-                <div className={`rounded-xl p-4 text-center ${resultadoCierre.diferencia > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'}`}>
+                <div className={`rounded-xl p-5 text-center ${resultadoCierre.diferencia > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'}`}>
                   <p className="text-sm font-medium text-gray-600">Diferencia</p>
                   <p className={`text-3xl font-bold ${resultadoCierre.diferencia > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                     {resultadoCierre.diferencia > 0 ? '+' : ''}{fmt(resultadoCierre.diferencia)}
@@ -774,17 +774,17 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {[
                     ['💵 Efectivo', resultadoCierre.efectivo],
                     ['💳 Tarjetas', resultadoCierre.tarjetas],
                     ['📱 Mercado Pago', resultadoCierre.mp],
                     ['🏦 Transferencias', resultadoCierre.transf],
                   ].map(([label, vals]) => vals.diff !== 0 && (
-                    <div key={label} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                    <div key={label} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 text-sm">
                       <span className="text-gray-600">{label}</span>
                       <div className="text-right">
-                        <span className="text-gray-400 text-xs">{fmt(vals.declaro)} declarado vs {fmt(vals.sistema)} sistema</span>
+                        <span className="text-gray-400 text-sm">{fmt(vals.declaro)} declarado vs {fmt(vals.sistema)} sistema</span>
                         <span className={`ml-2 font-bold ${vals.diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                           {vals.diff > 0 ? '+' : ''}{fmt(vals.diff)}
                         </span>
@@ -795,7 +795,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
               </>
             )}
           </div>
-          <div className="p-5 pt-0">
+          <div className="p-6 pt-0">
             <button onClick={onCerrado}
               className={`w-full py-3 text-white rounded-xl font-bold transition-colors ${ok ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'}`}>
               Finalizar Turno
@@ -819,7 +819,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
           <button onClick={onCerrar} className="text-gray-300 hover:text-white text-3xl transition-all duration-200 hover:scale-110">×</button>
         </div>
 
-        <form onSubmit={cerrar} className="p-5 space-y-6">
+        <form onSubmit={cerrar} className="p-6 space-y-6">
 
           {/* Arqueo de efectivo */}
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 border border-gray-700">
@@ -941,11 +941,11 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
 
           <div className="flex gap-3">
             <button type="button" onClick={onCerrar}
-              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
+              className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
               Cancelar
             </button>
             <button type="submit" disabled={cargando || !camposCompletos()}
-              className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
               {cargando ? 'Cerrando...' : '🔒 Confirmar Cierre'}
             </button>
           </div>

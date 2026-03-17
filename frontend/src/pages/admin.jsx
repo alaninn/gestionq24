@@ -43,6 +43,15 @@ function Admin() {
   const { usuario, logout, tienePermiso } = useAuth();
   const { colorPrimario } = useTema();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  
+  // Detectar si superadmin está accediendo otro negocio
+  const accesoSuperadminNegocio = localStorage.getItem('acceso_superadmin_negocio');
+  const esSuperadminAccediendo = usuario?.rol === 'superadmin' && accesoSuperadminNegocio;
+
+  const volveraSuperadmin = () => {
+    localStorage.removeItem('acceso_superadmin_negocio');
+    navigate('/superadmin');
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -143,12 +152,38 @@ function Admin() {
             </div>
             <span className="font-bold text-gray-800 text-sm">SistemasQ24</span>
           </div>
-          <button onClick={() => navigate('/pos')}
-            style={{ backgroundColor: 'var(--color-primario)' }}
-            className="text-white px-3 py-1.5 rounded-lg text-xs font-medium">
-            POS
-          </button>
+          <div className="flex items-center gap-2">
+            {esSuperadminAccediendo && (
+              <button onClick={volveraSuperadmin}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                👑 SuperAdmin
+              </button>
+            )}
+            <button onClick={() => navigate('/pos')}
+              style={{ backgroundColor: 'var(--color-primario)' }}
+              className="text-white px-3 py-1.5 rounded-lg text-xs font-medium">
+              POS
+            </button>
+          </div>
         </div>
+
+        {/* Barra superior para SuperAdmin (Desktop) */}
+        {esSuperadminAccediendo && (
+          <div className="hidden lg:flex bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 items-center justify-between sticky top-0 z-10 shadow-lg">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">👑</span>
+              <div>
+                <p className="text-xs opacity-90">Modo SuperAdmin</p>
+                <p className="font-semibold text-sm">Viendo negocio cliente</p>
+              </div>
+            </div>
+            <button onClick={volveraSuperadmin}
+              className="bg-white text-purple-700 hover:bg-purple-50 px-4 py-2 rounded-lg font-semibold text-sm transition-colors flex items-center gap-2">
+              <span>↩️</span>
+              <span>Volver a SuperAdmin</span>
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           <Routes>
