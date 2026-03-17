@@ -24,7 +24,7 @@ function Superadmin() {
   const [mostrarModalRenovar, setMostrarModalRenovar] = useState(null);
   const [mostrarModalDias, setMostrarModalDias] = useState(null);
   const [mostrarModalSalud, setMostrarModalSalud] = useState(null);
-  const [mostrarModalTickets, setMostrarModalTickets] = useState(null);
+  const [mostrarModalGestionTickets, setMostrarModalGestionTickets] = useState(null);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
   const [historialPagos, setHistorialPagos] = useState([]);
@@ -35,9 +35,7 @@ function Superadmin() {
   const [cargandoSalud, setCargandoSalud] = useState(false);
   const [tickets, setTickets] = useState([]);
   const [cargandoTickets, setCargandoTickets] = useState(false);
-  const [nuevoTicket, setNuevoTicket] = useState({
-    titulo: '', descripcion: '', categoria: 'bug'
-  });
+  const [respuestaTicket, setRespuestaTicket] = useState('');
 
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', email: '', telefono: '', direccion: '',
@@ -191,21 +189,18 @@ function Superadmin() {
     }
   };
 
-  const crearTicket = async (e) => {
-    e.preventDefault();
+  const responderTicket = async (ticketId, respuesta) => {
     try {
-      await api.post('/api/superadmin/tickets', {
-        negocio_id: mostrarModalTickets.id,
-        titulo: nuevoTicket.titulo,
-        descripcion: nuevoTicket.descripcion,
-        categoria: nuevoTicket.categoria
+      await api.put(`/api/superadmin/tickets/${ticketId}`, {
+        estado: 'resuelto',
+        respuesta: respuesta
       });
-      setExito('Ticket creado correctamente');
-      setMostrarModalTickets(null);
-      setNuevoTicket({ titulo: '', descripcion: '', categoria: 'bug' });
+      setExito('Ticket respondido correctamente');
+      setRespuestaTicket('');
       cargarTickets();
+      setTimeout(() => setExito(''), 3000);
     } catch (err) {
-      setError('Error al crear ticket');
+      setError('Error al responder ticket');
     }
   };
 
@@ -418,12 +413,12 @@ function Superadmin() {
 
                           {/* Tickets */}
                           <button onClick={() => {
-                            setMostrarModalTickets(negocio);
+                            setMostrarModalGestionTickets(negocio);
                             cargarTickets();
                           }}
                             className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Crear ticket de soporte">
-                            🎫 Ticket
+                            title="Gestionar tickets de soporte">
+                            🎫 Tickets
                           </button>
 
                           {/* Bloquear/Activar */}
@@ -820,62 +815,113 @@ function Superadmin() {
         </div>
       )}
 
-      {/* Modal Crear Ticket */}
-      {mostrarModalTickets && (
+      {/* Modal Gestionar Tickets */}
+      {mostrarModalGestionTickets && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b bg-indigo-50">
-              <h3 className="text-lg font-bold text-gray-800">🎫 Crear Ticket de Soporte</h3>
-              <button onClick={() => setMostrarModalTickets(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <h3 className="text-lg font-bold text-gray-800">🎫 Gestionar Tickets - {mostrarModalGestionTickets?.nombre}</h3>
+              <button onClick={() => setMostrarModalGestionTickets(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
-            <form onSubmit={crearTicket} className="p-5 space-y-4">
-              <div className="bg-indigo-100 p-3 rounded-lg text-sm text-indigo-700">
-                📌 <strong>{mostrarModalTickets?.nombre}</strong>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Título del Problema *</label>
-                <input type="text" value={nuevoTicket.titulo}
-                  onChange={(e) => setNuevoTicket(p => ({ ...p, titulo: e.target.value }))}
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Ej: Error al registrar ventas" />
-              </div>
+            <div className="p-5 max-h-[70vh] overflow-y-auto">
+              {tickets.filter(t => t.negocio_id === mostrarModalGestionTickets.id).length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-4">🎫</div>
+                  <h4 className="text-lg font-medium text-gray-800 mb-2">No hay tickets para este negocio</h4>
+                  <p className="text-gray-500">Los clientes pueden crear tickets desde su panel de soporte.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {tickets.filter(t => t.negocio_id === mostrarModalGestionTickets.id).map(ticket => (
+                    <div key={ticket.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">
+                              {ticket.categoria === 'bug' ? '🐛' :
+                               ticket.categoria === 'pregunta' ? '❓' :
+                               ticket.categoria === 'lentitud' ? '⏱️' :
+                               ticket.categoria === 'acceso' ? '🔐' : '❓'}
+                            </span>
+                            <h4 className="font-medium text-gray-800">{ticket.titulo}</h4>
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              ticket.estado === 'abierto' ? 'bg-red-100 text-red-700' :
+                              ticket.estado === 'en_progreso' ? 'bg-yellow-100 text-yellow-700' :
+                              ticket.estado === 'resuelto' ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {ticket.estado.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                          <p className="text-gray-600 text-sm mb-2">{ticket.descripcion}</p>
+                          <div className="text-xs text-gray-500">
+                            Por: {ticket.usuario_nombre} • {new Date(ticket.fecha_creacion).toLocaleDateString('es-AR')}
+                          </div>
+                        </div>
+                      </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción *</label>
-                <textarea value={nuevoTicket.descripcion}
-                  onChange={(e) => setNuevoTicket(p => ({ ...p, descripcion: e.target.value }))}
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  rows="4"
-                  placeholder="Describe el problema en detalle..." />
-              </div>
+                      {ticket.respuesta && (
+                        <div className="mt-3 p-3 bg-green-50 border-l-4 border-green-500 rounded">
+                          <p className="text-sm text-green-800">
+                            <strong>Tu respuesta:</strong> {ticket.respuesta}
+                          </p>
+                        </div>
+                      )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                <select value={nuevoTicket.categoria}
-                  onChange={(e) => setNuevoTicket(p => ({ ...p, categoria: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="bug">🐛 Bug/Error</option>
-                  <option value="pregunta">❓ Pregunta</option>
-                  <option value="lentitud">⏱️ Lentitud</option>
-                  <option value="acceso">🔐 Problema de Acceso</option>
-                  <option value="otro">❓ Otro</option>
-                </select>
-              </div>
+                      {ticket.estado !== 'resuelto' && ticket.estado !== 'cerrado' && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            responderTicket(ticket.id, respuestaTicket);
+                          }} className="space-y-3">
+                            <textarea
+                              value={respuestaTicket}
+                              onChange={(e) => setRespuestaTicket(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              rows="3"
+                              placeholder="Escribe tu respuesta al ticket..."
+                              required
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await api.put(`/api/superadmin/tickets/${ticket.id}`, { estado: 'en_progreso' });
+                                    cargarTickets();
+                                  } catch (err) {
+                                    setError('Error al cambiar estado');
+                                  }
+                                }}
+                                className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-sm font-medium transition-colors"
+                              >
+                                En Progreso
+                              </button>
+                              <button
+                                type="submit"
+                                className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors"
+                              >
+                                Responder y Resolver
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setMostrarModalTickets(null)}
-                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit"
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors">
-                  ✅ Crear Ticket
-                </button>
-              </div>
-            </form>
+            <div className="p-5 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setMostrarModalGestionTickets(null)}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

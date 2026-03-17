@@ -12,6 +12,7 @@ import { useTema } from '../context/TemaContext';
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import Usuarios from '../components/admin/Usuarios';
+import Soporte from '../components/admin/Soporte';
 
 function NombreNegocio() {
   const [nombre, setNombre] = useState('Mi Negocio');
@@ -121,6 +122,7 @@ function Admin() {
           )}
           {(usuario?.rol === 'admin' || usuario?.rol === 'superadmin') && (
             <>
+              <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
               <NavLink to="/admin/usuarios" icon="👤" label="Usuarios" />
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
             </>
@@ -196,6 +198,7 @@ function Admin() {
             <Route path="/cuentas-corrientes" element={<CuentasCorrientes />} />
             <Route path="/caja" element={<ControlCaja />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/soporte" element={<Soporte />} />
           </Routes>
         </main>
       </div>

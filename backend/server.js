@@ -19,6 +19,7 @@ const rutasReportes = require('./routes/reportes');
 const rutasUsuarios = require('./routes/usuarios');
 const rutasSuperadmin = require('./routes/superadmin');
 const rutasSalud = require('./routes/salud');
+const rutasSoporte = require('./routes/soporte');
 
 const { verificarToken, verificarPermiso } = require('./middleware/auth');
 
@@ -55,6 +56,9 @@ app.use('/api/configuracion', verificarToken, rutasConfiguracion);
 
 // Salud del negocio
 app.use('/api/salud', rutasSalud);
+
+// Soporte técnico
+app.use('/api/soporte', rutasSoporte);
 
 // Usuarios y superadmin
 app.use('/api/usuarios', rutasUsuarios);
