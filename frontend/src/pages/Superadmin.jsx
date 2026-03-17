@@ -20,12 +20,25 @@ function Superadmin() {
   const [cargando, setCargando] = useState(true);
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
   const [mostrarModalEditar, setMostrarModalEditar] = useState(null);
+  const [mostrarModalHistorial, setMostrarModalHistorial] = useState(null);
+  const [mostrarModalRenovar, setMostrarModalRenovar] = useState(null);
+  const [mostrarModalDias, setMostrarModalDias] = useState(null);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
+  const [historialPagos, setHistorialPagos] = useState([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', email: '', telefono: '', direccion: '',
     plan: 'mensual', dias_uso: '30', password_admin: ''
+  });
+
+  const [formRenovar, setFormRenovar] = useState({
+    dias: '30', monto: '', metodo_pago: 'manual', observaciones: ''
+  });
+
+  const [formDias, setFormDias] = useState({
+    dias: '30'
   });
 
   useEffect(() => {
@@ -74,14 +87,57 @@ function Superadmin() {
     }
   };
 
-  const renovar = async (id, dias) => {
+  const renovarSuscripcion = async (e) => {
+    e.preventDefault();
     try {
-      await api.post(`/api/superadmin/negocios/${id}/renovar`, { dias });
+      await api.post(`/api/superadmin/negocios/${mostrarModalRenovar.id}/renovar`, formRenovar);
+      setExito(`Suscripción renovada por ${formRenovar.dias} días`);
+      setMostrarModalRenovar(null);
+      setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
       cargarDatos();
-      setExito(`Suscripción renovada por ${dias} días`);
       setTimeout(() => setExito(''), 3000);
     } catch (err) {
-      setError('Error al renovar');
+      setError('Error al renovar suscripción');
+    }
+  };
+
+  const actualizarDiasUso = async (e) => {
+    e.preventDefault();
+    try {
+      await api.put(`/api/superadmin/negocios/${mostrarModalDias.id}/dias-uso`, { dias: formDias.dias });
+      setExito(`Días de uso actualizado a ${formDias.dias} días`);
+      setMostrarModalDias(null);
+      setFormDias({ dias: '30' });
+      cargarDatos();
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al actualizar días');
+    }
+  };
+
+  const cargarHistorialPagos = async (negocioId) => {
+    try {
+      setCargandoHistorial(true);
+      const res = await api.get(`/api/superadmin/negocios/${negocioId}/historial-pagos`);
+      setHistorialPagos(res.data || []);
+    } catch (err) {
+      console.error('Error:', err);
+      setHistorialPagos([]);
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
+
+  const accederNegocio = async (negocioId) => {
+    try {
+      const res = await api.get(`/api/superadmin/negocios/${negocioId}/acceso`);
+      if (res.data.acceso_permitido) {
+        // Guardar que estamos accediendo como superadmin a otro negocio
+        localStorage.setItem('acceso_superadmin_negocio', negocioId);
+        window.location.href = `/admin?negocio=${negocioId}`;
+      }
+    } catch (err) {
+      setError('No se puede acceder a este negocio');
     }
   };
 
@@ -107,8 +163,8 @@ function Superadmin() {
             <span>👑</span>
           </div>
           <div>
-            <h1 className="font-bold text-lg">Centro de Control</h1>
-            <p className="text-gray-400 text-xs">SuperAdmin — {usuario?.nombre}</p>
+            <h1 className="font-bold text-lg">Centro de Control SuperAdmin</h1>
+            <p className="text-gray-400 text-xs">Gestión de Negocios — {usuario?.nombre}</p>
           </div>
         </div>
         <button onClick={logout}
@@ -199,21 +255,53 @@ function Superadmin() {
                       <td className="px-4 py-3 text-right font-medium text-green-600">{fmt(negocio.total_facturado)}</td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex justify-center gap-1 flex-wrap">
-                          {/* Renovar */}
-                          <button onClick={() => renovar(negocio.id, 30)}
-                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded text-xs transition-colors">
-                            +30 días
+                          {/* Acceder panel */}
+                          <button onClick={() => accederNegocio(negocio.id)}
+                            className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Acceder al panel de administración">
+                            🔓 Acceder
                           </button>
+                          
+                          {/* Renovar */}
+                          <button onClick={() => {
+                            setMostrarModalRenovar(negocio);
+                            setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
+                          }}
+                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Renovar suscripción">
+                            🔄 Renovar
+                          </button>
+
+                          {/* Editar días */}
+                          <button onClick={() => {
+                            setMostrarModalDias(negocio);
+                            setFormDias({ dias: negocio.dias_uso?.toString() || '30' });
+                          }}
+                            className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Editar días de uso">
+                            📅 Días
+                          </button>
+
+                          {/* Historial */}
+                          <button onClick={() => {
+                            setMostrarModalHistorial(negocio);
+                            cargarHistorialPagos(negocio.id);
+                          }}
+                            className="bg-cyan-100 hover:bg-cyan-200 text-cyan-700 px-2 py-1 rounded text-xs font-medium transition-colors"
+                            title="Ver historial de pagos">
+                            📊 Historial
+                          </button>
+
                           {/* Bloquear/Activar */}
                           {negocio.estado === 'activo' ? (
                             <button onClick={() => cambiarEstado(negocio.id, 'bloqueado')}
-                              className="bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded text-xs transition-colors">
-                              Bloquear
+                              className="bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded text-xs font-medium transition-colors">
+                              🚫 Bloquear
                             </button>
                           ) : (
                             <button onClick={() => cambiarEstado(negocio.id, 'activo')}
-                              className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs transition-colors">
-                              Activar
+                              className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs font-medium transition-colors">
+                              ✅ Activar
                             </button>
                           )}
                         </div>
@@ -256,7 +344,7 @@ function Superadmin() {
       {mostrarModalNuevo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b">
+            <div className="flex items-center justify-between p-5 border-b bg-green-50">
               <h3 className="text-lg font-bold text-gray-800">🏪 Nuevo Negocio</h3>
               <button onClick={() => setMostrarModalNuevo(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
@@ -338,6 +426,178 @@ function Superadmin() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal renovar suscripción */}
+      {mostrarModalRenovar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b bg-blue-50">
+              <h3 className="text-lg font-bold text-gray-800">🔄 Renovar Suscripción</h3>
+              <button onClick={() => setMostrarModalRenovar(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <form onSubmit={renovarSuscripcion} className="p-5 space-y-4">
+              <div className="bg-blue-100 p-3 rounded-lg text-sm text-blue-700">
+                📌 <strong>{mostrarModalRenovar?.nombre}</strong> - Renovarás la suscripción
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Días a Renovar *</label>
+                <input type="number" value={formRenovar.dias}
+                  onChange={(e) => setFormRenovar(p => ({ ...p, dias: e.target.value }))}
+                  required min="1"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Monto (opcional)</label>
+                <input type="number" value={formRenovar.monto}
+                  onChange={(e) => setFormRenovar(p => ({ ...p, monto: e.target.value }))}
+                  step="0.01"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 5000" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de Pago</label>
+                <select value={formRenovar.metodo_pago}
+                  onChange={(e) => setFormRenovar(p => ({ ...p, metodo_pago: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="manual">Manual</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="mercadopago">Mercado Pago</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea value={formRenovar.observaciones}
+                  onChange={(e) => setFormRenovar(p => ({ ...p, observaciones: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                  placeholder="Notas sobre la renovación..." />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalRenovar(null)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors">
+                  ✅ Renovar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar días de uso */}
+      {mostrarModalDias && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b bg-orange-50">
+              <h3 className="text-lg font-bold text-gray-800">📅 Editar Días de Uso</h3>
+              <button onClick={() => setMostrarModalDias(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <form onSubmit={actualizarDiasUso} className="p-5 space-y-4">
+              <div className="bg-orange-100 p-3 rounded-lg text-sm text-orange-700">
+                📌 <strong>{mostrarModalDias?.nombre}</strong> - Días actuales: <strong>{mostrarModalDias?.dias_uso || 30}</strong>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nuevos Días *</label>
+                <input type="number" value={formDias.dias}
+                  onChange={(e) => setFormDias({ dias: e.target.value })}
+                  required min="1"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  autoFocus />
+              </div>
+
+              <div className="bg-gray-100 p-3 rounded-lg text-sm text-gray-600">
+                💡 El vencimiento se actualizará a: <strong>{new Date(new Date().getTime() + parseInt(formDias.dias) * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR')}</strong>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalDias(null)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold transition-colors">
+                  ✅ Actualizar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal historial de pagos */}
+      {mostrarModalHistorial && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b bg-cyan-50">
+              <h3 className="text-lg font-bold text-gray-800">📊 Historial de Pagos</h3>
+              <button onClick={() => setMostrarModalHistorial(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            
+            <div className="p-5 bg-cyan-100 text-sm text-cyan-700">
+              📌 <strong>{mostrarModalHistorial?.nombre}</strong>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {cargandoHistorial ? (
+                <div className="text-center py-8 text-gray-400">Cargando historial...</div>
+              ) : historialPagos.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p className="text-3xl mb-2">📭</p>
+                  <p>No hay registros de pagos</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historialPagos.map((pago) => (
+                    <div key={pago.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">
+                            {pago.tipo === 'pago' ? '💰' : '🔄'} {pago.tipo === 'pago' ? 'Pago' : 'Renovación'}
+                          </p>
+                          <p className="text-xs text-gray-500">{new Date(pago.fecha).toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-800">{pago.dias} días</p>
+                          {pago.monto > 0 && <p className="text-sm text-green-600">${fmt(pago.monto)}</p>}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-600 space-y-1">
+                        {pago.metodo_pago && <p>💳 Método: <span className="font-medium capitalize">{pago.metodo_pago}</span></p>}
+                        {pago.observaciones && <p>📝 Notas: {pago.observaciones}</p>}
+                      </div>
+                      <div className="mt-2">
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          pago.pagado ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {pago.pagado ? '✅ Pagado' : '⏳ Pendiente'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t bg-gray-50">
+              <button onClick={() => setMostrarModalHistorial(null)}
+                className="w-full py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors">
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

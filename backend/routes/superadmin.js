@@ -142,9 +142,10 @@ router.get('/stats', async (req, res) => {
 router.post('/negocios/:id/renovar', async (req, res) => {
     try {
         const { id } = req.params;
-        const { dias } = req.body;
+        const { dias, monto, metodo_pago, observaciones } = req.body;
         const diasNum = parseInt(dias) || 30;
 
+        // Actualizar negocio con nueva fecha de vencimiento
         const resultado = await db.query(`
             UPDATE negocios SET
                 estado = 'activo',
@@ -157,10 +158,134 @@ router.post('/negocios/:id/renovar', async (req, res) => {
             RETURNING *
         `, [diasNum, id]);
 
+        // Registrar en historial de pagos
+        if (monto || metodo_pago) {
+            await db.query(`
+                INSERT INTO pagos_historial (negocio_id, dias, monto, metodo_pago, observaciones, tipo)
+                VALUES ($1, $2, $3, $4, $5, 'renovacion')
+                ON CONFLICT DO NOTHING
+            `, [id, diasNum, monto || 0, metodo_pago || 'manual', observaciones || null]);
+        }
+
         res.json(resultado.rows[0]);
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al renovar suscripción' });
+    }
+});
+
+// GET /api/superadmin/negocios/:id/historial-pagos
+router.get('/negocios/:id/historial-pagos', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const resultado = await db.query(`
+            SELECT * FROM pagos_historial
+            WHERE negocio_id = $1
+            ORDER BY fecha DESC
+            LIMIT 50
+        `, [id]);
+
+        res.json(resultado.rows || []);
+    } catch (error) {
+        if (error.code === '42P01') {
+            // Tabla no existe, retornar array vacío
+            return res.json([]);
+        }
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener historial' });
+    }
+});
+
+// POST /api/superadmin/negocios/:id/registrar-pago
+router.post('/negocios/:id/registrar-pago', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { dias, monto, metodo_pago, observaciones, pagado } = req.body;
+
+        // Actualizar estado de pago en negocio si es necesario
+        if (pagado !== undefined) {
+            await db.query(`
+                UPDATE negocios SET pagado = $1 WHERE id = $2
+            `, [pagado, id]);
+        }
+
+        // Registrar pago
+        const resultado = await db.query(`
+            INSERT INTO pagos_historial 
+            (negocio_id, dias, monto, metodo_pago, observaciones, tipo, pagado)
+            VALUES ($1, $2, $3, $4, $5, 'pago', $6)
+            RETURNING *
+            ON CONFLICT DO NOTHING
+        `, [id, dias || 30, monto || 0, metodo_pago || 'pendiente', observaciones || null, pagado ?? true]);
+
+        res.json(resultado.rows[0] || { mensaje: 'Pago registrado' });
+    } catch (error) {
+        if (error.code === '42P01') {
+            return res.status(400).json({ error: 'Tabla de pagos no existe. Contacte al administrador.' });
+        }
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al registrar pago' });
+    }
+});
+
+// PUT /api/superadmin/negocios/:id/dias-uso
+router.put('/negocios/:id/dias-uso', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { dias } = req.body;
+
+        if (!dias || parseInt(dias) <= 0) {
+            return res.status(400).json({ error: 'Debe especificar días válidos' });
+        }
+
+        const diasNum = parseInt(dias);
+        
+        // Actualizar fecha de vencimiento basado en días de uso
+        const resultado = await db.query(`
+            UPDATE negocios SET
+                fecha_vencimiento = NOW() + ($1 * INTERVAL '1 day'),
+                dias_uso = $1,
+                estado = 'activo'
+            WHERE id = $2
+            RETURNING *
+        `, [diasNum, id]);
+
+        res.json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar días de uso' });
+    }
+});
+
+// GET /api/superadmin/negocios/:id/acceso
+// Permite al superadmin obtener token de acceso a otro negocio
+router.get('/negocios/:id/acceso', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Obtener info del negocio
+        const negocio = await db.query(`
+            SELECT id, nombre, estado FROM negocios WHERE id = $1
+        `, [id]);
+
+        if (!negocio.rows[0]) {
+            return res.status(404).json({ error: 'Negocio no encontrado' });
+        }
+
+        if (negocio.rows[0].estado !== 'activo') {
+            return res.status(403).json({ error: 'Negocio no está activo' });
+        }
+
+        // Retornar información para acceso
+        res.json({
+            negocio_id: negocio.rows[0].id,
+            nombre: negocio.rows[0].nombre,
+            acceso_permitido: true
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al verificar acceso' });
     }
 });
 
