@@ -60,7 +60,14 @@ function Configuracion() {
   const cargarConfig = async () => {
     try {
       const res = await api.get('/api/configuracion');
-      setConfig(res.data);
+      const cfg = res.data || {};
+      setConfig({
+        ...cfg,
+        tamanio_ticket: cfg.tamanio_ticket || '80',
+        tamanio_ticket_personalizado: cfg.tamanio_ticket_personalizado || 80,
+        impresion_tickets: cfg.impresion_tickets ?? true,
+        impresion_tickets_automatica: cfg.impresion_tickets_automatica ?? true,
+      });
     } catch (err) {
       console.error('Error:', err);
     } finally {
@@ -374,11 +381,68 @@ function Configuracion() {
                       onChange={(v) => set('escaner_barras', v)}
                     />
                     <FilaToggle
-                      titulo="Impresión de Tickets"
-                      descripcion="Mostrar vista previa del ticket al finalizar venta"
-                      valor={config?.impresion_tickets}
-                      onChange={(v) => set('impresion_tickets', v)}
+                      titulo="Imprimir automáticamente"
+                      descripcion="Genera y manda a imprimir el ticket al finalizar cada venta"
+                      valor={config?.impresion_tickets_automatica}
+                      onChange={(v) => {
+                        set('impresion_tickets_automatica', v);
+                        if (v) set('impresion_tickets', false);
+                      }}
                     />
+                    <FilaToggle
+                      titulo="Mostrar vista previa"
+                      descripcion="Abre una ventana con el ticket para que puedas revisarlo antes de imprimir"
+                      valor={config?.impresion_tickets}
+                      onChange={(v) => {
+                        set('impresion_tickets', v);
+                        if (v) set('impresion_tickets_automatica', false);
+                      }}
+                    />
+
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <p className="font-medium text-gray-800 mb-2">Tamaño de papel</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { value: '58', label: '58 mm' },
+                          { value: '80', label: '80 mm' },
+                          { value: 'personalizado', label: 'Personalizado' },
+                        ].map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => set('tamanio_ticket', option.value)}
+                            className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                              config?.tamanio_ticket === option.value
+                                ? 'bg-green-500 text-white border-green-500'
+                                : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {config?.tamanio_ticket === 'personalizado' && (
+                        <div className="mt-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Ancho personalizado (mm)
+                          </label>
+                          <input
+                            type="number"
+                            min="40"
+                            max="200"
+                            value={config?.tamanio_ticket_personalizado || ''}
+                            onChange={(e) => set('tamanio_ticket_personalizado', parseInt(e.target.value, 10) || 0)}
+                            className="w-40 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="80"
+                          />
+                        </div>
+                      )}
+
+                      <p className="text-xs text-gray-400 mt-2">
+                        Define el ancho del ticket impreso (en milímetros).
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -658,23 +722,6 @@ function Configuracion() {
                     <span className="text-gray-600">Negocio configurado</span>
                     <span className="font-medium text-gray-800">{config?.nombre_negocio || '-'}</span>
                   </div>
-
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium text-gray-800">🖨️ Impresión de Tickets</p>
-                <p className="text-sm text-gray-500">Imprimir ticket automáticamente al confirmar venta</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setConfig(p => ({ ...p, impresion_tickets: !p.impresion_tickets }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  config.impresion_tickets ? 'bg-green-600' : 'bg-gray-200'
-                }`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  config.impresion_tickets ? 'translate-x-6' : 'translate-x-1'
-                }`} />
-              </button>
-            </div>
                 </div>
               </div>
 
@@ -700,6 +747,7 @@ function Configuracion() {
                         set('pin_cierre', '');
                         set('escaner_barras', true);
                         set('impresion_tickets', true);
+                        set('impresion_tickets_automatica', true);
                       }
                     }}
                     className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"

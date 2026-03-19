@@ -13,10 +13,17 @@ router.use(verificarToken);
 // GET /api/salud (del negocio actual del usuario)
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.user.negocio_id;
-        
+        const negocio_id = req.usuario?.negocio_id;
+
+        // Si no existe un negocio asociado (por ejemplo superadmin), devolvemos datos vacíos
         if (!negocio_id) {
-            return res.status(403).json({ error: 'No tienes negocio asignado' });
+            return res.json({
+                negocio: null,
+                transacciones_hoy: 0,
+                usuarios_activos_hoy: 0,
+                estado: 'sin_negocio',
+                almacenamiento: {}
+            });
         }
 
         // Obtener datos de salud
@@ -40,7 +47,7 @@ router.get('/', async (req, res) => {
         const ventas = await db.query(`
             SELECT COUNT(*) as total FROM ventas 
             WHERE negocio_id = $1 
-            AND DATE(created_at) = CURRENT_DATE
+            AND DATE(fecha) = CURRENT_DATE
         `, [negocio_id]);
 
         // Usuarios activos hoy
@@ -73,8 +80,8 @@ router.get('/', async (req, res) => {
             almacenamiento: almacenamiento.rows[0]
         });
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al obtener salud del negocio' });
+        console.error('Error al obtener salud del negocio:', error);
+        res.status(500).json({ error: error.message || 'Error al obtener salud del negocio' });
     }
 });
 

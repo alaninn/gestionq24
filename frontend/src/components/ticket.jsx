@@ -13,9 +13,12 @@ const fmtFecha = (f) => new Date(f).toLocaleDateString('es-AR', {
 });
 
 // ---- FUNCIÓN PRINCIPAL: imprimir ticket ----
-export function imprimirTicket({ venta, items, config, negocio }) {
+export function imprimirTicket({ venta, items, config, negocio, modo = 'automatico' }) {
 
   const nombreNegocio = config?.nombre_negocio || negocio || 'Mi Negocio';
+  const tamanioTicket = config?.tamanio_ticket || '80';
+  const tamanioPersonalizado = parseInt(config?.tamanio_ticket_personalizado || 0, 10);
+  const anchoTicket = tamanioTicket === 'personalizado' && tamanioPersonalizado > 0 ? tamanioPersonalizado : parseInt(tamanioTicket, 10) || 80;
   const direccion = config?.direccion || '';
   const telefono = config?.telefono || '';
   const cuit = config?.cuit || '';
@@ -34,8 +37,8 @@ export function imprimirTicket({ venta, items, config, negocio }) {
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 12px;
-          width: 80mm;
-          max-width: 80mm;
+          width: ${anchoTicket}mm;
+          max-width: ${anchoTicket}mm;
           padding: 4mm;
           color: #000;
           background: #fff;
@@ -101,12 +104,59 @@ export function imprimirTicket({ venta, items, config, negocio }) {
           margin-top: 6px;
         }
 
+        /* Botones para modo vista previa */
+        .controles-vista-previa {
+          position: fixed;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: white;
+          border: 1px solid #ddd;
+          border-radius: 8px;
+          padding: 10px 20px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          display: flex;
+          gap: 10px;
+          z-index: 1000;
+        }
+
+        .btn-imprimir {
+          background: #10b981;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .btn-imprimir:hover {
+          background: #059669;
+        }
+
+        .btn-cancelar {
+          background: #ef4444;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .btn-cancelar:hover {
+          background: #dc2626;
+        }
+
         @media print {
-          body { width: 80mm; }
+          body { width: ${anchoTicket}mm; }
           @page { 
-            size: 80mm auto;
+            size: ${anchoTicket}mm auto;
             margin: 0;
           }
+          .controles-vista-previa { display: none; }
         }
       </style>
     </head>
@@ -194,22 +244,53 @@ export function imprimirTicket({ venta, items, config, negocio }) {
       <div class="gracias small">Conserve su ticket</div>
       <div style="margin-top: 8px;"></div>
 
+      <!-- Controles para modo vista previa -->
+      ${modo === 'vista_previa' ? `
+        <div class="controles-vista-previa">
+          <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Ticket</button>
+          <button class="btn-cancelar" onclick="window.close()">❌ Cancelar</button>
+        </div>
+      ` : ''}
+
+      <script>
+        // Lógica para el modo vista previa
+        if ('${modo}' === 'vista_previa') {
+          // No hacer nada, los botones se encargan de imprimir o cerrar
+        } else {
+          // Modo automático: imprimir directamente
+          window.onload = function() {
+            window.print();
+            // Cerrar después de imprimir
+            window.onafterprint = function() {
+              window.close();
+            };
+          };
+        }
+      </script>
+
     </body>
     </html>
   `;
 
-  // Abrimos una ventana nueva e imprimimos
+  // Abrimos una ventana nueva
   const ventana = window.open('', '_blank', 'width=400,height=600');
   ventana.document.write(html);
   ventana.document.close();
 
-  // Esperamos a que cargue y luego imprimimos
-  ventana.onload = () => {
-    ventana.focus();
-    ventana.print();
-    // Cerramos la ventana después de imprimir
-    ventana.onafterprint = () => ventana.close();
-  };
+  // Lógica según el modo
+  if (modo === 'vista_previa') {
+    // En modo vista previa, solo mostramos el ticket con controles
+    ventana.onload = () => {
+      ventana.focus();
+    };
+  } else {
+    // Modo automático: imprimir directamente sin mostrar vista previa
+    ventana.onload = () => {
+      ventana.focus();
+      ventana.print();
+      ventana.onafterprint = () => ventana.close();
+    };
+  }
 }
 
 // Formatea el nombre del método de pago

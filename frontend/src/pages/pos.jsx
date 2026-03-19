@@ -1,13 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import { ModalGasto } from '../components/admin/Gastos';
 import ModalDetalleVenta from '../components/admin/DetalleVenta';
 import { imprimirTicket } from '../components/ticket';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import VentaProductoModal from '../components/admin/VentaProductoModal';
 
+/**
+ * Formatea un número como moneda argentina (ARS)
+ * @param {number} n - Número a formatear
+ * @returns {string} Número formateado como moneda
+ */
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
 }).format(n || 0);
+
 
 // =============================================
 // MODAL: SELECCIÓN/APERTURA DE CAJA
@@ -18,6 +27,7 @@ function ModalSeleccionCaja({ cajasAbiertas, onAbrir, onUnirse }) {
   const [inicioCaja, setInicioCaja] = useState('');
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
   const NOMBRES_SUGERIDOS = ['Mañana', 'Tarde', 'Noche', 'Principal', 'Online'];
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -178,7 +188,7 @@ function ModalVentaRapida({ onAgregar, onCerrar }) {
 // =============================================
 // MODAL: HISTORIAL DE VENTAS DEL TURNO
 // =============================================
-function ModalHistorial({ turno, onCerrar }) {
+function ModalHistorial({ turno, onCerrar, config }) {
   const [ventas, setVentas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
@@ -240,14 +250,16 @@ function ModalHistorial({ turno, onCerrar }) {
   const reimprimirTicket = async (venta) => {
     try {
       setActualizando(true);
-      const res = await api.get(`/api/ventas/${venta.id}/ticket`);
+      // Solicitamos la venta completa (incluye items) y la imprimimos
+      const res = await api.get(`/api/ventas/${venta.id}`);
       imprimirTicket({
         venta: res.data,
-        items: res.data.items,
+        items: res.data.items || [],
         config,
       });
     } catch (err) {
-      alert('Error al reimprimir ticket');
+      console.error('Error reimprimiendo ticket:', err.response?.data || err.message || err);
+      alert(`Error al reimprimir ticket: ${err.response?.data?.error || err.message || 'desconocido'}`);
     } finally {
       setActualizando(false);
     }
@@ -553,8 +565,47 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
           <button onClick={confirmar} disabled={cargando}
             style={{ backgroundColor: 'var(--color-primario)' }}
             className="flex-grow py-3 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50">
-            {cargando ? 'Procesando...' : '✅ Confirmar [F8]'}
+            {cargando ? 'Procesando...' : '✅ Confirmar Venta [F8]'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: VENTA EXITOSA
+// =============================================
+function ModalVentaExitosa({ total, onSeguirVendiendo, onImprimir, config }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b bg-green-600 text-white">
+          <div>
+            <h3 className="text-xl font-bold">✅ Venta Exitosa</h3>
+            <p className="text-green-100 text-sm">Total: {fmt(total)}</p>
+          </div>
+          <button onClick={onSeguirVendiendo} className="text-green-100 hover:text-white text-2xl">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">🎉</span>
+            </div>
+            <p className="text-lg font-semibold text-gray-800">¡Venta registrada con éxito!</p>
+            <p className="text-sm text-gray-500 mt-1">¿Qué deseas hacer a continuación?</p>
+          </div>
+          
+          <div className="space-y-3">
+            <button onClick={onSeguirVendiendo}
+              className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors">
+              🛒 Seguir vendiendo
+            </button>
+            <button onClick={onImprimir}
+              className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
+              🖨️ Imprimir ticket
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -564,73 +615,156 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
 // =============================================
 // MODAL: CIERRE DE CAJA
 // =============================================
+// MODAL: CONTAR BILLETES (REDISEÑADO)
+// =============================================
 function ModalContarBilletes({ onCerrar, onConfirmar }) {
   const BILLETES = [100, 200, 500, 1000, 2000, 10000, 20000];
   const [cantidades, setCantidades] = useState({});
 
   const total = BILLETES.reduce((acc, b) => acc + (parseInt(cantidades[b] || 0) * b), 0);
 
+  const handleCantidadChange = (billete, valor) => {
+    const cantidad = Math.max(0, parseInt(valor) || 0);
+    setCantidades(prev => ({ ...prev, [billete]: cantidad.toString() }));
+  };
+
+  const limpiarTodo = () => {
+    setCantidades({});
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-60 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-t-2xl">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100">
+
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-t-3xl">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                <span className="text-2xl">💵</span>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold">Contar Billetes</h3>
-                <p className="text-gray-200 text-sm">Ingresá la cantidad de cada billete</p>
+            <h3 className="text-2xl font-bold">💵 Contar Billetes</h3>
+            <p className="text-emerald-100 text-sm">F12 · Desglose de efectivo por denominaciones</p>
+          </div>
+          <button onClick={onCerrar} className="text-white/80 hover:text-white text-3xl leading-none">×</button>
+        </div>
+
+        <div className="flex flex-col h-[70vh]">
+          {/* Sección de Conteo */}
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="mb-4">
+              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                🧮 Conteo por Denominación
+                <button
+                  onClick={limpiarTodo}
+                  className="ml-auto text-sm text-gray-500 hover:text-gray-700 underline"
+                >
+                  Limpiar todo
+                </button>
+              </h4>
+
+              <div className="grid gap-3">
+                {BILLETES.map(b => {
+                  const cantidad = parseInt(cantidades[b] || 0);
+                  const subtotal = cantidad * b;
+                  const tieneValor = cantidad > 0;
+
+                  return (
+                    <div key={b} className={`bg-gradient-to-r from-gray-50 to-white rounded-2xl p-4 border-2 transition-all duration-200 hover:shadow-md ${
+                      tieneValor ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50' : 'border-gray-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          {/* Denominación */}
+                          <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shadow-lg ${
+                              tieneValor ? 'bg-emerald-500' : 'bg-gray-400'
+                            }`}>
+                              {b >= 1000 ? (b / 1000) + 'k' : b}
+                            </div>
+                            <div>
+                              <p className="text-lg font-bold text-gray-800">
+                                ${b >= 1000 ? (b / 1000) + 'k' : b.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-gray-500">Denominación</p>
+                            </div>
+                          </div>
+
+                          {/* Multiplicador */}
+                          <span className="text-gray-400 text-xl">×</span>
+
+                          {/* Input de cantidad */}
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={cantidades[b] || ''}
+                              onChange={(e) => handleCantidadChange(b, e.target.value)}
+                              className="w-20 h-12 border-2 border-gray-300 rounded-xl px-3 py-2 text-center text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Subtotal */}
+                        <div className="text-right">
+                          <p className={`text-xl font-bold ${tieneValor ? 'text-emerald-600' : 'text-gray-600'}`}>
+                            {fmt(subtotal)}
+                          </p>
+                          <p className="text-xs text-gray-500">Subtotal</p>
+                        </div>
+                      </div>
+
+                      {/* Barra de progreso visual */}
+                      {tieneValor && (
+                        <div className="mt-3">
+                          <div className="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>{cantidad} billete{cantidad !== 1 ? 's' : ''}</span>
+                            <span>{fmt(subtotal)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-emerald-400 to-green-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(100, (subtotal / total) * 100) || 0}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
-          <button onClick={onCerrar} className="text-gray-300 hover:text-white text-2xl transition-colors">×</button>
-        </div>
-        
-        <div className="p-6">
-          <div className="space-y-3">
-            {BILLETES.map(b => (
-              <div key={b} className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-800">
-                      ${b >= 1000 ? (b / 1000) + '.000' : b}
-                    </span>
-                    <span className="text-gray-500 text-sm">×</span>
-                    <input type="number" min="0"
-                      value={cantidades[b] || ''}
-                      onChange={(e) => setCantidades(p => ({ ...p, [b]: e.target.value }))}
-                      className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-center font-medium"
-                      placeholder="0" />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-gray-800">{fmt((parseInt(cantidades[b] || 0) * b))}</p>
-                    <p className="text-xs text-gray-500">Subtotal</p>
-                  </div>
+
+          {/* Footer con Total y Botones */}
+          <div className="border-t bg-gradient-to-r from-gray-50 to-white p-6">
+            {/* Total General */}
+            <div className="bg-gradient-to-r from-emerald-500 to-green-500 rounded-2xl p-5 mb-4 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-emerald-100 text-sm font-medium">Total Contado</p>
+                  <p className="text-3xl font-bold">{fmt(total)}</p>
+                </div>
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <span className="text-3xl">💰</span>
                 </div>
               </div>
-            ))}
-          </div>
-          
-          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-gray-800">Total contado</span>
-              <span className="text-2xl font-bold text-gray-900">{fmt(total)}</span>
             </div>
-          </div>
-        </div>
-        
-        <div className="p-6 bg-gray-50 border-t">
-          <div className="flex gap-3">
-            <button onClick={onCerrar}
-              className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-100 transition-colors font-semibold">
-              Cancelar
-            </button>
-            <button onClick={() => onConfirmar(total)}
-              className="flex-1 py-3 bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-xl font-semibold hover:from-gray-900 hover:to-black transition-all shadow-lg">
-              ✅ Usar {fmt(total)}
-            </button>
+
+            {/* Botones de acción */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onCerrar}
+                className="flex-1 py-4 border-2 border-gray-200 rounded-2xl text-gray-700 hover:bg-gray-50 transition-all duration-200 font-semibold text-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => onConfirmar(total)}
+                disabled={total === 0}
+                className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-2xl font-bold text-lg transition-all duration-200 hover:from-emerald-500 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                ✅ Usar {fmt(total)}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -639,6 +773,7 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
 }
 
 function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
+  const { usuario } = useAuth();
   const [datos, setDatos] = useState({
     efectivo_retirado: '', dinero_siguiente: '',
     total_tarjetas: '', total_mercadopago: '',
@@ -650,9 +785,10 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
   const [pinIngresado, setPinIngresado] = useState('');
   const [infoRevelada, setInfoRevelada] = useState(false);
   const [errorPin, setErrorPin] = useState('');
+  const [mostrarPinModal, setMostrarPinModal] = useState(false);
   const [mostrarContarBilletes, setMostrarContarBilletes] = useState(false);
   const [resultadoCierre, setResultadoCierre] = useState(null);
-  const [mostrarPin, setMostrarPin] = useState(false);
+  const [ingresosExpandido, setIngresosExpandido] = useState(false);
 
   useEffect(() => {
     cargarResumen();
@@ -679,15 +815,98 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     } catch { }
   };
 
-  const revelarInfo = () => {
+  const revelarInfo = (pin = pinIngresado) => {
     const pinConfig = config?.pin_cierre;
-    if (!pinConfig || pinIngresado === String(pinConfig)) {
+    if (!pinConfig || pin === String(pinConfig)) {
       setInfoRevelada(true);
       setErrorPin('');
     } else {
       setErrorPin('PIN incorrecto');
       setTimeout(() => setErrorPin(''), 2000);
     }
+  };
+
+  const imprimirCierre = () => {
+    // Construye e imprime un ticket de cierre de caja con resumen y diferencias.
+    const fechaApertura = new Date(turno.fecha_apertura);
+    const fechaCierre = new Date();
+    const efectivoInicio = parseFloat(turno.inicio_caja || 0);
+    const efectivoRetirado = parseFloat(datos.efectivo_retirado || 0);
+    const efectivoSiguiente = parseFloat(datos.dinero_siguiente || 0);
+    const efectivoDeclarado = efectivoRetirado + efectivoSiguiente;
+    const tarjetas = parseFloat(datos.total_tarjetas || 0);
+    const mercadopago = parseFloat(datos.total_mercadopago || 0);
+    const transferencias = parseFloat(datos.total_transferencias || 0);
+    const totalDeclarado = efectivoDeclarado + tarjetas + mercadopago + transferencias;
+    const totalSistema = resumen?.totalVendido || 0;
+    const diferencia = totalDeclarado - totalSistema;
+
+    const nombreNegocio = config?.nombre_negocio || 'Mi Negocio';
+    const direccion = config?.direccion || '';
+    const telefono = config?.telefono || '';
+    const cuit = config?.cuit || '';
+    const usuarioCierre = usuario?.nombre || usuario?.email || 'Usuario';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Cierre de Caja</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 80mm; max-width: 80mm; padding: 4mm; color: #000; background: #fff; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          .grande { font-size: 16px; }
+          .small { font-size: 10px; }
+          .separador { border-top: 1px dashed #000; margin: 4px 0; }
+          .separador-doble { border-top: 2px solid #000; margin: 4px 0; }
+          .fila { display: flex; justify-content: space-between; margin: 4px 0; }
+          .fila-small { display: flex; justify-content: space-between; margin: 2px 0; font-size: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold grande">${nombreNegocio}</div>
+        ${direccion ? `<div class="center small">${direccion}</div>` : ''}
+        ${telefono ? `<div class="center small">Tel: ${telefono}</div>` : ''}
+        ${cuit ? `<div class="center small">CUIT: ${cuit}</div>` : ''}
+        <div class="separador-doble"></div>
+        <div class="center bold">CIERRE DE CAJA</div>
+        <div class="fila-small"><span>Turno:</span><span>${turno.nombre || ''}</span></div>
+        <div class="fila-small"><span>Usuario:</span><span>${usuarioCierre}</span></div>
+        <div class="fila-small"><span>Apertura:</span><span>${fechaApertura.toLocaleString('es-AR')}</span></div>
+        <div class="fila-small"><span>Cierre:</span><span>${fechaCierre.toLocaleString('es-AR')}</span></div>
+        <div class="separador"></div>
+        <div class="fila"><span>Inicio de caja</span><span>${fmt(efectivoInicio)}</span></div>
+        <div class="fila"><span>Efectivo declarado</span><span>${fmt(efectivoDeclarado)}</span></div>
+        <div class="fila"><span>Retirado</span><span>${fmt(efectivoRetirado)}</span></div>
+        <div class="fila"><span>Para siguiente turno</span><span>${fmt(efectivoSiguiente)}</span></div>
+        <div class="separador"></div>
+        <div class="fila"><span>Total ventas</span><span>${fmt(resumen?.totalVendido || 0)}</span></div>
+        <div class="fila"><span>Total declarado</span><span>${fmt(totalDeclarado)}</span></div>
+        <div class="fila"><span>Diferencia</span><span>${fmt(diferencia)}</span></div>
+        <div class="separador"></div>
+        <div class="fila"><span>Tarjetas</span><span>${fmt(tarjetas)}</span></div>
+        <div class="fila"><span>Mercado Pago</span><span>${fmt(mercadopago)}</span></div>
+        <div class="fila"><span>Transferencias</span><span>${fmt(transferencias)}</span></div>
+        ${datos.comentarios ? `<div class="separador"></div><div class="small"><strong>Notas:</strong> ${datos.comentarios}</div>` : ''}
+        <div class="separador-doble"></div>
+        <div class="center small">¡Gracias por usar el sistema!</div>
+        <div style="margin-top: 6px;"></div>
+      </body>
+      </html>
+    `;
+
+    const ventana = window.open('', '_blank', 'width=400,height=600');
+    ventana.document.write(html);
+    ventana.document.close();
+    ventana.onload = () => {
+      ventana.focus();
+      ventana.print();
+      ventana.onafterprint = () => ventana.close();
+    };
   };
 
   const camposCompletos = () => {
@@ -737,69 +956,90 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     } finally { setCargando(false); }
   };
 
+  // Datos para el gráfico de torta
+  const datosGrafico = resumen ? [
+    { name: 'Efectivo', value: resumen.porMetodo?.efectivo || 0, color: '#10B981' },
+    { name: 'Tarjeta', value: resumen.porMetodo?.tarjeta || 0, color: '#3B82F6' },
+    { name: 'Mercado Pago', value: resumen.porMetodo?.mercadopago || 0, color: '#8B5CF6' },
+    { name: 'Transferencias', value: resumen.porMetodo?.transferencia || 0, color: '#F59E0B' }
+  ].filter(item => item.value > 0) : [];
+
   // Pantalla de resultado
   if (resultadoCierre) {
     const ok = Math.abs(resultadoCierre.diferencia) < 1;
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
-          <div className={`p-6 text-white text-center ${ok ? 'bg-green-600' : 'bg-red-500'}`}>
-            <p className="text-5xl mb-3">{ok ? '✅' : '⚠️'}</p>
-            <h3 className="text-2xl font-bold">{ok ? '¡Cierre perfecto!' : 'Hay diferencias'}</h3>
-            <p className="text-white text-opacity-80 mt-1 text-sm">
-              {ok ? 'Los valores coinciden exactamente' : 'Los valores no coinciden con el sistema'}
-            </p>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-500">Vos declaraste</p>
-                <p className="text-2xl font-bold text-gray-800">{fmt(resultadoCierre.totalDeclaro)}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-500">Sistema registró</p>
-                <p className="text-2xl font-bold text-gray-800">{fmt(resultadoCierre.totalSistema)}</p>
-              </div>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+          <div className="flex flex-col h-full">
+            <div className={`p-6 text-white text-center ${ok ? 'bg-green-600' : 'bg-red-500'} rounded-t-3xl`}>
+              <p className="text-5xl mb-3">{ok ? '✅' : '⚠️'}</p>
+              <h3 className="text-2xl font-bold">{ok ? '¡Cierre perfecto!' : 'Hay diferencias'}</h3>
+              <p className="text-white/80 mt-1 text-base">
+                {ok ? 'Los valores coinciden exactamente' : 'Los valores no coinciden con el sistema'}
+              </p>
             </div>
 
-            {!ok && (
-              <>
-                <div className={`rounded-xl p-5 text-center ${resultadoCierre.diferencia > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'}`}>
-                  <p className="text-sm font-medium text-gray-600">Diferencia</p>
-                  <p className={`text-3xl font-bold ${resultadoCierre.diferencia > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                    {resultadoCierre.diferencia > 0 ? '+' : ''}{fmt(resultadoCierre.diferencia)}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {resultadoCierre.diferencia > 0 ? '📈 Sobrante en caja' : '📉 Faltante en caja'}
-                  </p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-2xl p-4 text-center border border-gray-200">
+                  <p className="text-sm text-gray-500 font-medium">Vos declaraste</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-2">{fmt(resultadoCierre.totalDeclaro)}</p>
                 </div>
+                <div className="bg-gray-50 rounded-2xl p-4 text-center border border-gray-200">
+                  <p className="text-sm text-gray-500 font-medium">Sistema registró</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-2">{fmt(resultadoCierre.totalSistema)}</p>
+                </div>
+              </div>
 
-                <div className="space-y-3">
-                  {[
-                    ['💵 Efectivo', resultadoCierre.efectivo],
-                    ['💳 Tarjetas', resultadoCierre.tarjetas],
-                    ['📱 Mercado Pago', resultadoCierre.mp],
-                    ['🏦 Transferencias', resultadoCierre.transf],
-                  ].map(([label, vals]) => vals.diff !== 0 && (
-                    <div key={label} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 text-sm">
-                      <span className="text-gray-600">{label}</span>
-                      <div className="text-right">
-                        <span className="text-gray-400 text-sm">{fmt(vals.declaro)} declarado vs {fmt(vals.sistema)} sistema</span>
-                        <span className={`ml-2 font-bold ${vals.diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          {vals.diff > 0 ? '+' : ''}{fmt(vals.diff)}
-                        </span>
+              {!ok && (
+                <>
+                  <div className={`rounded-2xl p-4 text-center border-2 ${resultadoCierre.diferencia > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                    <p className="text-lg font-medium text-gray-600">Diferencia</p>
+                    <p className={`text-3xl font-bold mt-2 ${resultadoCierre.diferencia > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                      {resultadoCierre.diferencia > 0 ? '+' : ''}{fmt(resultadoCierre.diferencia)}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-2">
+                      {resultadoCierre.diferencia > 0 ? '📈 Sobrante en caja' : '📉 Faltante en caja'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      ['💵 Efectivo', resultadoCierre.efectivo],
+                      ['💳 Tarjetas', resultadoCierre.tarjetas],
+                      ['📱 Mercado Pago', resultadoCierre.mp],
+                      ['🏦 Transferencias', resultadoCierre.transf],
+                    ].filter(([, vals]) => vals.diff !== 0).map(([label, vals]) => (
+                      <div key={label} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+                        <span className="text-gray-700 font-medium">{label}</span>
+                        <div className="text-right">
+                          <span className="text-gray-500 text-xs block">{fmt(vals.declaro)} declarado vs {fmt(vals.sistema)} sistema</span>
+                          <span className={`text-lg font-bold ${vals.diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                            {vals.diff > 0 ? '+' : ''}{fmt(vals.diff)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="p-6 pt-0">
-            <button onClick={onCerrado}
-              className={`w-full py-3 text-white rounded-xl font-bold transition-colors ${ok ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'}`}>
-              Finalizar Turno
-            </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="p-6 pt-0 bg-white border-t border-gray-200 sticky bottom-0">
+              <div className="flex flex-col gap-3 md:flex-row">
+                <button
+                  onClick={imprimirCierre}
+                  className="w-full md:w-auto py-3 px-4 border border-gray-300 rounded-2xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  🖨️ Imprimir Cierre
+                </button>
+                <button onClick={onCerrado}
+                  className={`w-full md:flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-lg transition-colors`}
+                >
+                  Finalizar Turno
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -807,151 +1047,253 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-black via-gray-900 to-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto transform transition-all duration-500 hover:scale-105">
-
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-gradient-to-r from-gray-800 to-gray-900 text-white z-10 rounded-t-[28px]">
-          <div>
-            <h3 className="text-xl font-bold">🔒 Cierre de Caja</h3>
-            {turno?.nombre && <p className="text-sm text-gray-200 mt-1">Caja: {turno.nombre} · F4</p>}
+    <>
+      {/* Modal Principal */}
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-red-600 to-red-500 text-white rounded-t-3xl">
+            <div>
+              <h3 className="text-2xl font-bold">🔒 Cierre de Caja</h3>
+              <p className="text-red-100 text-sm">F12 · Finalizar turno y cuadrar caja</p>
+            </div>
+            <button onClick={onCerrar} className="text-white/80 hover:text-white text-3xl leading-none">×</button>
           </div>
-          <button onClick={onCerrar} className="text-gray-300 hover:text-white text-3xl transition-all duration-200 hover:scale-110">×</button>
+
+          <div className="flex max-h-[84vh] overflow-hidden">
+            {/* Panel Izquierdo: Resumen del Turno */}
+            <div className="w-1/2 p-6 border-r bg-gradient-to-br from-gray-50 to-white overflow-y-auto min-h-0">
+              <div className="h-full flex flex-col">
+                <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  📊 Resumen del Turno
+                  {infoRevelada && (
+                    <button
+                      onClick={() => setIngresosExpandido(!ingresosExpandido)}
+                      className="text-sm text-gray-500 hover:text-gray-700 ml-auto"
+                    >
+                      {ingresosExpandido ? '▼' : '▶'} Detalles
+                    </button>
+                  )}
+                </h4>
+
+                {!infoRevelada ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-6xl mb-4">🔐</div>
+                      <p className="text-gray-600 mb-4">Información protegida por PIN</p>
+                      <button
+                        onClick={() => setMostrarPinModal(true)}
+                        className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors"
+                      >
+                        🔓 Revelar Información
+                      </button>
+                    </div>
+                  </div>
+                ) : resumen ? (
+                  <div className="flex-1 space-y-4">
+                    {/* Totales principales */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-sm text-gray-500">Total Ventas</p>
+                        <p className="text-2xl font-bold text-green-600">{fmt(resumen.totalVendido)}</p>
+                        <p className="text-xs text-gray-400">{resumen.totalVentas} transacciones</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-sm text-gray-500">Total Ingresos</p>
+                        <p className="text-2xl font-bold text-blue-600">{fmt(resumen.totalVendido)}</p>
+                        <p className="text-xs text-gray-400">Dinero en caja</p>
+                      </div>
+                    </div>
+
+                    {/* Detalles expandibles de ingresos */}
+                    {ingresosExpandido && (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200">
+                        <h5 className="font-medium text-gray-700 mb-3">💰 Desglose por Método de Pago</h5>
+                        <div className="space-y-2">
+                          {datosGrafico.map(item => (
+                            <div key={item.name} className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">{item.name}</span>
+                              <span className="font-medium">{fmt(item.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico de torta */}
+                    {datosGrafico.length > 0 && (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200 flex-1">
+                        <h5 className="font-medium text-gray-700 mb-3 text-center">📈 Distribución de Pagos</h5>
+                        <div className="h-48">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={datosGrafico}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={40}
+                                outerRadius={80}
+                                dataKey="value"
+                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              >
+                                {datosGrafico.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value) => fmt(value)} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center text-gray-500">
+                      <div className="animate-spin text-4xl mb-2">⏳</div>
+                      <p>Cargando resumen...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Panel Derecho: Comprobantes y Validación */}
+            <div className="w-1/2 p-6 flex flex-col overflow-y-auto min-h-0">
+              <h4 className="text-lg font-bold text-gray-800 mb-4">📄 Comprobantes Virtuales</h4>
+
+              <div className="flex-1 space-y-4">
+                {/* Arqueo de efectivo */}
+                <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="font-medium text-gray-700">💵 Arqueo de Efectivo</h5>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarContarBilletes(true)}
+                      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Contar Billetes
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Efectivo a retirar *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                        <input
+                          type="number"
+                          value={datos.efectivo_retirado}
+                          onChange={(e) => setDatos(p => ({ ...p, efectivo_retirado: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Para siguiente turno *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                        <input
+                          type="number"
+                          value={datos.dinero_siguiente}
+                          onChange={(e) => setDatos(p => ({ ...p, dinero_siguiente: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Comprobantes virtuales */}
+                <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                  <h5 className="font-medium text-gray-700 mb-3">🧾 Comprobantes Virtuales *</h5>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-blue-700">💡 Ingresá los comprobantes de ventas/cobros recibidos por métodos virtuales</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      ['total_tarjetas', '💳 Tarjetas'],
+                      ['total_mercadopago', '📱 Mercado Pago'],
+                      ['total_transferencias', '🏦 Transferencias']
+                    ].map(([key, label]) => (
+                      <div key={key}>
+                        <label className="block text-sm text-gray-600 mb-1">{label} *</label>
+                        <div className="relative">
+                          <span className="absolute left-2 top-2.5 text-gray-500">$</span>
+                          <input
+                            type="number"
+                            value={datos[key]}
+                            onChange={(e) => setDatos(p => ({ ...p, [key]: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+                            placeholder="0"
+                            required
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Comentarios */}
+                <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                  <h5 className="font-medium text-gray-700 mb-3">📝 Comentarios</h5>
+                  <textarea
+                    value={datos.comentarios}
+                    onChange={(e) => setDatos(p => ({ ...p, comentarios: e.target.value }))}
+                    rows={3}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+                    placeholder="Notas sobre el cierre (opcional)..."
+                  />
+                </div>
+
+                {/* Validación y botones */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  {!camposCompletos() && (
+                    <p className="text-sm text-amber-600 mb-3 text-center">
+                      ⚠️ Completá todos los campos obligatorios para cerrar
+                    </p>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={onCerrar}
+                      className="flex-1 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={cerrar}
+                      disabled={cargando || !camposCompletos()}
+                      className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {cargando ? '🔄 Cerrando...' : '🔒 Confirmar Cierre'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <form onSubmit={cerrar} className="p-6 space-y-6">
-
-          {/* Arqueo de efectivo */}
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 border border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">💵 Arqueo de Efectivo</h4>
-              <button type="button" onClick={() => setMostrarContarBilletes(true)}
-                className="text-xs bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white px-3 py-1.5 rounded-lg transition-all duration-200 transform hover:scale-105 font-medium shadow-lg">
-                🧮 Contar Billetes
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="group">
-                <label className="block text-xs font-medium text-gray-300 mb-2">Efectivo a retirar *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                  <input type="number" value={datos.efectivo_retirado}
-                    onChange={(e) => setDatos(p => ({ ...p, efectivo_retirado: e.target.value }))}
-                    className="w-full bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600 rounded-xl pl-7 pr-3 py-2.5 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all duration-200 group-hover:border-gray-500"
-                    placeholder="0" />
-                </div>
-              </div>
-              <div className="group">
-                <label className="block text-xs font-medium text-gray-300 mb-2">Para siguiente turno *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                  <input type="number" value={datos.dinero_siguiente}
-                    onChange={(e) => setDatos(p => ({ ...p, dinero_siguiente: e.target.value }))}
-                    className="w-full bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600 rounded-xl pl-7 pr-3 py-2.5 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all duration-200 group-hover:border-gray-500"
-                    placeholder="0" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Comprobantes virtuales */}
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 border border-gray-700">
-            <h4 className="text-sm font-semibold text-gray-200 uppercase mb-3 tracking-wide">🧾 Comprobantes Virtuales *</h4>
-            <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 border border-blue-800/40 rounded-xl p-3 mb-4">
-              <p className="text-xs text-blue-200">💡 Ingresá los comprobantes de ventas/cobros recibidos por métodos virtuales</p>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              {[['total_tarjetas', '💳 Tarjetas'], ['total_mercadopago', '📱 Mercado Pago'], ['total_transferencias', '🏦 Transferencias']].map(([key, label]) => (
-                <div key={key} className="group">
-                  <label className="block text-xs font-medium text-gray-300 mb-2">{label} *</label>
-                  <div className="relative">
-                    <span className="absolute left-2 top-2.5 text-gray-400 text-sm">$</span>
-                    <input type="number" value={datos[key]}
-                      onChange={(e) => setDatos(p => ({ ...p, [key]: e.target.value }))}
-                      className="w-full bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600 rounded-xl pl-6 pr-2 py-2.5 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all duration-200 group-hover:border-gray-500"
-                      placeholder="0" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* PIN para revelar info — solo si está configurado */}
-          {config?.pin_cierre && !infoRevelada && (
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 border border-gray-700 text-center">
-              <div className="w-14 h-14 bg-gradient-to-r from-gray-700 to-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-2xl">🔐</span>
-              </div>
-              <p className="text-white font-bold text-base mb-1">Información Protegida</p>
-              <p className="text-gray-300 text-sm mb-4">Completá el arqueo sin ver los datos del sistema</p>
-              <div className="flex gap-3 max-w-xs mx-auto">
-                <div className="relative flex-1">
-                  <input
-                    type={mostrarPin ? 'text' : 'password'}
-                    value={pinIngresado}
-                    onChange={(e) => setPinIngresado(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && revelarInfo()}
-                    className="w-full bg-gradient-to-r from-gray-800 to-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-white text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400"
-                    placeholder="••••"
-                    maxLength={6} />
-                  <button type="button" onClick={() => setMostrarPin(!mostrarPin)}
-                    className="absolute right-2 top-2 text-gray-400 text-sm">
-                    {mostrarPin ? '🙈' : '👁️'}
-                  </button>
-                </div>
-                <button type="button" onClick={revelarInfo}
-                  className="px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white rounded-xl font-medium text-sm transition-all transform hover:scale-105 shadow-lg">
-                  Ver
-                </button>
-              </div>
-              {errorPin && <p className="text-red-400 text-xs mt-2">{errorPin}</p>}
-            </div>
-          )}
-
-          {/* Resumen del sistema — solo si se reveló */}
-          {infoRevelada && resumen && (
-            <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border border-green-800/40 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-green-600">🔓</span>
-                <h4 className="text-sm font-semibold text-green-700 uppercase tracking-wide">Resumen del Sistema</h4>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {[['Total Ventas', fmt(resumen.totalVendido), 'text-green-700'], ['Cantidad', resumen.totalVentas, 'text-gray-800'], ['Efectivo', fmt(resumen.porMetodo?.efectivo || 0), 'text-gray-700'], ['Tarjeta + MP', fmt((resumen.porMetodo?.tarjeta || 0) + (resumen.porMetodo?.mercadopago || 0)), 'text-gray-700']].map(([label, valor, color]) => (
-                  <div key={label} className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-3 text-center border border-green-100 shadow-sm">
-                    <p className="text-xs text-gray-500">{label}</p>
-                    <p className={`text-lg font-bold ${color}`}>{valor}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Comentarios */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Comentarios (opcional)</label>
-            <textarea value={datos.comentarios}
-              onChange={(e) => setDatos(p => ({ ...p, comentarios: e.target.value }))}
-              rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
-              placeholder="Notas sobre el cierre..." />
-          </div>
-
-          {!camposCompletos() && (
-            <p className="text-xs text-gray-400 text-center">* Completá todos los campos obligatorios para cerrar</p>
-          )}
-
-          <div className="flex gap-3">
-            <button type="button" onClick={onCerrar}
-              className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
-              Cancelar
-            </button>
-            <button type="submit" disabled={cargando || !camposCompletos()}
-              className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              {cargando ? 'Cerrando...' : '🔒 Confirmar Cierre'}
-            </button>
-          </div>
-        </form>
       </div>
 
+      {/* Modal de PIN */}
+      {mostrarPinModal && (
+        <ModalPinCierre
+          onCerrar={() => setMostrarPinModal(false)}
+          onConfirmar={(pin) => {
+            setPinIngresado(pin);
+            setMostrarPinModal(false);
+            revelarInfo(pin);
+          }}
+          config={config}
+        />
+      )}
+
+      {/* Modal de Contar Billetes */}
       {mostrarContarBilletes && (
         <ModalContarBilletes
           onCerrar={() => setMostrarContarBilletes(false)}
@@ -961,6 +1303,108 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
           }}
         />
       )}
+    </>
+  );
+}
+// =============================================
+// MODAL: PIN PARA CIERRE
+// =============================================
+function ModalPinCierre({ onCerrar, onConfirmar, config }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [mostrarPin, setMostrarPin] = useState(false);
+
+  const confirmar = () => {
+    if (!pin.trim()) {
+      setError('Ingresa el PIN');
+      return;
+    }
+
+    if (config?.pin_cierre && pin !== String(config.pin_cierre)) {
+      setError('PIN incorrecto');
+      setTimeout(() => setError(''), 2000);
+      return;
+    }
+
+    onConfirmar(pin);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      confirmar();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-red-600 to-red-500 text-white rounded-t-2xl">
+          <div>
+            <h3 className="text-lg font-bold">🔐 PIN de Cierre</h3>
+            <p className="text-red-100 text-sm">Revelar información del sistema</p>
+          </div>
+          <button onClick={onCerrar} className="text-white/80 hover:text-white text-2xl">×</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">🔓</span>
+            </div>
+            <p className="text-gray-600 text-sm mb-4">
+              Ingresa el PIN configurado para ver el resumen del turno
+            </p>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+              <p className="text-red-600 text-sm font-medium">❌ {error}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 text-center">
+              PIN de Cierre
+            </label>
+            <div className="relative">
+              <input
+                type={mostrarPin ? 'text' : 'password'}
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400"
+                placeholder="••••"
+                maxLength={6}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarPin(!mostrarPin)}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+              >
+                {mostrarPin ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onCerrar}
+              className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmar}
+              className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1141,6 +1585,9 @@ function POS() {
   const [mostrarModalHistorial, setMostrarModalHistorial] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [mensajeScanner, setMensajeScanner] = useState(null);
+  const [ultimaVenta, setUltimaVenta] = useState(null); // Para guardar la venta recién creada
+  const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null); // Producto para vender por peso/cantidad
+  const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
 
   const [pestanas, setPestanas] = useState(() => {
     try { const g = localStorage.getItem('pos_pestanas'); return g ? JSON.parse(g) : [{ id: 1, nombre: 'Venta 1', carrito: [] }]; }
@@ -1299,16 +1746,64 @@ function POS() {
     setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, carrito: nuevoCarrito } : p));
   };
 
+  /**
+   * Agrega un producto al carrito de la pestaña activa
+   * Si el producto ya existe, incrementa la cantidad
+   * Si el producto no es de unidad (Kg, Lt, Mt), abre el modal para vender por peso/cantidad
+   * @param {Object} producto - Producto a agregar
+   */
   const agregarAlCarrito = useCallback((producto) => {
+    // Verificar si el producto no es de unidad (es decir, tiene unidad kg, lt, mt)
+    const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
+    const esUnidadNoUnitaria = unidadesNoUnitarias.includes(producto.unidad.toLowerCase());
+    
+    if (esUnidadNoUnitaria) {
+      // Abrir el modal para vender por peso/cantidad
+      setMostrarModalVentaProducto(producto);
+      return;
+    }
+    
+    // Lógica normal para productos de unidad
     setPestanas(prev => prev.map(p => {
       if (p.id !== pestanaActiva) return p;
+      const precioUnitario = parseFloat(producto.precio_venta);
       const existe = p.carrito.find(item => item.producto_id === producto.id);
+      
       if (existe) {
-        return { ...p, carrito: p.carrito.map(item => item.producto_id === producto.id ? { ...item, cantidad: item.cantidad + 1, subtotal: (item.cantidad + 1) * item.precio_unitario } : item) };
+        // Incrementar cantidad del producto existente
+        return {
+          ...p,
+          carrito: p.carrito.map(item =>
+            item.producto_id === producto.id
+              ? {
+                  ...item,
+                  cantidad: item.cantidad + 1,
+                  subtotal: (item.cantidad + 1) * precioUnitario
+                }
+              : item
+          )
+        };
       }
-      return { ...p, carrito: [...p.carrito, { producto_id: producto.id, nombre_producto: producto.nombre, precio_unitario: parseFloat(producto.precio_venta), cantidad: 1, subtotal: parseFloat(producto.precio_venta) }] };
+      
+      // Agregar nuevo producto al carrito
+      return {
+        ...p,
+        carrito: [
+          ...p.carrito,
+          {
+            producto_id: producto.id,
+            nombre_producto: producto.nombre,
+            precio_unitario: precioUnitario,
+            cantidad: 1,
+            subtotal: precioUnitario
+          }
+        ]
+      };
     }));
-    setBuscar(''); setProductos([]);
+    
+    // Limpiar búsqueda y enfocar input
+    setBuscar('');
+    setProductos([]);
     setTimeout(() => inputBuscarRef.current?.focus(), 50);
   }, [pestanaActiva]);
 
@@ -1316,18 +1811,50 @@ function POS() {
     setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, carrito: [...p.carrito, item] } : p));
   };
 
+  /**
+   * Cambia la cantidad de un producto en el carrito
+   * Si la cantidad es 0 o menor, elimina el producto del carrito
+   * @param {string|number} productoId - ID del producto
+   * @param {number} nuevaCantidad - Nueva cantidad del producto
+   */
   const cambiarCantidad = (productoId, nuevaCantidad) => {
-    if (nuevaCantidad <= 0) { actualizarCarritoPestana(carritoActivo.filter(item => item.producto_id !== productoId)); return; }
+    if (nuevaCantidad <= 0) {
+      // Eliminar producto si la cantidad es 0 o menor
+      actualizarCarritoPestana(carritoActivo.filter(item => item.producto_id !== productoId));
+      return;
+    }
+    
+    // Actualizar cantidad y subtotal del producto
     actualizarCarritoPestana(carritoActivo.map(item =>
-      item.producto_id === productoId ? { ...item, cantidad: nuevaCantidad, subtotal: nuevaCantidad * item.precio_unitario } : item
+      item.producto_id === productoId 
+        ? { 
+            ...item, 
+            cantidad: nuevaCantidad, 
+            subtotal: nuevaCantidad * item.precio_unitario 
+          } 
+        : item
     ));
   };
 
+  /**
+   * Elimina un producto del carrito
+   * @param {string|number} productoId - ID del producto a eliminar
+   */
   const eliminarDelCarrito = (productoId) => {
     actualizarCarritoPestana(carritoActivo.filter(item => item.producto_id !== productoId));
   };
 
-  const limpiarCarrito = () => actualizarCarritoPestana([]);
+  /**
+   * Limpia completamente el carrito de la pestaña activa
+   */
+  const limpiarCarrito = () => {
+    actualizarCarritoPestana([]);
+  };
+
+  /**
+   * Calcula el total del carrito activo
+   * @returns {number} Total del carrito
+   */
   const total = carritoActivo.reduce((acc, item) => acc + item.subtotal, 0);
 
   const confirmarVenta = async ({ metodoPago, descuento, recargo, totalFinal, clienteId, esFiado }) => {
@@ -1341,9 +1868,19 @@ function POS() {
         // Si hay productos regulares, crear la venta con ellos
         resVenta = await api.post('/api/ventas', {
           turno_id: turno?.id,
-          items: itemsReales.map(item => ({ producto_id: item.producto_id, nombre_producto: item.nombre_producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario, subtotal: item.subtotal })),
-          metodo_pago: metodoPago, descuento, recargo, total: totalFinal,
-          cliente_id: clienteId || null, es_fiado: esFiado || false,
+          items: itemsReales.map(item => ({ 
+            producto_id: item.producto_id, 
+            nombre_producto: item.nombre_producto, 
+            cantidad: parseFloat(item.cantidad), 
+            precio_unitario: parseFloat(item.precio_unitario), 
+            subtotal: parseFloat(item.subtotal) 
+          })),
+          metodo_pago: metodoPago, 
+          descuento: parseFloat(descuento) || 0, 
+          recargo: parseFloat(recargo) || 0, 
+          total: parseFloat(totalFinal),
+          cliente_id: clienteId || null, 
+          es_fiado: esFiado || false,
         });
         
         // Si también hay productos rápidos, crear una segunda venta para ellos
@@ -1367,22 +1904,53 @@ function POS() {
         });
       }
       
+      // Guardar la información de la venta recién creada para poder imprimirla
+      if (resVenta && resVenta.data) {
+        // Obtener los items completos de la venta para el ticket
+        const ventaCompleta = await api.get(`/api/ventas/${resVenta.data.id}`);
+        setUltimaVenta(ventaCompleta.data);
+      }
+      
+      etTotalUltimaVenta(totalFinal);
       const nuevoNumero = contadorVentas + 1;
       setContadorVentas(nuevoNumero);
       setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p));
       setMostrarModalVenta(false);
-      if (config?.impresion_tickets !== false) {
-        imprimirTicket({
-          venta: { id: resVenta.data.id, total: totalFinal, descuento: descuento || 0, recargo: recargo || 0, metodo_pago: metodoPago, es_fiado: esFiado || false, cliente_nombre: null, fecha: new Date() },
-          items: [...itemsReales, ...itemsRapidos].map(item => ({ nombre_producto: item.nombre_producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario, subtotal: item.subtotal })),
-          config,
-        });
-      }
       setVentaExitosa(true);
-      setTimeout(() => setVentaExitosa(false), 2000);
       cargarProductos();
       inputBuscarRef.current?.focus();
     } catch (err) { alert(err.response?.data?.error || 'Error al registrar la venta'); }
+  };
+
+  // Función para imprimir ticket desde el modal de venta exitosa
+  const imprimirTicketDesdeModal = () => {
+    // Validar que haya una venta para imprimir
+    if (!ultimaVenta) {
+      alert('No hay una venta para imprimir');
+      return;
+    }
+
+    // Lógica de impresión basada en configuración (usando nombres correctos del componente de Configuración)
+    if (config?.impresion_tickets_automatica) {
+      // Imprimir directamente sin vista previa
+      imprimirTicket({
+        venta: ultimaVenta,
+        items: ultimaVenta.items || [],
+        config,
+        modo: 'automatico'
+      });
+    } else if (config?.impresion_tickets) {
+      // Mostrar vista previa
+      imprimirTicket({
+        venta: ultimaVenta,
+        items: ultimaVenta.items || [],
+        config,
+        modo: 'vista_previa'
+      });
+    } else {
+      // Si no hay configuración de impresión, mostrar alerta
+      alert('Configurá la impresión en Configuración > Impresión');
+    }
   };
 
   const oscuro = config?.modo_oscuro !== false;
@@ -1722,8 +2290,32 @@ function POS() {
         <ModalFiados onCerrar={() => { setMostrarModalFiados(false); inputBuscarRef.current?.focus(); }} />
       )}
       {mostrarModalHistorial && turno && (
-        <ModalHistorial turno={turno}
-          onCerrar={() => { setMostrarModalHistorial(false); inputBuscarRef.current?.focus(); }} />
+        <ModalHistorial
+          turno={turno}
+          config={config}
+          onCerrar={() => { setMostrarModalHistorial(false); inputBuscarRef.current?.focus(); }}
+        />
+      )}
+      {ventaExitosa && (
+        <ModalVentaExitosa
+         total={totalUltimaVenta}
+          onSeguirVendiendo={() => setVentaExitosa(false)}
+          onImprimir={imprimirTicketDesdeModal}
+          config={config}
+        />
+      )}
+      {mostrarModalVentaProducto && (
+        <VentaProductoModal
+          producto={mostrarModalVentaProducto}
+          onClose={() => setMostrarModalVentaProducto(null)}
+          onAgregar={(item) => {
+            // Agregar el item al carrito de la pestaña activa
+            setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, carrito: [...p.carrito, item] } : p));
+            setMostrarModalVentaProducto(null);
+            // Enfocar el input de búsqueda
+            setTimeout(() => inputBuscarRef.current?.focus(), 50);
+          }}
+        />
       )}
     </div>
   );

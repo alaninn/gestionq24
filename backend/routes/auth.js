@@ -136,6 +136,7 @@ router.get('/me', async (req, res) => {
             negocio_id: usuario.negocio_id,
             negocio_nombre: usuario.negocio_nombre,
             permisos: usuario.permisos,
+            fecha_vencimiento: usuario.fecha_vencimiento,
         });
 
     } catch (error) {

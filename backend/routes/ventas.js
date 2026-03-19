@@ -58,6 +58,74 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
         await db.query('BEGIN');
 
+        // Validar y calcular precios para cada item
+        const itemsProcesados = [];
+        let totalCalculado = 0;
+
+        for (const item of items) {
+            if (!item.producto_id) {
+                // Producto rápido (sin inventario)
+                const subtotal = parseFloat(item.subtotal || 0);
+                itemsProcesados.push({
+                    ...item,
+                    subtotal: subtotal
+                });
+                totalCalculado += subtotal;
+                continue;
+            }
+
+            // Obtener información del producto
+            const productoResult = await db.query(
+                'SELECT nombre, precio_venta, stock, unidad FROM productos WHERE id = $1 AND negocio_id = $2',
+                [item.producto_id, negocio_id]
+            );
+
+            if (productoResult.rows.length === 0) {
+                throw new Error(`Producto con ID ${item.producto_id} no encontrado`);
+            }
+
+            const producto = productoResult.rows[0];
+            const cantidad = parseFloat(item.cantidad);
+            const precioUnitario = parseFloat(item.precio_unitario);
+            const subtotal = parseFloat(item.subtotal);
+
+            // Validar que los valores sean numéricos
+            if (isNaN(cantidad) || isNaN(precioUnitario) || isNaN(subtotal)) {
+                throw new Error(`Valores numéricos inválidos para ${producto.nombre}`);
+            }
+
+            // Validar unidades de medida
+            const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
+            const esUnidadNoUnitaria = unidadesNoUnitarias.includes(producto.unidad.toLowerCase());
+
+          if (!esUnidadNoUnitaria && !Number.isInteger(cantidad)) {
+                throw new Error(`La cantidad para ${producto.nombre} debe ser un número entero`);
+            }
+
+            // Validar stock
+            if (producto.stock < cantidad) {
+                throw new Error(`Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}, solicitado: ${cantidad}`);
+            }
+
+            itemsProcesados.push({
+                ...item,
+                nombre_producto: producto.nombre,
+                precio_unitario: precioUnitario,
+                cantidad: cantidad,
+                subtotal: subtotal
+            });
+
+            totalCalculado += subtotal;
+        }
+
+        // Validar que el total enviado coincida con el cálculo
+      // Validar que el total enviado coincida con el cálculo
+        // Tolerancia mayor para productos vendidos por precio (kg, lt, mt)
+        const totalEsperado = totalCalculado - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
+        if (Math.abs(total - totalEsperado) > 100) {
+            throw new Error(`Total incorrecto. Calculado: ${totalEsperado.toFixed(2)}, enviado: ${total.toFixed(2)}`);
+        }
+
         const ventaResult = await db.query(`
             INSERT INTO ventas (turno_id, cliente_id, total, descuento, recargo, metodo_pago, es_fiado, negocio_id)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
@@ -65,16 +133,19 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
         const ventaId = ventaResult.rows[0].id;
 
-        for (const item of items) {
-            if (!item.producto_id) continue;
+        // Insertar items y actualizar stock
+        for (const item of itemsProcesados) {
+            if (!item.producto_id) continue; // No actualizar stock para productos rápidos
+
             await db.query(`
                 INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
-            `, [ventaId, item.producto_id, item.nombre_producto, item.cantidad, item.precio_unitario, item.subtotal, negocio_id]);
+                VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7)
+            `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id]);
 
-            await db.query(
-                'UPDATE productos SET stock = stock - $1 WHERE id = $2 AND negocio_id = $3',
-                [item.cantidad, item.producto_id, negocio_id]
+            // Actualizar stock solo para productos con inventario
+           await db.query(
+                'UPDATE productos SET stock = stock - $1::numeric WHERE id = $2 AND negocio_id = $3',
+                [parseFloat(item.cantidad), item.producto_id, negocio_id]
             );
         }
 
@@ -89,8 +160,8 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         res.status(201).json({ ...ventaResult.rows[0], mensaje: 'Venta registrada correctamente' });
     } catch (error) {
         await db.query('ROLLBACK');
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al registrar venta' });
+        console.error('Error al registrar venta:', error.message);
+        res.status(400).json({ error: error.message || 'Error al registrar venta' });
     }
 });
 
@@ -149,14 +220,19 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
 router.get('/:id/ticket', async (req, res) => {
   try {
     const { id } = req.params;
-    const venta = await db.query('SELECT * FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+    const venta = await db.query(
+      'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
+      [id, req.usuario.negocio_id || 1]
+    );
     if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
-    
+
+    const items = await db.query('SELECT * FROM venta_items WHERE venta_id = $1', [id]);
+
     // Devolver datos para imprimir ticket
-    res.json(venta.rows[0]);
+    res.json({ ...venta.rows[0], items: items.rows });
   } catch (error) {
     console.error('Error al obtener datos del ticket:', error);
-    res.status(500).json({ error: 'Error al obtener datos del ticket' });
+    res.status(500).json({ error: 'Error al obtener datos del ticket', details: error.message });
   }
 });
 

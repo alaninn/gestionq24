@@ -12,7 +12,7 @@ router.use(verificarToken);
 // GET /api/soporte/tickets - Obtener tickets del negocio actual
 router.get('/tickets', async (req, res) => {
     try {
-        const negocio_id = req.user.negocio_id;
+        const negocio_id = req.usuario?.negocio_id;
 
         const resultado = await db.query(`
             SELECT t.*, u.nombre as usuario_nombre
@@ -24,8 +24,12 @@ router.get('/tickets', async (req, res) => {
 
         res.json(resultado.rows);
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al obtener tickets' });
+        console.error('Error al obtener tickets:', error);
+        res.status(500).json({
+            error: error.message || 'Error al obtener tickets',
+            code: error.code || null,
+            detail: error.detail || null,
+        });
     }
 });
 
@@ -33,8 +37,8 @@ router.get('/tickets', async (req, res) => {
 router.post('/tickets', async (req, res) => {
     try {
         const { titulo, descripcion, categoria } = req.body;
-        const negocio_id = req.user.negocio_id;
-        const usuario_id = req.user.id;
+        const negocio_id = req.usuario?.negocio_id;
+        const usuario_id = req.usuario?.id;
 
         if (!titulo || !descripcion) {
             return res.status(400).json({ error: 'Título y descripción son obligatorios' });
@@ -48,8 +52,12 @@ router.post('/tickets', async (req, res) => {
 
         res.status(201).json(resultado.rows[0]);
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al crear ticket' });
+        console.error('Error al crear ticket:', error);
+        res.status(500).json({
+            error: error.message || 'Error al crear ticket',
+            code: error.code || null,
+            detail: error.detail || null,
+        });
     }
 });
 
