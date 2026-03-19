@@ -1587,7 +1587,8 @@ function POS() {
   const [mensajeScanner, setMensajeScanner] = useState(null);
   const [ultimaVenta, setUltimaVenta] = useState(null); // Para guardar la venta recién creada
   const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null); // Producto para vender por peso/cantidad
-  const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
+ const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
+
 
   const [pestanas, setPestanas] = useState(() => {
     try { const g = localStorage.getItem('pos_pestanas'); return g ? JSON.parse(g) : [{ id: 1, nombre: 'Venta 1', carrito: [] }]; }
@@ -1911,11 +1912,14 @@ function POS() {
         setUltimaVenta(ventaCompleta.data);
       }
       
-      etTotalUltimaVenta(totalFinal);
       const nuevoNumero = contadorVentas + 1;
       setContadorVentas(nuevoNumero);
       setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p));
       setMostrarModalVenta(false);
+      
+      // Mostrar modal de venta exitosa en lugar de imprimir directamente
+     
+      setTotalUltimaVenta(totalFinal);
       setVentaExitosa(true);
       cargarProductos();
       inputBuscarRef.current?.focus();
@@ -2298,7 +2302,7 @@ function POS() {
       )}
       {ventaExitosa && (
         <ModalVentaExitosa
-         total={totalUltimaVenta}
+          total={totalUltimaVenta}
           onSeguirVendiendo={() => setVentaExitosa(false)}
           onImprimir={imprimirTicketDesdeModal}
           config={config}

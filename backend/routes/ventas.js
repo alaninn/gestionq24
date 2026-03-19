@@ -119,9 +119,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         }
 
         // Validar que el total enviado coincida con el cálculo
-      // Validar que el total enviado coincida con el cálculo
-        // Tolerancia mayor para productos vendidos por precio (kg, lt, mt)
-        const totalEsperado = totalCalculado - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
+         const totalEsperado = totalCalculado - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
         if (Math.abs(total - totalEsperado) > 100) {
             throw new Error(`Total incorrecto. Calculado: ${totalEsperado.toFixed(2)}, enviado: ${total.toFixed(2)}`);
         }
