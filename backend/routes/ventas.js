@@ -56,6 +56,26 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             return res.status(400).json({ error: 'La venta debe tener al menos un producto' });
         }
 
+        // Obtener configuración del negocio para verificar si permite stock negativo
+        let configResult = await db.query(
+            'SELECT permite_stock_negativo FROM configuracion WHERE negocio_id = $1',
+            [negocio_id]
+        );
+        
+        // Si no existe configuración, crear una por defecto
+        if (configResult.rows.length === 0) {
+            await db.query(
+                'INSERT INTO configuracion (negocio_id, permite_stock_negativo) VALUES ($1, false) ON CONFLICT DO NOTHING',
+                [negocio_id]
+            );
+            configResult = await db.query(
+                'SELECT permite_stock_negativo FROM configuracion WHERE negocio_id = $1',
+                [negocio_id]
+            );
+        }
+        
+        const permiteStockNegativo = configResult.rows[0]?.permite_stock_negativo || false;
+
         await db.query('BEGIN');
 
         // Validar y calcular precios para cada item
@@ -98,12 +118,12 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
             const esUnidadNoUnitaria = unidadesNoUnitarias.includes(producto.unidad.toLowerCase());
 
-          if (!esUnidadNoUnitaria && !Number.isInteger(cantidad)) {
+            if (!esUnidadNoUnitaria && !Number.isInteger(cantidad)) {
                 throw new Error(`La cantidad para ${producto.nombre} debe ser un número entero`);
             }
 
-            // Validar stock
-            if (producto.stock < cantidad) {
+            // Validar stock solo si no permite stock negativo
+            if (!permiteStockNegativo && producto.stock < cantidad) {
                 throw new Error(`Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}, solicitado: ${cantidad}`);
             }
 
@@ -119,7 +139,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         }
 
         // Validar que el total enviado coincida con el cálculo
-         const totalEsperado = totalCalculado - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
+        const totalEsperado = totalCalculado - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
         if (Math.abs(total - totalEsperado) > 100) {
             throw new Error(`Total incorrecto. Calculado: ${totalEsperado.toFixed(2)}, enviado: ${total.toFixed(2)}`);
         }
@@ -141,7 +161,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id]);
 
             // Actualizar stock solo para productos con inventario
-           await db.query(
+            await db.query(
                 'UPDATE productos SET stock = stock - $1::numeric WHERE id = $2 AND negocio_id = $3',
                 [parseFloat(item.cantidad), item.producto_id, negocio_id]
             );
@@ -165,73 +185,73 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
 // Endpoint para editar una venta
 router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado } = req.body;
-    
-    // Validar que el turno esté abierto
-    const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
-    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
-    
-    // Validar que el turno esté abierto
-    const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
-    if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
-      return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
+    try {
+        const { id } = req.params;
+        const { items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado } = req.body;
+        
+        // Validar que el turno esté abierto
+        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+        
+        // Validar que el turno esté abierto
+        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+        if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
+            return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
+        }
+        
+        // Actualizar venta
+        await db.query('UPDATE ventas SET items = $1, metodo_pago = $2, descuento = $3, recargo = $4, total = $5, cliente_id = $6, es_fiado = $7 WHERE id = $8 AND negocio_id = $9',
+            [items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]);
+        
+        res.json({ mensaje: 'Venta actualizada correctamente' });
+    } catch (error) {
+        console.error('Error al editar venta:', error);
+        res.status(500).json({ error: 'Error al editar venta' });
     }
-    
-    // Actualizar venta
-    await db.query('UPDATE ventas SET items = $1, metodo_pago = $2, descuento = $3, recargo = $4, total = $5, cliente_id = $6, es_fiado = $7 WHERE id = $8 AND negocio_id = $9',
-      [items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]);
-    
-    res.json({ mensaje: 'Venta actualizada correctamente' });
-  } catch (error) {
-    console.error('Error al editar venta:', error);
-    res.status(500).json({ error: 'Error al editar venta' });
-  }
 });
 
 // Endpoint para eliminar una venta
 router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Validar que el turno esté abierto y la venta pertenezca al turno actual
-    const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
-    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
-    
-    // Validar que el turno esté abierto
-    const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
-    if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
-      return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
+    try {
+        const { id } = req.params;
+        
+        // Validar que el turno esté abierto y la venta pertenezca al turno actual
+        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+        
+        // Validar que el turno esté abierto
+        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+        if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
+            return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
+        }
+        
+        // Eliminar venta
+        await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        res.json({ mensaje: 'Venta eliminada correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar venta:', error);
+        res.status(500).json({ error: 'Error al eliminar venta' });
     }
-    
-    // Eliminar venta
-    await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
-    res.json({ mensaje: 'Venta eliminada correctamente' });
-  } catch (error) {
-    console.error('Error al eliminar venta:', error);
-    res.status(500).json({ error: 'Error al eliminar venta' });
-  }
 });
 
 // Endpoint para obtener datos de ticket para reimprimir
 router.get('/:id/ticket', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const venta = await db.query(
-      'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
-      [id, req.usuario.negocio_id || 1]
-    );
-    if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+    try {
+        const { id } = req.params;
+        const venta = await db.query(
+            'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
+            [id, req.usuario.negocio_id || 1]
+        );
+        if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
 
-    const items = await db.query('SELECT * FROM venta_items WHERE venta_id = $1', [id]);
+        const items = await db.query('SELECT * FROM venta_items WHERE venta_id = $1', [id]);
 
-    // Devolver datos para imprimir ticket
-    res.json({ ...venta.rows[0], items: items.rows });
-  } catch (error) {
-    console.error('Error al obtener datos del ticket:', error);
-    res.status(500).json({ error: 'Error al obtener datos del ticket', details: error.message });
-  }
+        // Devolver datos para imprimir ticket
+        res.json({ ...venta.rows[0], items: items.rows });
+    } catch (error) {
+        console.error('Error al obtener datos del ticket:', error);
+        res.status(500).json({ error: 'Error al obtener datos del ticket', details: error.message });
+    }
 });
 
 module.exports = router;

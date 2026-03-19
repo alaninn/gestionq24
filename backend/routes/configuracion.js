@@ -9,6 +9,13 @@ router.get('/', async (req, res) => {
         await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket VARCHAR(20) DEFAULT '80'`);
         await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket_personalizado INTEGER DEFAULT 80`);
         await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS impresion_tickets_automatica BOOLEAN DEFAULT TRUE`);
+        await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS permite_stock_negativo BOOLEAN DEFAULT FALSE`);
+        // Asegurar que existe restricción UNIQUE en negocio_id para UPSERT
+        await db.query(`DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'configuracion_negocio_id_unique') THEN
+                ALTER TABLE configuracion ADD CONSTRAINT configuracion_negocio_id_unique UNIQUE (negocio_id);
+            END IF;
+        END $$`);
 
         const resultado = await db.query(
             'SELECT * FROM configuracion WHERE negocio_id = $1 LIMIT 1',
@@ -37,18 +44,30 @@ router.put('/', async (req, res) => {
         } = req.body;
 
         const resultado = await db.query(`
-            UPDATE configuracion SET
-                nombre_negocio=$1, cuit=$2, direccion=$3, telefono=$4, email=$5,
-                recargo_tarjeta=$6, descuento_maximo=$7, permite_stock_negativo=$8,
-                moneda=$9, permite_venta_rapida=$10, permite_precio_mayorista=$11,
-                validar_monto_efectivo=$12, recargo_modo=$13, descuento_modo=$14,
-                pin_cierre=$15, escaner_barras=$16, impresion_tickets=$17, impresion_tickets_automatica=$18,
-                ocultar_stock_pos=$19, metodos_pago_activos=$20, nombre_ticket=$21,
-                mostrar_stock_pos=$22, cantidad_minima_mayorista=$23,
-                redondeo_precios=$24, color_primario=$25, modo_oscuro=$26,
-                tamanio_ticket=$27, tamanio_ticket_personalizado=$28,
+            INSERT INTO configuracion (
+                negocio_id, nombre_negocio, cuit, direccion, telefono, email,
+                recargo_tarjeta, descuento_maximo, permite_stock_negativo,
+                moneda, permite_venta_rapida, permite_precio_mayorista,
+                validar_monto_efectivo, recargo_modo, descuento_modo,
+                pin_cierre, escaner_barras, impresion_tickets, impresion_tickets_automatica,
+                ocultar_stock_pos, metodos_pago_activos, nombre_ticket,
+                mostrar_stock_pos, cantidad_minima_mayorista,
+                redondeo_precios, color_primario, modo_oscuro,
+                tamanio_ticket, tamanio_ticket_personalizado, updated_at
+            ) VALUES (
+                $29, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, NOW()
+            )
+            ON CONFLICT (negocio_id) DO UPDATE SET
+                nombre_negocio=EXCLUDED.nombre_negocio, cuit=EXCLUDED.cuit, direccion=EXCLUDED.direccion, telefono=EXCLUDED.telefono, email=EXCLUDED.email,
+                recargo_tarjeta=EXCLUDED.recargo_tarjeta, descuento_maximo=EXCLUDED.descuento_maximo, permite_stock_negativo=EXCLUDED.permite_stock_negativo,
+                moneda=EXCLUDED.moneda, permite_venta_rapida=EXCLUDED.permite_venta_rapida, permite_precio_mayorista=EXCLUDED.permite_precio_mayorista,
+                validar_monto_efectivo=EXCLUDED.validar_monto_efectivo, recargo_modo=EXCLUDED.recargo_modo, descuento_modo=EXCLUDED.descuento_modo,
+                pin_cierre=EXCLUDED.pin_cierre, escaner_barras=EXCLUDED.escaner_barras, impresion_tickets=EXCLUDED.impresion_tickets, impresion_tickets_automatica=EXCLUDED.impresion_tickets_automatica,
+                ocultar_stock_pos=EXCLUDED.ocultar_stock_pos, metodos_pago_activos=EXCLUDED.metodos_pago_activos, nombre_ticket=EXCLUDED.nombre_ticket,
+                mostrar_stock_pos=EXCLUDED.mostrar_stock_pos, cantidad_minima_mayorista=EXCLUDED.cantidad_minima_mayorista,
+                redondeo_precios=EXCLUDED.redondeo_precios, color_primario=EXCLUDED.color_primario, modo_oscuro=EXCLUDED.modo_oscuro,
+                tamanio_ticket=EXCLUDED.tamanio_ticket, tamanio_ticket_personalizado=EXCLUDED.tamanio_ticket_personalizado,
                 updated_at=NOW()
-            WHERE negocio_id=$29
             RETURNING *
         `, [
             nombre_negocio, cuit, direccion, telefono, email,
