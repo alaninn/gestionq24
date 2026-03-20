@@ -25,7 +25,13 @@ function Superadmin() {
   const [mostrarModalDias, setMostrarModalDias] = useState(null);
   const [mostrarModalSalud, setMostrarModalSalud] = useState(null);
   const [mostrarModalGestionTickets, setMostrarModalGestionTickets] = useState(null);
-  const [mostrarModalDetalleNegocio, setMostrarModalDetalleNegocio] = useState(null);
+ const [mostrarModalDetalleNegocio, setMostrarModalDetalleNegocio] = useState(null);
+  const [negocioDetalleGuardado, setNegocioDetalleGuardado] = useState(null); // para volver al modal
+  const [mostrarModalMiCuenta, setMostrarModalMiCuenta] = useState(false);
+  const [mostrarModalAdminNegocio, setMostrarModalAdminNegocio] = useState(null);
+  const [formMiCuenta, setFormMiCuenta] = useState({ nombre: '', email: '', password: '', confirmarPassword: '' });
+  const [formAdminNegocio, setFormAdminNegocio] = useState({ nombre: '', email: '', password: '' });
+  const [guardandoCuenta, setGuardandoCuenta] = useState(false);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
   const [historialPagos, setHistorialPagos] = useState([]);
@@ -40,7 +46,7 @@ function Superadmin() {
 
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', email: '', telefono: '', direccion: '',
-    plan: 'mensual', dias_uso: '30', password_admin: ''
+    plan: 'mensual', dias_uso: '30', password_admin: '', username_admin: ''
   });
 
   const [formRenovar, setFormRenovar] = useState({
@@ -146,6 +152,83 @@ function Superadmin() {
     }
   };
 
+  
+
+  // Abre un sub-modal guardando el negocio actual para poder volver al detalle
+  const abrirSubModal = (abrirFn) => {
+    setNegocioDetalleGuardado(mostrarModalDetalleNegocio);
+    setMostrarModalDetalleNegocio(null);
+    abrirFn();
+  };
+
+  // Cierra el sub-modal y vuelve al detalle del negocio
+  const cerrarSubModal = (cerrarFn) => {
+    cerrarFn(null);
+    if (negocioDetalleGuardado) {
+      setMostrarModalDetalleNegocio(negocioDetalleGuardado);
+      setNegocioDetalleGuardado(null);
+    }
+  };
+
+  const guardarMiCuenta = async (e) => {
+    e.preventDefault();
+    setGuardandoCuenta(true);
+    setError('');
+
+    if (formMiCuenta.password && formMiCuenta.password !== formMiCuenta.confirmarPassword) {
+      setGuardandoCuenta(false);
+      return setError('Las contraseñas no coinciden');
+    }
+
+    try {
+      await api.put('/api/superadmin/mi-cuenta', {
+        nombre: formMiCuenta.nombre,
+        email: formMiCuenta.email,
+        ...(formMiCuenta.password ? { password: formMiCuenta.password } : {})
+      });
+      setExito('✅ Tu cuenta fue actualizada correctamente');
+      setMostrarModalMiCuenta(false);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al actualizar cuenta');
+    } finally {
+      setGuardandoCuenta(false);
+    }
+  };
+
+  const cargarAdminNegocio = async (negocio) => {
+    try {
+      // Buscar el admin principal del negocio
+      const res = await api.get(`/api/superadmin/negocios/${negocio.id}/admin`);
+      setFormAdminNegocio({
+        nombre: res.data.nombre || '',
+        email: res.data.email || '',
+        password: '',
+        usuario_id: res.data.id
+      });
+      setMostrarModalAdminNegocio(negocio);
+    } catch (err) {
+      setError('Error al cargar datos del administrador');
+    }
+  };
+
+  const guardarAdminNegocio = async (e) => {
+    e.preventDefault();
+    try {
+      await api.put(`/api/superadmin/negocios/${mostrarModalAdminNegocio.id}/admin`, {
+        nombre: formAdminNegocio.nombre,
+        email: formAdminNegocio.email,
+        ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {})
+      });
+      setExito('✅ Administrador actualizado correctamente');
+      setMostrarModalAdminNegocio(null);
+      cargarDatos();
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al actualizar administrador');
+    }
+  };
+
   const accederNegocio = async (negocioId) => {
     try {
       const res = await api.get(`/api/superadmin/negocios/${negocioId}/acceso`);
@@ -246,6 +329,14 @@ function Superadmin() {
             <p className="text-slate-400 text-sm mt-0.5">Gestión Global de Negocios • {usuario?.nombre}</p>
           </div>
         </div>
+        <button onClick={() => {
+          setFormMiCuenta({ nombre: usuario?.nombre || '', email: usuario?.email || '', password: '' });
+          setMostrarModalMiCuenta(true);
+        }}
+          className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+          👤 Mi Cuenta
+        </button>
+
         <button onClick={logout}
           className="bg-red-600 hover:bg-red-700 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
           🚪 Cerrar Sesión
@@ -540,6 +631,14 @@ function Superadmin() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Usuario admin *</label>
+                  <input type="text" value={formNuevo.username_admin}
+                    onChange={(e) => setFormNuevo(p => ({ ...p, username_admin: e.target.value.toLowerCase().replace(/\s/g, '') }))}
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Ej: adminpanaderia" />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña admin *</label>
                   <input type="password" value={formNuevo.password_admin}
                     onChange={(e) => setFormNuevo(p => ({ ...p, password_admin: e.target.value }))}
@@ -577,7 +676,7 @@ function Superadmin() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b bg-blue-50">
               <h3 className="text-lg font-bold text-gray-800">🔄 Renovar Suscripción</h3>
-              <button onClick={() => setMostrarModalRenovar(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => cerrarSubModal(setMostrarModalRenovar)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             <form onSubmit={renovarSuscripcion} className="p-5 space-y-4">
               <div className="bg-blue-100 p-3 rounded-lg text-sm text-blue-700">
@@ -624,7 +723,7 @@ function Superadmin() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setMostrarModalRenovar(null)}
+                <button type="button" onClick={() => cerrarSubModal(setMostrarModalRenovar)}
                   className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                   Cancelar
                 </button>
@@ -644,7 +743,7 @@ function Superadmin() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b bg-orange-50">
               <h3 className="text-lg font-bold text-gray-800">📅 Editar Días de Uso</h3>
-              <button onClick={() => setMostrarModalDias(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => cerrarSubModal(setMostrarModalDias)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             <form onSubmit={actualizarDiasUso} className="p-5 space-y-4">
               <div className="bg-orange-100 p-3 rounded-lg text-sm text-orange-700">
@@ -665,7 +764,7 @@ function Superadmin() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setMostrarModalDias(null)}
+                <button type="button" onClick={() => cerrarSubModal(setMostrarModalDias)}
                   className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                   Cancelar
                 </button>
@@ -685,7 +784,7 @@ function Superadmin() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-5 border-b bg-cyan-50">
               <h3 className="text-lg font-bold text-gray-800">📊 Historial de Pagos</h3>
-              <button onClick={() => setMostrarModalHistorial(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => cerrarSubModal(setMostrarModalHistorial)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             
             <div className="p-5 bg-cyan-100 text-sm text-cyan-700">
@@ -734,7 +833,7 @@ function Superadmin() {
             </div>
 
             <div className="p-5 border-t bg-gray-50">
-              <button onClick={() => setMostrarModalHistorial(null)}
+              <button onClick={() => cerrarSubModal(setMostrarModalHistorial)}
                 className="w-full py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors">
                 Cerrar
               </button>
@@ -749,7 +848,7 @@ function Superadmin() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-5 border-b bg-green-50">
               <h3 className="text-lg font-bold text-gray-800">❤️ Salud del Negocio</h3>
-              <button onClick={() => setMostrarModalSalud(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => cerrarSubModal(setMostrarModalSalud)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
@@ -818,7 +917,7 @@ function Superadmin() {
             </div>
 
             <div className="p-5 border-t bg-gray-50">
-              <button onClick={() => setMostrarModalSalud(null)}
+              <button onClick={() => cerrarSubModal(setMostrarModalSalud)}
                 className="w-full py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors">
                 Cerrar
               </button>
@@ -833,7 +932,7 @@ function Superadmin() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b bg-indigo-50">
               <h3 className="text-lg font-bold text-gray-800">🎫 Gestionar Tickets - {mostrarModalGestionTickets?.nombre}</h3>
-              <button onClick={() => setMostrarModalGestionTickets(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => cerrarSubModal(setMostrarModalGestionTickets)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="p-5 max-h-[70vh] overflow-y-auto">
@@ -928,7 +1027,7 @@ function Superadmin() {
 
             <div className="p-5 border-t bg-gray-50 flex justify-end">
               <button
-                onClick={() => setMostrarModalGestionTickets(null)}
+                onClick={() => cerrarSubModal(setMostrarModalGestionTickets)}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors"
               >
                 Cerrar
@@ -1030,6 +1129,16 @@ function Superadmin() {
                   <span className="text-lg">⚡</span> Acciones Disponibles
                 </h3>
                 
+               {/* Editar Admin del Negocio */}
+                <button onClick={() => abrirSubModal(() => cargarAdminNegocio(negocioDetalleGuardado || mostrarModalDetalleNegocio))}
+                  className="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">👤</div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Editar Administrador</p>
+                    <p className="text-white/80 text-sm">Cambiar nombre, email o contraseña del admin del negocio</p>
+                  </div>
+                </button>
+
                 {/* Acceder al Panel */}
                 <button onClick={() => {
                   accederNegocio(mostrarModalDetalleNegocio.id);
@@ -1046,11 +1155,10 @@ function Superadmin() {
                 </button>
 
                 {/* Renovar Suscripción */}
-                <button onClick={() => {
-                  setMostrarModalDetalleNegocio(null);
-                  setMostrarModalRenovar(mostrarModalDetalleNegocio);
+                <button onClick={() => abrirSubModal(() => {
+                  setMostrarModalRenovar(negocioDetalleGuardado || mostrarModalDetalleNegocio);
                   setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
-                }}
+                })}
                   className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
                     🔄
@@ -1062,11 +1170,10 @@ function Superadmin() {
                 </button>
 
                 {/* Editar Días de Uso */}
-                <button onClick={() => {
-                  setMostrarModalDetalleNegocio(null);
-                  setMostrarModalDias(mostrarModalDetalleNegocio);
-                  setFormDias({ dias: mostrarModalDetalleNegocio.dias_uso?.toString() || '30' });
-                }}
+                <button onClick={() => abrirSubModal(() => {
+                  setMostrarModalDias(negocioDetalleGuardado || mostrarModalDetalleNegocio);
+                  setFormDias({ dias: (negocioDetalleGuardado || mostrarModalDetalleNegocio).dias_uso?.toString() || '30' });
+                })}
                   className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
                     📅
@@ -1078,11 +1185,11 @@ function Superadmin() {
                 </button>
 
                 {/* Ver Historial de Pagos */}
-                <button onClick={() => {
-                  setMostrarModalDetalleNegocio(null);
-                  setMostrarModalHistorial(mostrarModalDetalleNegocio);
-                  cargarHistorialPagos(mostrarModalDetalleNegocio.id);
-                }}
+                <button onClick={() => abrirSubModal(() => {
+                  const neg = negocioDetalleGuardado || mostrarModalDetalleNegocio;
+                  setMostrarModalHistorial(neg);
+                  cargarHistorialPagos(neg.id);
+                })}
                   className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
                     📊
@@ -1094,11 +1201,11 @@ function Superadmin() {
                 </button>
 
                 {/* Ver Salud del Negocio */}
-                <button onClick={() => {
-                  setMostrarModalDetalleNegocio(null);
-                  setMostrarModalSalud(mostrarModalDetalleNegocio);
-                  cargarSaludNegocio(mostrarModalDetalleNegocio.id);
-                }}
+               <button onClick={() => abrirSubModal(() => {
+                  const neg = negocioDetalleGuardado || mostrarModalDetalleNegocio;
+                  setMostrarModalSalud(neg);
+                  cargarSaludNegocio(neg.id);
+                })}
                   className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
                     ❤️
@@ -1110,11 +1217,11 @@ function Superadmin() {
                 </button>
 
                 {/* Gestionar Tickets */}
-                <button onClick={() => {
-                  setMostrarModalDetalleNegocio(null);
-                  setMostrarModalGestionTickets(mostrarModalDetalleNegocio);
+                <button onClick={() => abrirSubModal(() => {
+                  const neg = negocioDetalleGuardado || mostrarModalDetalleNegocio;
+                  setMostrarModalGestionTickets(neg);
                   cargarTickets();
-                }}
+                })}
                   className="w-full bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
                     🎫
@@ -1165,6 +1272,108 @@ function Superadmin() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+   {/* Modal: Mi Cuenta (superadmin) */}
+      {mostrarModalMiCuenta && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="text-lg font-bold text-gray-800">👑 Mi Cuenta</h3>
+              <button onClick={() => setMostrarModalMiCuenta(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <form onSubmit={guardarMiCuenta} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                <input type="text" value={formMiCuenta.nombre}
+                  onChange={e => setFormMiCuenta(p => ({ ...p, nombre: e.target.value }))}
+                  required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={formMiCuenta.email}
+                  onChange={e => setFormMiCuenta(p => ({ ...p, email: e.target.value }))}
+                  required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span></label>
+                <input type="password" value={formMiCuenta.password}
+                  onChange={e => setFormMiCuenta(p => ({ ...p, password: e.target.value }))}
+                  placeholder="••••••••" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              {formMiCuenta.password && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar nueva contraseña *</label>
+                  <input type="password" value={formMiCuenta.confirmarPassword}
+                    onChange={e => setFormMiCuenta(p => ({ ...p, confirmarPassword: e.target.value }))}
+                    placeholder="••••••••"
+                    className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                      formMiCuenta.confirmarPassword && formMiCuenta.password !== formMiCuenta.confirmarPassword
+                        ? 'border-red-400 bg-red-50'
+                        : 'border-gray-300'
+                    }`} />
+                  {formMiCuenta.confirmarPassword && formMiCuenta.password !== formMiCuenta.confirmarPassword && (
+                    <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalMiCuenta(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={guardandoCuenta}
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold disabled:opacity-50">
+                  {guardandoCuenta ? 'Guardando...' : '💾 Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Admin del Negocio */}
+      {mostrarModalAdminNegocio && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">👤 Editar Administrador</h3>
+                <p className="text-sm text-gray-500">{mostrarModalAdminNegocio.nombre}</p>
+              </div>
+              <button onClick={() => cerrarSubModal(setMostrarModalAdminNegocio)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <form onSubmit={guardarAdminNegocio} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                <input type="text" value={formAdminNegocio.nombre}
+                  onChange={e => setFormAdminNegocio(p => ({ ...p, nombre: e.target.value }))}
+                  required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={formAdminNegocio.email}
+                  onChange={e => setFormAdminNegocio(p => ({ ...p, email: e.target.value }))}
+                  required className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña <span className="text-gray-400 font-normal">(dejar vacío para no cambiar)</span></label>
+                <input type="password" value={formAdminNegocio.password}
+                  onChange={e => setFormAdminNegocio(p => ({ ...p, password: e.target.value }))}
+                  placeholder="••••••••" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-700">⚠️ Estás modificando las credenciales del administrador de <strong>{mostrarModalAdminNegocio.nombre}</strong>. Avisale el cambio si es necesario.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => cerrarSubModal(setMostrarModalAdminNegocio)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold">
+                  💾 Guardar Cambios
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

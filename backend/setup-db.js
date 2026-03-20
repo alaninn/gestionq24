@@ -1,3 +1,4 @@
+require('dotenv').config();
 const db = require('./config/database');
 
 const sql = `
@@ -96,6 +97,37 @@ ADD COLUMN IF NOT EXISTS sin_actividad_dias INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS errores_24h INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS pagado BOOLEAN DEFAULT true,
 ADD COLUMN IF NOT EXISTS dias_uso INTEGER DEFAULT 30;
+
+-- Columnas de configuracion que pueden faltar en instalaciones viejas
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket VARCHAR(20) DEFAULT '80';
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket_personalizado INTEGER DEFAULT 80;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS impresion_tickets_automatica BOOLEAN DEFAULT TRUE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS permite_stock_negativo BOOLEAN DEFAULT FALSE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS mostrar_stock_pos BOOLEAN DEFAULT TRUE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS ocultar_stock_pos BOOLEAN DEFAULT FALSE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_primario VARCHAR(20) DEFAULT '#f97316';
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS modo_oscuro BOOLEAN DEFAULT TRUE;
+
+-- Tabla de codigos alternativos de productos (si no existe)
+CREATE TABLE IF NOT EXISTS producto_codigos (
+    id SERIAL PRIMARY KEY,
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    codigo VARCHAR(100) NOT NULL,
+    negocio_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos(codigo, negocio_id);
+
+-- Agregar columna username a usuarios si no existe
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS username VARCHAR(50);
+
+-- Crear índice único para username por negocio (null permitido para compatibilidad)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_username_negocio 
+ON usuarios(username, negocio_id) 
+WHERE username IS NOT NULL;
+
+-- Poblar username con el email actual para usuarios existentes
+UPDATE usuarios SET username = SPLIT_PART(email, '@', 1) WHERE username IS NULL;
 `;
 
 async function setupDB() {

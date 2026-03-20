@@ -37,22 +37,32 @@ router.get('/', soloAdmin, async (req, res) => {
 // -----------------------------------------------
 router.post('/', soloAdmin, async (req, res) => {
     try {
-        const { nombre, email, password, rol, permisos } = req.body;
+        const { nombre, username, email, password, rol, permisos } = req.body;
 
-        if (!nombre || !email || !password) {
-            return res.status(400).json({ error: 'Nombre, email y contraseña son obligatorios' });
+        if (!nombre || !username || !password) {
+            return res.status(400).json({ error: 'Nombre, usuario y contraseña son obligatorios' });
+        }
+
+        // Verificar que el username no esté en uso en el mismo negocio
+        const usernameExiste = await db.query(
+            'SELECT id FROM usuarios WHERE username = $1 AND negocio_id = $2 AND activo = TRUE',
+            [username, req.negocio_id]
+        );
+        if (usernameExiste.rows.length > 0) {
+            return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
         }
 
         const resultado = await db.query(`
-            INSERT INTO usuarios (negocio_id, nombre, email, password_hash, rol, permisos)
-            VALUES ($1, $2, $3, crypt($4, gen_salt('bf')), $5, $6)
-            RETURNING id, nombre, email, rol, permisos, activo, created_at
+            INSERT INTO usuarios (negocio_id, nombre, username, email, password_hash, rol, permisos)
+            VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf')), $6, $7)
+            RETURNING id, nombre, username, email, rol, permisos, activo, created_at
         `, [
             req.negocio_id,
             nombre,
-            email,
+            username,
+            email || null,
             password,
-            rol || 'cajero',
+            rolFinal,
             JSON.stringify(permisos || {})
         ]);
 
@@ -93,10 +103,13 @@ router.put('/:id', soloAdmin, async (req, res) => {
             `, [nombre, email, rol, JSON.stringify(permisos || {}), activo, id, req.negocio_id]);
         }
 
-        const resultado = await db.query(
-            'SELECT id, nombre, email, rol, permisos, activo FROM usuarios WHERE id = $1',
-            [id]
+       const resultado = await db.query(
+            'SELECT id, nombre, email, rol, permisos, activo FROM usuarios WHERE id = $1 AND negocio_id = $2',
+            [id, req.negocio_id]
         );
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
         res.json(resultado.rows[0]);
     } catch (error) {
         console.error('Error:', error);

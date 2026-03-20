@@ -4,7 +4,7 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { buscar } = req.query;
         let consulta = 'SELECT * FROM clientes WHERE activo = TRUE AND negocio_id = $1';
         let valores = [negocio_id];
@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const cliente = await db.query('SELECT * FROM clientes WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
         if (cliente.rows.length === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
 
@@ -34,7 +34,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { nombre, telefono, email, direccion } = req.body;
         if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
 

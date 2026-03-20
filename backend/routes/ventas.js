@@ -5,7 +5,7 @@ const db = require('../config/database');
 
 router.get('/', verificarPermiso('ventas', 'ver'), async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { fecha_desde, fecha_hasta, turno_id } = req.query;
 
         let consulta = `
@@ -33,7 +33,7 @@ router.get('/', verificarPermiso('ventas', 'ver'), async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const venta = await db.query(
             'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
             [req.params.id, negocio_id]
@@ -49,7 +49,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { turno_id, cliente_id, items, metodo_pago, descuento, recargo, es_fiado, total } = req.body;
 
         if (!items || items.length === 0) {
@@ -151,9 +151,16 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
         const ventaId = ventaResult.rows[0].id;
 
-        // Insertar items y actualizar stock
+       // Insertar items y actualizar stock
         for (const item of itemsProcesados) {
-            if (!item.producto_id) continue; // No actualizar stock para productos rápidos
+            if (!item.producto_id) {
+                // Producto rápido: guardar el ítem igual, pero sin actualizar stock
+                await db.query(`
+                    INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
+                    VALUES ($1, NULL, $2, $3::numeric, $4::numeric, $5::numeric, $6)
+                `, [ventaId, item.nombre_producto || 'Producto rápido', parseFloat(item.cantidad) || 1, parseFloat(item.precio_unitario) || 0, parseFloat(item.subtotal) || 0, negocio_id]);
+                continue;
+            }
 
             await db.query(`
                 INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
@@ -200,11 +207,47 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
         }
         
         // Actualizar venta
+      const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+
+        // Actualizar datos principales de la venta
         await db.query(
             'UPDATE ventas SET metodo_pago = $1, descuento = $2, recargo = $3, total = $4, cliente_id = $5, es_fiado = $6 WHERE id = $7 AND negocio_id = $8',
-            [metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]
+            [metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, negocio_id]
         );
-        
+
+        // Si vinieron items nuevos, actualizar venta_items y stock
+        if (items && items.length > 0) {
+            // Primero restaurar el stock de los items anteriores
+            const itemsAnteriores = await db.query(
+                'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
+                [id]
+            );
+            for (const item of itemsAnteriores.rows) {
+                await db.query(
+                    'UPDATE productos SET stock = stock + $1 WHERE id = $2 AND negocio_id = $3',
+                    [item.cantidad, item.producto_id, negocio_id]
+                );
+            }
+
+            // Borrar items anteriores
+            await db.query('DELETE FROM venta_items WHERE venta_id = $1', [id]);
+
+            // Insertar items nuevos y descontar stock
+            for (const item of items) {
+                await db.query(`
+                    INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
+                    VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7)
+                `, [id, item.producto_id || null, item.nombre_producto, item.cantidad, item.precio_unitario, item.subtotal, negocio_id]);
+
+                if (item.producto_id) {
+                    await db.query(
+                        'UPDATE productos SET stock = stock - $1 WHERE id = $2 AND negocio_id = $3',
+                        [item.cantidad, item.producto_id, negocio_id]
+                    );
+                }
+            }
+        }
+
         res.json({ mensaje: 'Venta actualizada correctamente' });
     } catch (error) {
         console.error('Error al editar venta:', error);
@@ -227,6 +270,30 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
         }
         
+      // Restaurar stock de los productos antes de eliminar
+        const itemsVenta = await db.query(
+            'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
+            [id]
+        );
+        for (const item of itemsVenta.rows) {
+            await db.query(
+                'UPDATE productos SET stock = stock + $1 WHERE id = $2 AND negocio_id = $3',
+                [item.cantidad, item.producto_id, req.usuario.negocio_id || 1]
+            );
+        }
+
+        // Restaurar saldo de deuda si era venta fiada
+        const ventaInfo = await db.query(
+            'SELECT cliente_id, total, es_fiado FROM ventas WHERE id = $1 AND negocio_id = $2',
+            [id, req.usuario.negocio_id || 1]
+        );
+        if (ventaInfo.rows[0]?.es_fiado && ventaInfo.rows[0]?.cliente_id) {
+            await db.query(
+                'UPDATE clientes SET saldo_deuda = GREATEST(saldo_deuda - $1, 0) WHERE id = $2',
+                [ventaInfo.rows[0].total, ventaInfo.rows[0].cliente_id]
+            );
+        }
+
         // Eliminar venta
         await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
         res.json({ mensaje: 'Venta eliminada correctamente' });

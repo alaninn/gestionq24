@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 function Login() {
-  const [email, setEmail] = useState('');
+ const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -21,13 +21,20 @@ function Login() {
     setCargando(true);
 
     try {
-      const usuario = await login(email, password);
+      const usuario = await login(username, password);
 
-      // Redirigimos según el rol
+  
+// Redirigimos según rol y permisos reales
       if (usuario.rol === 'superadmin') {
         navigate('/superadmin');
       } else {
-        navigate('/admin');
+        // Verificar si tiene permisos para el panel admin
+        const permisos = typeof usuario.permisos === 'string'
+          ? JSON.parse(usuario.permisos || '{}')
+          : (usuario.permisos || {});
+        const tienePermisoAdmin = ['admin'].includes(usuario.rol) ||
+          Object.values(permisos).some(lista => Array.isArray(lista) && lista.length > 0);
+        navigate(tienePermisoAdmin ? '/admin' : '/pos');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Error al iniciar sesión');
@@ -62,16 +69,16 @@ function Login() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
+                Usuario
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-800"
-                placeholder="tu@email.com"
+                placeholder="Ej: cajerojuan"
               />
             </div>
 

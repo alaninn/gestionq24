@@ -15,12 +15,37 @@ import Usuarios from '../components/admin/Usuarios';
 import Soporte from '../components/admin/Soporte';
 
 function NombreNegocio() {
-  const [nombre, setNombre] = useState('Mi Negocio');
+  const [nombre, setNombre] = useState(() => {
+    // Intentar leer del localStorage para evitar el flash de "Mi Negocio"
+    try {
+      const conf = localStorage.getItem('config_negocio');
+      if (conf) return JSON.parse(conf).nombre_negocio || 'Mi Negocio';
+    } catch {}
+    return 'Mi Negocio';
+  });
+
   useEffect(() => {
+    // Solo hace fetch si no tenemos el nombre cacheado
+    const conf = localStorage.getItem('config_negocio');
+    if (conf) {
+      try {
+        const parsed = JSON.parse(conf);
+        if (parsed.nombre_negocio) {
+          setNombre(parsed.nombre_negocio);
+          return;
+        }
+      } catch {}
+    }
     api.get('/api/configuracion')
-      .then(res => { if (res.data?.nombre_negocio) setNombre(res.data.nombre_negocio); })
+      .then(res => {
+        if (res.data?.nombre_negocio) {
+          setNombre(res.data.nombre_negocio);
+          localStorage.setItem('config_negocio', JSON.stringify(res.data));
+        }
+      })
       .catch(() => {});
   }, []);
+
   return <span className="font-bold text-white text-lg">{nombre}</span>;
 }
 
@@ -89,7 +114,7 @@ function Admin() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button onClick={() => { navigate('/pos'); setMenuAbierto(false); }}
             style={{ backgroundColor: 'var(--color-primario)' }}
             className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200 mb-3">
@@ -101,28 +126,36 @@ function Admin() {
 
           {tienePermiso('productos', 'ver') && (
             <>
-              <p className="text-xs text-gray-600 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
+              <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
               <NavLink to="/admin/productos" icon="📦" label="Productos" />
               <NavLink to="/admin/categorias" icon="🏷️" label="Categorías" />
             </>
           )}
 
-          <p className="text-xs text-gray-600 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Finanzas</p>
-          <NavLink to="/admin/caja" icon="🏦" label="Control de Caja" />
+          {(tienePermiso('ventas', 'ver') || tienePermiso('clientes', 'ver')) && (
+            <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Finanzas</p>
+          )}
+          {tienePermiso('ventas', 'ver') && (
+            <NavLink to="/admin/caja" icon="🏦" label="Control de Caja" />
+          )}
           {tienePermiso('clientes', 'ver') && (
             <NavLink to="/admin/cuentas-corrientes" icon="👥" label="Cuentas Corrientes" />
           )}
 
-          <p className="text-xs text-gray-600 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
+          {(tienePermiso('reportes', 'ver') || tienePermiso('gastos', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
+            <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
+          )}
           {tienePermiso('reportes', 'ver') && (
             <NavLink to="/admin/reportes" icon="📈" label="Reportes" />
           )}
           {tienePermiso('gastos', 'ver') && (
             <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
           )}
-          {(usuario?.rol === 'admin' || usuario?.rol === 'superadmin') && (
+          {tienePermiso('soporte', 'ver') && (
+            <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
+          )}
+          {['admin', 'superadmin'].includes(usuario?.rol) && (
             <>
-              <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
               <NavLink to="/admin/usuarios" icon="👤" label="Usuarios" />
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
             </>
@@ -171,19 +204,29 @@ function Admin() {
 
         {/* Barra superior para SuperAdmin (Desktop) */}
         {esSuperadminAccediendo && (
-          <div className="hidden lg:flex bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 items-center justify-between sticky top-0 z-10 shadow-lg">
+          <div className="lg:flex bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 items-center justify-between sticky top-0 z-10 shadow-lg">
             <div className="flex items-center gap-3">
-              <span className="text-lg">👑</span>
+              <span className="text-xl">👑</span>
               <div>
-                <p className="text-xs opacity-90">Modo SuperAdmin</p>
-                <p className="font-semibold text-sm">Viendo negocio cliente</p>
+                <p className="text-xs opacity-75 uppercase tracking-wide font-medium">Modo SuperAdmin activo</p>
+                <p className="font-bold text-sm">
+                  Estás viendo:{' '}
+                  <span className="bg-purple-500 bg-opacity-50 px-2 py-0.5 rounded-md">
+                    {usuario?.negocio_nombre || `Negocio #${accesoSuperadminNegocio}`}
+                  </span>
+                </p>
               </div>
             </div>
-            <button onClick={volveraSuperadmin}
-              className="bg-white text-purple-700 hover:bg-purple-50 px-4 py-2 rounded-lg font-semibold text-sm transition-colors flex items-center gap-2">
-              <span>↩️</span>
-              <span>Volver a SuperAdmin</span>
-            </button>
+            <div className="flex items-center gap-3 mt-2 lg:mt-0">
+              <p className="text-xs opacity-75 hidden lg:block">
+                Cualquier cambio que hagas afecta al negocio del cliente
+              </p>
+              <button onClick={volveraSuperadmin}
+                className="bg-white text-purple-700 hover:bg-purple-50 px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 shadow">
+                <span>↩️</span>
+                <span>Volver a mi panel</span>
+              </button>
+            </div>
           </div>
         )}
 

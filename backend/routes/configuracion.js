@@ -1,22 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { soloAdmin } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || 1;
-        // Asegurarnos que los campos existan en la tabla (migración ligera)
-        await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket VARCHAR(20) DEFAULT '80'`);
-        await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket_personalizado INTEGER DEFAULT 80`);
-        await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS impresion_tickets_automatica BOOLEAN DEFAULT TRUE`);
-        await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS permite_stock_negativo BOOLEAN DEFAULT FALSE`);
-        // Asegurar que existe restricción UNIQUE en negocio_id para UPSERT
-        await db.query(`DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'configuracion_negocio_id_unique') THEN
-                ALTER TABLE configuracion ADD CONSTRAINT configuracion_negocio_id_unique UNIQUE (negocio_id);
-            END IF;
-        END $$`);
-
         const resultado = await db.query(
             'SELECT * FROM configuracion WHERE negocio_id = $1 LIMIT 1',
             [negocio_id]
@@ -28,7 +17,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.put('/', async (req, res) => {
+router.put('/', soloAdmin, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || 1;
         const {

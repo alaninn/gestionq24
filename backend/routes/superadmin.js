@@ -33,10 +33,10 @@ router.get('/negocios', async (req, res) => {
 // POST /api/superadmin/negocios
 router.post('/negocios', async (req, res) => {
     try {
-        const { nombre, email, telefono, direccion, plan, dias_uso, password_admin } = req.body;
+        const { nombre, email, telefono, direccion, plan, dias_uso, password_admin, username_admin } = req.body;
 
-        if (!nombre || !email || !password_admin) {
-            return res.status(400).json({ error: 'Nombre, email y contraseña son obligatorios' });
+        if (!nombre || !email || !password_admin || !username_admin) {
+            return res.status(400).json({ error: 'Nombre, email, usuario y contraseña son obligatorios' });
         }
 
         const diasNum = parseInt(dias_uso) || 30;
@@ -48,9 +48,9 @@ router.post('/negocios', async (req, res) => {
         `, [nombre, email, telefono || null, direccion || null, plan || 'mensual', diasNum]);
 
         await db.query(`
-            INSERT INTO usuarios (negocio_id, nombre, email, password_hash, rol)
-            VALUES ($1, $2, $3, crypt($4, gen_salt('bf')), 'admin')
-        `, [negocio.rows[0].id, `Admin ${nombre}`, email, password_admin]);
+            INSERT INTO usuarios (negocio_id, nombre, username, email, password_hash, rol)
+            VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf')), 'admin')
+        `, [negocio.rows[0].id, `Admin ${nombre}`, username_admin, email, password_admin]);
 
         await db.query(`
             INSERT INTO configuracion (nombre_negocio, email, negocio_id)
@@ -574,6 +574,117 @@ router.get('/negocios/:id/acceso', async (req, res) => {
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al verificar acceso' });
+    }
+});
+
+// PUT /api/superadmin/mi-cuenta — el superadmin actualiza sus propios datos
+router.put('/mi-cuenta', async (req, res) => {
+    try {
+        const { nombre, email, password } = req.body;
+        const id = req.usuario.id;
+
+        if (!nombre || !email) {
+            return res.status(400).json({ error: 'Nombre y email son obligatorios' });
+        }
+
+        if (password) {
+            await db.query(`
+                UPDATE usuarios SET 
+                    nombre = $1, 
+                    email = $2,
+                    password_hash = crypt($3, gen_salt('bf'))
+                WHERE id = $4 AND rol = 'superadmin'
+            `, [nombre, email, password, id]);
+        } else {
+            await db.query(`
+                UPDATE usuarios SET 
+                    nombre = $1, 
+                    email = $2
+                WHERE id = $3 AND rol = 'superadmin'
+            `, [nombre, email, id]);
+        }
+
+        const resultado = await db.query(
+            'SELECT id, nombre, email, rol FROM usuarios WHERE id = $1',
+            [id]
+        );
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        res.json({ mensaje: 'Cuenta actualizada correctamente', usuario: resultado.rows[0] });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ya existe un usuario con ese email' });
+        }
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar cuenta' });
+    }
+});
+
+// GET /api/superadmin/negocios/:id/admin — obtener admin principal del negocio
+router.get('/negocios/:id/admin', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const resultado = await db.query(`
+            SELECT id, nombre, email, rol FROM usuarios
+            WHERE negocio_id = $1 AND rol = 'admin' AND activo = TRUE
+            ORDER BY created_at ASC LIMIT 1
+        `, [id]);
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ error: 'No se encontró administrador para este negocio' });
+        }
+        res.json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener administrador' });
+    }
+});
+
+// PUT /api/superadmin/negocios/:id/admin — editar admin principal del negocio
+router.put('/negocios/:id/admin', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, email, password } = req.body;
+
+        if (!nombre || !email) {
+            return res.status(400).json({ error: 'Nombre y email son obligatorios' });
+        }
+
+        const admin = await db.query(`
+            SELECT id FROM usuarios
+            WHERE negocio_id = $1 AND rol = 'admin' AND activo = TRUE
+            ORDER BY created_at ASC LIMIT 1
+        `, [id]);
+
+        if (admin.rows.length === 0) {
+            return res.status(404).json({ error: 'No se encontró administrador' });
+        }
+
+        const adminId = admin.rows[0].id;
+
+        if (password) {
+            await db.query(`
+                UPDATE usuarios SET nombre = $1, email = $2,
+                password_hash = crypt($3, gen_salt('bf'))
+                WHERE id = $4
+            `, [nombre, email, password, adminId]);
+        } else {
+            await db.query(`
+                UPDATE usuarios SET nombre = $1, email = $2
+                WHERE id = $3
+            `, [nombre, email, adminId]);
+        }
+
+        res.json({ mensaje: 'Administrador actualizado correctamente' });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ya existe un usuario con ese email' });
+        }
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar administrador' });
     }
 });
 

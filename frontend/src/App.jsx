@@ -7,7 +7,26 @@ import Superadmin from './pages/Superadmin';
 import { TemaProvider } from './context/TemaContext';
 
 
-function RutaProtegida({ children, roles }) {
+// Función helper: un usuario puede entrar al panel admin si tiene
+// al menos un permiso de módulo, o si es admin/superadmin
+function puedeEntrarAdmin(usuario) {
+  if (!usuario) return false;
+  if (['superadmin', 'admin'].includes(usuario.rol)) return true;
+  const permisos = typeof usuario.permisos === 'string'
+    ? JSON.parse(usuario.permisos || '{}')
+    : (usuario.permisos || {});
+  // Tiene acceso al admin si tiene al menos un módulo con al menos un permiso
+  return Object.values(permisos).some(lista => Array.isArray(lista) && lista.length > 0);
+}
+
+function redireccionInicio(usuario) {
+  if (!usuario) return '/login';
+  if (usuario.rol === 'superadmin') return '/superadmin';
+  if (puedeEntrarAdmin(usuario)) return '/admin';
+  return '/pos';
+}
+
+function RutaProtegida({ children, soloSuperadmin = false, requiereAdmin = false }) {
   const { usuario, cargando } = useAuth();
 
   if (cargando) {
@@ -20,12 +39,14 @@ function RutaProtegida({ children, roles }) {
 
   if (!usuario) return <Navigate to="/login" replace />;
 
-  if (roles && !roles.includes(usuario.rol)) {
-    // Si es cajero o encargado, mandamos al POS directamente
-    if (['cajero', 'encargado'].includes(usuario.rol)) {
-      return <Navigate to="/pos" replace />;
-    }
-    return <Navigate to="/login" replace />;
+  // Solo superadmin puede entrar a /superadmin
+  if (soloSuperadmin && usuario.rol !== 'superadmin') {
+    return <Navigate to={redireccionInicio(usuario)} replace />;
+  }
+
+  // Panel admin: requiere ser admin/superadmin O tener al menos un permiso
+  if (requiereAdmin && !puedeEntrarAdmin(usuario)) {
+    return <Navigate to="/pos" replace />;
   }
 
   return children;
@@ -46,30 +67,30 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={
         usuario
-          ? <Navigate to={usuario.rol === 'superadmin' ? '/superadmin' : '/admin'} replace />
+          ? <Navigate to={redireccionInicio(usuario)} replace />
           : <Login />
       } />
 
       <Route path="/" element={
         usuario
-          ? <Navigate to={usuario.rol === 'superadmin' ? '/superadmin' : '/admin'} replace />
+          ? <Navigate to={redireccionInicio(usuario)} replace />
           : <Navigate to="/login" replace />
       } />
 
       <Route path="/superadmin" element={
-        <RutaProtegida roles={['superadmin']}>
+        <RutaProtegida soloSuperadmin>
           <Superadmin />
         </RutaProtegida>
       } />
 
       <Route path="/pos" element={
-        <RutaProtegida roles={['superadmin', 'admin', 'encargado', 'cajero']}>
+        <RutaProtegida>
           <POS />
         </RutaProtegida>
       } />
 
       <Route path="/admin/*" element={
-        <RutaProtegida roles={['superadmin', 'admin', 'encargado']}>
+        <RutaProtegida requiereAdmin>
           <Admin />
         </RutaProtegida>
       } />

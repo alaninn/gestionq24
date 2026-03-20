@@ -24,10 +24,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Solo redirigimos al login si es 401 Y no es la ruta /me
+        // Error de red (sin conexión al servidor)
+        if (!error.response) {
+            error.mensajeUsuario = 'Sin conexión con el servidor. Verificá tu red.';
+            return Promise.reject(error);
+        }
+
+        // Solo redirigimos al login si es 401 Y no es la ruta /me ni /login
+        // Y no estamos en el POS (para no perder la venta en curso)
         if (error.response?.status === 401 && 
             !error.config?.url?.includes('/api/auth/me') &&
-            !error.config?.url?.includes('/api/auth/login')) {
+            !error.config?.url?.includes('/api/auth/login') &&
+            !window.location.pathname.includes('/pos')) {
             localStorage.removeItem('token');
             localStorage.removeItem('usuario');
             window.location.href = '/login';

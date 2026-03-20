@@ -20,24 +20,44 @@ export function TemaProvider({ children }) {
     cargarTema();
   }, []);
 
-  const cargarTema = async () => {
+const cargarTema = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
         setCargado(true);
         return;
       }
-      
+
       const res = await api.get('/api/configuracion');
-      const color = res.data?.color_primario || '#f97316';
-      
-      // Si el color en BD es diferente al del localStorage, actualizamos
+      if (!res.data) {
+        setCargado(true);
+        return;
+      }
+
+      const color = res.data.color_primario || '#f97316';
+      const modoOscuro = res.data.modo_oscuro ?? true;
+
+      // Guardar config completa en localStorage para acceso rápido
+      localStorage.setItem('config_negocio', JSON.stringify(res.data));
+
+      // Solo actualizar si el color cambió
       if (color !== localStorage.getItem('color_primario')) {
         localStorage.setItem('color_primario', color);
         aplicarColor(color);
       }
+
+      // Aplicar modo oscuro/claro al body
+      if (modoOscuro) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
     } catch (err) {
-      console.error('Error cargando tema:', err);
+      // Si falla (ej: superadmin sin negocio), no es crítico
+      if (err.response?.status !== 401) {
+        console.error('Error cargando tema:', err);
+      }
     } finally {
       setCargado(true);
     }

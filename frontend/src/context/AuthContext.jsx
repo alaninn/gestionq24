@@ -34,29 +34,40 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = async (email, password) => {
-    const res = await api.post('/api/auth/login', { email, password });
+const login = async (username, password) => {
+    // Limpiar caché del negocio anterior antes de loguear
+    localStorage.removeItem('config_negocio');
+    localStorage.removeItem('color_primario');
+
+    const res = await api.post('/api/auth/login', { username, password });
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
     setUsuario(res.data.usuario);
     return res.data.usuario;
   };
 
-  const logout = () => {
-    // Guardamos el color antes de limpiar localStorage
-    const colorGuardado = localStorage.getItem('color_primario');
-    
+  // Refresca los datos del usuario desde la BD (útil para permisos actualizados)
+  const refrescarUsuario = async () => {
+    try {
+      const res = await api.get('/api/auth/me');
+      setUsuario(res.data);
+      localStorage.setItem('usuario', JSON.stringify(res.data));
+    } catch (err) {
+      console.error('Error refrescando usuario:', err);
+    }
+  };
+
+const logout = () => {
+    // Al desloguear limpiamos TODO el caché del negocio
+    // No guardamos el color porque el próximo usuario puede ser de otro negocio
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
+    localStorage.removeItem('config_negocio');
+    localStorage.removeItem('color_primario');
     localStorage.removeItem('pos_pestanas');
     localStorage.removeItem('pos_pestana_activa');
     localStorage.removeItem('pos_contador_ventas');
-    
-    // Restauramos el color después de limpiar
-    if (colorGuardado) {
-      localStorage.setItem('color_primario', colorGuardado);
-    }
-    
+
     setUsuario(null);
     window.location.href = '/login';
   };
@@ -70,8 +81,8 @@ export function AuthProvider({ children }) {
     return permisos[modulo]?.includes(accion) || false;
   };
 
-  return (
-    <AuthContext.Provider value={{ usuario, cargando, login, logout, tienePermiso }}>
+return (
+    <AuthContext.Provider value={{ usuario, cargando, login, logout, tienePermiso, refrescarUsuario }}>
       {children}
     </AuthContext.Provider>
   );

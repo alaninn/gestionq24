@@ -773,7 +773,7 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
 }
 
 function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
-  const { usuario } = useAuth();
+ const { usuario, logout } = useAuth();
   const [datos, setDatos] = useState({
     efectivo_retirado: '', dinero_siguiente: '',
     total_tarjetas: '', total_mercadopago: '',
@@ -2058,6 +2058,11 @@ function POS() {
         <button onClick={() => navigate('/admin')}
           className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
           ⚙️ <span className="hidden sm:inline">Admin</span>
+        </button>
+
+        <button onClick={logout}
+          className="flex items-center gap-1.5 bg-red-800 hover:bg-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+          🚪 <span className="hidden sm:inline">Salir</span>
         </button>
 
         {/* Status derecha */}

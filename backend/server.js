@@ -80,13 +80,73 @@ app.listen(PUERTO, '0.0.0.0', () => {
     console.log(`📦 API disponible en http://localhost:${PUERTO}/api`);
 });
 
+// Importar la lógica directamente en lugar de llamar al endpoint HTTP
+const { Pool } = require('pg');
+
 schedule.scheduleJob('*/5 * * * *', async () => {
     try {
-        await fetch('http://localhost:3001/api/superadmin/generar-alertas', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
+        const db = require('./config/database');
+
+        // Alertas de vencimiento próximo (menos de 5 días)
+        const vencimientos = await db.query(`
+            SELECT id, nombre, fecha_vencimiento FROM negocios 
+            WHERE estado = 'activo'
+            AND fecha_vencimiento < NOW() + INTERVAL '5 days'
+            AND fecha_vencimiento > NOW()
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas 
+                WHERE negocio_id = negocios.id 
+                AND tipo = 'vencimiento'
+                AND resuelta = false
+                AND DATE(fecha) = CURRENT_DATE
+            )
+        `);
+        for (const neg of vencimientos.rows) {
+            const diasFaltantes = Math.ceil((new Date(neg.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24));
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'vencimiento', $2, $3, $4)
+            `, [neg.id, `⏰ Vencimiento próximo`, `${neg.nombre} vence en ${diasFaltantes} días.`, diasFaltantes <= 2 ? 'crítica' : 'alta']);
+        }
+
+        // Alertas de vencidos
+        const vencidos = await db.query(`
+            SELECT id, nombre FROM negocios 
+            WHERE estado = 'activo' AND fecha_vencimiento < NOW()
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas WHERE negocio_id = negocios.id 
+                AND tipo = 'vencimiento_vencido' AND resuelta = false
+            )
+        `);
+        for (const neg of vencidos.rows) {
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'vencimiento_vencido', '🚨 Suscripción VENCIDA', $2, 'crítica')
+            `, [neg.id, `${neg.nombre} está vencido.`]);
+        }
+
+        // Alertas de inactividad
+        const inactivos = await db.query(`
+            SELECT id, nombre, ultima_actividad FROM negocios 
+            WHERE estado = 'activo'
+            AND (ultima_actividad IS NULL OR ultima_actividad < NOW() - INTERVAL '7 days')
+            AND NOT EXISTS (
+                SELECT 1 FROM alertas WHERE negocio_id = negocios.id 
+                AND tipo = 'sin_actividad' AND resuelta = false
+                AND DATE(fecha) = CURRENT_DATE
+            )
+        `);
+        for (const neg of inactivos.rows) {
+            const dias = neg.ultima_actividad
+                ? Math.floor((new Date() - new Date(neg.ultima_actividad)) / (1000 * 60 * 60 * 24))
+                : '∞';
+            await db.query(`
+                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
+                VALUES ($1, 'sin_actividad', $2, $3, 'media')
+            `, [neg.id, `💾 Sin actividad por ${dias} días`, `${neg.nombre} no registró ventas.`]);
+        }
+
     } catch (err) {
-        console.error('Error generando alertas:', err);
+        console.error('Error generando alertas automáticas:', err.message);
     }
 });

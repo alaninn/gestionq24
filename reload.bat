@@ -8,34 +8,37 @@ echo   GESTION Q24 - RELOAD COMPLETO
 echo ========================================
 echo.
 
-REM Detener procesos anteriores
-echo [1/5] Deteniendo procesos anteriores...
-taskkill /F /IM node.exe >nul 2>&1
+REM Guardar la ruta raiz del proyecto
+set ROOT=%~dp0
 
-REM Limpiar cache del frontend
-echo [2/5] Limpiando cache del frontend...
-cd frontend
-if exist dist (
-    rmdir /s /q dist
-    echo   - Carpeta dist eliminada
-)
-echo   - Cache limpiado
-
-REM Instalar dependencias (por si hay cambios en package.json)
-echo [3/5] Verificando dependencias...
+REM Compilar frontend PRIMERO (antes de matar el servidor)
+echo [1/5] Compilando frontend...
+cd /d "%ROOT%frontend"
 call npm install >nul 2>&1
-
-REM Compilar frontend
-echo [4/5] Compilando frontend...
 call npm run build
 if errorlevel 1 (
     echo.
     echo ERROR: Fallo la compilacion del frontend
+    echo El servidor anterior sigue corriendo - no se interrumpio el servicio
     echo.
+    cd /d "%ROOT%"
     pause
     exit /b 1
 )
-cd ..
+
+REM Solo matar el servidor DESPUES de compilar exitosamente
+echo [2/5] Deteniendo servidor anterior...
+taskkill /F /IM node.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+
+REM Limpiar dist viejo y copiar el nuevo build
+echo [3/5] Actualizando archivos...
+echo   - Frontend compilado correctamente
+
+REM Verificar dependencias del backend
+echo [4/5] Verificando dependencias del backend...
+cd /d "%ROOT%backend"
+call npm install >nul 2>&1
 
 REM Iniciar servidor
 echo [5/5] Iniciando servidor...
@@ -51,7 +54,7 @@ echo   Presiona Ctrl+C para detener el servidor
 echo ========================================
 echo.
 
-cd backend
+cd /d "%ROOT%backend"
 npm start
 
 pause

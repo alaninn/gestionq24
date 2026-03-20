@@ -45,7 +45,9 @@ const LIMITE = 50;
 function Productos() {
 
   const [productos, setProductos] = useState([]);
-  const [categorias, setCategorias] = useState([]);
+const [categorias, setCategorias] = useState([]);
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [creandoCategoria, setCreandoCategoria] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [buscar, setBuscar] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
@@ -125,11 +127,24 @@ function Productos() {
     }
   };
 
-  const cargarCategorias = async () => {
+const cargarCategorias = async () => {
     try {
       const res = await api.get('/api/categorias');
       setCategorias(res.data);
     } catch (err) { console.error('Error:', err); }
+  };
+
+  const crearCategoriaRapida = async () => {
+    if (!nuevaCategoria.trim()) return;
+    try {
+      const res = await api.post('/api/categorias', { nombre: nuevaCategoria.trim() });
+      await cargarCategorias();
+      setFormulario(prev => ({ ...prev, categoria_id: res.data.id }));
+      setNuevaCategoria('');
+      setCreandoCategoria(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al crear categoría');
+    }
   };
 
   const ordenarPor = (columna) => {
@@ -185,6 +200,8 @@ function Productos() {
     setMostrarFormulario(true);
     setCodigos([]);
     setNuevoCodigo('');
+    setNuevaCategoria('');
+    setCreandoCategoria(false);
   };
 
   const abrirFormularioEditar = (producto) => {
@@ -199,6 +216,8 @@ function Productos() {
     setError('');
     setMostrarFormulario(true);
     setCodigos([]);
+    setNuevaCategoria('');
+    setCreandoCategoria(false);
     setCargandoCodigos(true);
     api.get(`/api/productos/${producto.id}/codigos`)
       .then(res => setCodigos(res.data))
@@ -532,11 +551,50 @@ const exportarExcel = async () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>
-                      <select name="categoria_id" value={formulario.categoria_id} onChange={manejarCambio} required
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
-                        <option value="">Seleccionar...</option>
-                        {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
-                      </select>
+                      <div className="flex gap-2">
+                        <select name="categoria_id" value={formulario.categoria_id} onChange={manejarCambio} required
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                          <option value="">
+                            {categorias.length === 0 ? '— Sin categorías —' : 'Seleccionar...'}
+                          </option>
+                          {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
+                        </select>
+                        <button type="button" onClick={() => setCreandoCategoria(!creandoCategoria)}
+                          title="Crear nueva categoría"
+                          className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-bold transition-colors">
+                          +
+                        </button>
+                      </div>
+
+                      {/* Input para crear categoría nueva al instante */}
+                      {creandoCategoria && (
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            type="text"
+                            value={nuevaCategoria}
+                            onChange={(e) => setNuevaCategoria(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); crearCategoriaRapida(); } }}
+                            placeholder="Nombre de la nueva categoría..."
+                            autoFocus
+                            className="flex-1 border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button type="button" onClick={crearCategoriaRapida}
+                            className="px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-bold transition-colors">
+                            ✓
+                          </button>
+                          <button type="button" onClick={() => { setCreandoCategoria(false); setNuevaCategoria(''); }}
+                            className="px-3 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded-lg text-sm font-bold transition-colors">
+                            ✕
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Aviso si no hay categorías */}
+                      {categorias.length === 0 && !creandoCategoria && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          ⚠️ No hay categorías. Hacé clic en <strong>+</strong> para crear una antes de guardar el producto.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div>

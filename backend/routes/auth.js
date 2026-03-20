@@ -14,13 +14,13 @@ const jwt = require('jsonwebtoken');
 // -----------------------------------------------
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { username, password } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email y contraseña son obligatorios' });
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
         }
 
-        // Buscamos el usuario y verificamos la contraseña con pgcrypto
+      // Buscamos solo por username
         const resultado = await db.query(`
             SELECT 
                 u.*,
@@ -30,13 +30,13 @@ router.post('/login', async (req, res) => {
                 n.plan
             FROM usuarios u
             LEFT JOIN negocios n ON u.negocio_id = n.id
-            WHERE u.email = $1 
+            WHERE u.username = $1
               AND u.activo = TRUE
               AND u.password_hash = crypt($2, u.password_hash)
-        `, [email, password]);
+        `, [username, password]);
 
         if (resultado.rows.length === 0) {
-            return res.status(401).json({ error: 'Email o contraseña incorrectos' });
+            return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
 
         const usuario = resultado.rows[0];
@@ -112,23 +112,37 @@ router.get('/me', async (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Traemos los datos actualizados del usuario
+        // Traemos los datos actualizados del usuario incluyendo estado del negocio
         const resultado = await db.query(`
             SELECT 
-                u.*,
+                u.id, u.nombre, u.email, u.rol,
+                u.negocio_id, u.permisos, u.activo,
                 n.nombre AS negocio_nombre,
                 n.estado AS negocio_estado,
-                n.fecha_vencimiento
+                n.fecha_vencimiento,
+                n.plan
             FROM usuarios u
             LEFT JOIN negocios n ON u.negocio_id = n.id
             WHERE u.id = $1 AND u.activo = TRUE
         `, [decoded.id]);
 
         if (resultado.rows.length === 0) {
-            return res.status(401).json({ error: 'Usuario no encontrado' });
+            return res.status(401).json({ error: 'Usuario no encontrado o inactivo' });
         }
 
         const usuario = resultado.rows[0];
+
+        // Verificar que el negocio siga activo (excepto superadmin)
+        if (usuario.rol !== 'superadmin') {
+            if (usuario.negocio_estado === 'bloqueado') {
+                return res.status(403).json({ error: 'Tu cuenta está bloqueada.' });
+            }
+            if (usuario.negocio_estado === 'vencido' ||
+                (usuario.fecha_vencimiento && new Date(usuario.fecha_vencimiento) < new Date())) {
+                return res.status(403).json({ error: 'Tu suscripción ha vencido.' });
+            }
+        }
+
         res.json({
             id: usuario.id,
             nombre: usuario.nombre,
@@ -138,6 +152,7 @@ router.get('/me', async (req, res) => {
             negocio_nombre: usuario.negocio_nombre,
             permisos: usuario.permisos,
             fecha_vencimiento: usuario.fecha_vencimiento,
+            plan: usuario.plan,
         });
 
     } catch (error) {

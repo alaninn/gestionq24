@@ -7,9 +7,10 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 const ROLES = [
-  { id: 'admin', label: 'Admin', desc: 'Acceso total al negocio', color: 'bg-purple-100 text-purple-700' },
-  { id: 'encargado', label: 'Encargado', desc: 'Gestión de ventas, productos y reportes', color: 'bg-blue-100 text-blue-700' },
-  { id: 'cajero', label: 'Cajero', desc: 'Solo puede realizar ventas', color: 'bg-green-100 text-green-700' },
+  { id: 'admin', label: 'Admin', desc: 'Acceso total al negocio. Precarga todos los permisos', color: 'bg-purple-100 text-purple-700' },
+  { id: 'encargado', label: 'Encargado', desc: 'Precarga permisos de gestión. Podés personalizarlos', color: 'bg-blue-100 text-blue-700' },
+  { id: 'cajero', label: 'Cajero', desc: 'Precarga permisos básicos. Podés personalizarlos', color: 'bg-green-100 text-green-700' },
+  // Nota: el rol 'superadmin' nunca aparece acá — solo existe uno y sos vos
 ];
 
 const PERMISOS_DISPONIBLES = [
@@ -65,7 +66,7 @@ function Usuarios() {
   const [error, setError] = useState('');
 
   const [form, setForm] = useState({
-    nombre: '', email: '', password: '', rol: 'cajero',
+    nombre: '', username: '', email: '', password: '', confirmarPassword: '', rol: 'cajero',
     activo: true, permisos: PERMISOS_DEFAULT.cajero,
   });
 
@@ -84,7 +85,7 @@ function Usuarios() {
   };
 
   const abrirNuevo = () => {
-    setForm({ nombre: '', email: '', password: '', rol: 'cajero', activo: true, permisos: PERMISOS_DEFAULT.cajero });
+    setForm({ nombre: '', username: '', email: '', password: '', confirmarPassword: '', rol: 'cajero', activo: true, permisos: PERMISOS_DEFAULT.cajero });
     setUsuarioEditando(null);
     setError('');
     setMostrarModal(true);
@@ -93,8 +94,10 @@ function Usuarios() {
   const abrirEditar = (usuario) => {
     setForm({
       nombre: usuario.nombre,
-      email: usuario.email,
+      username: usuario.username || '',
+      email: usuario.email || '',
       password: '',
+      confirmarPassword: '',
       rol: usuario.rol,
       activo: usuario.activo,
       permisos: usuario.permisos || PERMISOS_DEFAULT[usuario.rol] || {},
@@ -107,8 +110,18 @@ function Usuarios() {
   const guardar = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validar contraseñas
+    if (form.password && form.password !== form.confirmarPassword) {
+      return setError('Las contraseñas no coinciden');
+    }
+    if (!usuarioEditando && !form.password) {
+      return setError('La contraseña es obligatoria al crear un usuario');
+    }
+
     try {
       const datos = { ...form };
+      delete datos.confirmarPassword;
       if (!datos.password) delete datos.password;
 
       if (usuarioEditando) {
@@ -286,32 +299,60 @@ function Usuarios() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
                   <input type="text" value={form.nombre}
                     onChange={(e) => setForm(p => ({ ...p, nombre: e.target.value }))}
                     required autoFocus
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    placeholder="Nombre completo" />
+                    placeholder="Ej: Juan García" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                  <input type="email" value={form.email}
-                    onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de usuario *</label>
+                  <input type="text" value={form.username}
+                    onChange={(e) => setForm(p => ({ ...p, username: e.target.value.toLowerCase().replace(/\s/g, '') }))}
                     required
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    placeholder="usuario@email.com" />
+                    placeholder="Ej: cajerojuan" />
+                  <p className="text-xs text-gray-400 mt-1">Sin espacios, se usa para iniciar sesión</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña {usuarioEditando ? '(dejar vacío para no cambiar)' : '*'}
-                </label>
-                <input type="password" value={form.password}
-                  onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))}
-                  required={!usuarioEditando}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-gray-400 font-normal">(opcional)</span></label>
+                <input type="email" value={form.email}
+                  onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="••••••••" />
+                  placeholder="usuario@email.com" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña {usuarioEditando ? '(vacío = no cambiar)' : '*'}
+                  </label>
+                  <input type="password" value={form.password}
+                    onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))}
+                    required={!usuarioEditando}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirmar contraseña {usuarioEditando && !form.password ? '' : '*'}
+                  </label>
+                  <input type="password" value={form.confirmarPassword}
+                    onChange={(e) => setForm(p => ({ ...p, confirmarPassword: e.target.value }))}
+                    required={!!form.password || !usuarioEditando}
+                    className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                      form.confirmarPassword && form.password !== form.confirmarPassword
+                        ? 'border-red-400 bg-red-50'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="••••••••" />
+                  {form.confirmarPassword && form.password !== form.confirmarPassword && (
+                    <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                  )}
+                </div>
               </div>
 
               {/* Rol */}
@@ -339,8 +380,35 @@ function Usuarios() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-gray-700">Permisos</label>
-                  <span className="text-xs text-gray-400">Personalizá el acceso del usuario</span>
+                  <div className="flex gap-2">
+                    <button type="button"
+                      onClick={() => setForm(p => ({ ...p, permisos: PERMISOS_DEFAULT.admin }))}
+                      className="text-xs text-purple-600 hover:underline">
+                      Todos
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button type="button"
+                      onClick={() => setForm(p => ({ ...p, permisos: {} }))}
+                      className="text-xs text-red-400 hover:underline">
+                      Ninguno
+                    </button>
+                  </div>
                 </div>
+
+                {/* Aviso de acceso al panel */}
+                {(() => {
+                  const tieneAlguno = Object.values(form.permisos).some(
+                    lista => Array.isArray(lista) && lista.length > 0
+                  );
+                  const esAdmin = ['admin', 'superadmin'].includes(form.rol);
+                  return !esAdmin && (
+                    <div className={`text-xs px-3 py-2 rounded-lg mb-2 ${tieneAlguno ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                      {tieneAlguno
+                        ? '✅ Este usuario podrá acceder al panel de administración según los permisos marcados'
+                        : '⚠️ Sin permisos: este usuario solo podrá usar el Punto de Venta'}
+                    </div>
+                  );
+                })()}
                 <div className="border border-gray-200 rounded-xl p-3 max-h-52 overflow-y-auto bg-gray-50">
                   <div className="grid grid-cols-2 gap-2">
                     {PERMISOS_DISPONIBLES.map(p => (

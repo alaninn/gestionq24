@@ -7,7 +7,7 @@ const db = require('../config/database');
 router.get('/', async (req, res) => {
     try {
         const { buscar, categoria, pagina, limite = 50 } = req.query;
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
 
         let whereClause = 'WHERE p.activo = TRUE AND p.negocio_id = $1';
         let valores = [negocio_id];
@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
 
 router.get('/stock-bajo', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const resultado = await db.query(`
             SELECT p.*, c.nombre AS categoria_nombre
             FROM productos p
@@ -101,7 +101,7 @@ router.get('/stock-bajo', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const resultado = await db.query(`
             SELECT p.*, c.nombre AS categoria_nombre
             FROM productos p
@@ -120,7 +120,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', verificarPermiso('productos', 'crear'), async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const {
             codigo, nombre, categoria_id, precio_costo,
             precio_venta, precio_mayorista, stock,
@@ -173,7 +173,7 @@ router.post('/', verificarPermiso('productos', 'crear'), async (req, res) => {
 
 router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { id } = req.params;
         const {
             codigo, nombre, categoria_id, precio_costo,
@@ -225,7 +225,7 @@ router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => 
 
 router.delete('/:id', verificarPermiso('productos', 'eliminar'), async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+      const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         await db.query(
             'UPDATE productos SET activo = FALSE WHERE id = $1 AND negocio_id = $2',
             [req.params.id, negocio_id]
@@ -243,7 +243,7 @@ router.delete('/:id', verificarPermiso('productos', 'eliminar'), async (req, res
 // -----------------------------------------------
 router.post('/:id/codigos', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         const { codigo } = req.body;
 
         console.log('Agregando código:', codigo, 'producto:', req.params.id, 'negocio:', negocio_id);
@@ -274,7 +274,7 @@ router.post('/:id/codigos', async (req, res) => {
 // -----------------------------------------------
 router.delete('/codigos/:codigoId', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
         await db.query(
             'DELETE FROM producto_codigos WHERE id = $1 AND negocio_id = $2',
             [req.params.codigoId, negocio_id]
