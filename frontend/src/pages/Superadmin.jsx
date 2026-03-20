@@ -25,6 +25,7 @@ function Superadmin() {
   const [mostrarModalDias, setMostrarModalDias] = useState(null);
   const [mostrarModalSalud, setMostrarModalSalud] = useState(null);
   const [mostrarModalGestionTickets, setMostrarModalGestionTickets] = useState(null);
+  const [mostrarModalDetalleNegocio, setMostrarModalDetalleNegocio] = useState(null);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
   const [historialPagos, setHistorialPagos] = useState([]);
@@ -390,21 +391,23 @@ function Superadmin() {
                   <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm">Vencimiento</th>
                   <th className="text-right px-6 py-4 text-gray-700 font-semibold text-sm">Ventas</th>
                   <th className="text-right px-6 py-4 text-gray-700 font-semibold text-sm">Facturado</th>
-                  <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm">Acciones</th>
+                  <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {negocios.map(negocio => {
                   const dias = diasRestantes(negocio.fecha_vencimiento);
                   return (
-                    <tr key={negocio.id} className="hover:bg-slate-50 transition-colors duration-150">
+                    <tr key={negocio.id} 
+                        onClick={() => setMostrarModalDetalleNegocio(negocio)}
+                        className="hover:bg-purple-50/50 transition-all duration-200 cursor-pointer group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 group-hover:scale-110 transition-transform">
                             {negocio.nombre.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-800">{negocio.nombre}</p>
+                            <p className="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">{negocio.nombre}</p>
                             <p className="text-xs text-gray-500">{negocio.total_usuarios} usuarios • {negocio.total_productos} productos</p>
                           </div>
                         </div>
@@ -432,64 +435,9 @@ function Superadmin() {
                         <p className="font-bold text-green-600 text-lg">{fmt(negocio.total_facturado)}</p>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center gap-1.5 flex-wrap">
-                          <button onClick={() => accederNegocio(negocio.id)}
-                            className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Acceder al panel">
-                            🔓
-                          </button>
-                          <button onClick={() => {
-                            setMostrarModalRenovar(negocio);
-                            setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
-                          }}
-                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Renovar">
-                            🔄
-                          </button>
-                          <button onClick={() => {
-                            setMostrarModalDias(negocio);
-                            setFormDias({ dias: negocio.dias_uso?.toString() || '30' });
-                          }}
-                            className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Editar días">
-                            📅
-                          </button>
-                          <button onClick={() => {
-                            setMostrarModalHistorial(negocio);
-                            cargarHistorialPagos(negocio.id);
-                          }}
-                            className="bg-cyan-100 hover:bg-cyan-200 text-cyan-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Historial">
-                            📊
-                          </button>
-                          <button onClick={() => {
-                            setMostrarModalSalud(negocio);
-                            cargarSaludNegocio(negocio.id);
-                          }}
-                            className="bg-green-100 hover:bg-green-200 text-green-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Salud">
-                            ❤️
-                          </button>
-                          <button onClick={() => {
-                            setMostrarModalGestionTickets(negocio);
-                            cargarTickets();
-                          }}
-                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-                            title="Tickets">
-                            🎫
-                          </button>
-                          {negocio.estado === 'activo' ? (
-                            <button onClick={() => cambiarEstado(negocio.id, 'bloqueado')}
-                              className="bg-red-100 hover:bg-red-200 text-red-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200">
-                              🚫
-                            </button>
-                          ) : (
-                            <button onClick={() => cambiarEstado(negocio.id, 'activo')}
-                              className="bg-green-100 hover:bg-green-200 text-green-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200">
-                              ✅
-                            </button>
-                          )}
-                        </div>
+                        <span className="text-purple-500 text-sm font-medium group-hover:text-purple-700">
+                          Ver detalles →
+                        </span>
                       </td>
                     </tr>
                   );
@@ -983,6 +931,237 @@ function Superadmin() {
                 onClick={() => setMostrarModalGestionTickets(null)}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors"
               >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detalle del Negocio - NUEVO DISEÑO */}
+      {mostrarModalDetalleNegocio && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden">
+            {/* Header del Modal */}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl font-bold backdrop-blur-sm">
+                    {mostrarModalDetalleNegocio.nombre.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">{mostrarModalDetalleNegocio.nombre}</h2>
+                    <p className="text-white/80 text-sm mt-1">{mostrarModalDetalleNegocio.email}</p>
+                  </div>
+                </div>
+                <button onClick={() => setMostrarModalDetalleNegocio(null)} 
+                  className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center text-2xl transition-all">
+                  ×
+                </button>
+              </div>
+              
+              {/* Estado Badge */}
+              <div className="mt-4 flex items-center gap-3">
+                <span className={`px-4 py-2 rounded-full text-sm font-bold ${
+                  mostrarModalDetalleNegocio.estado === 'activo' ? 'bg-green-500 text-white' :
+                  mostrarModalDetalleNegocio.estado === 'bloqueado' ? 'bg-red-500 text-white' :
+                  'bg-yellow-500 text-white'
+                }`}>
+                  {mostrarModalDetalleNegocio.estado === 'activo' ? '✅ Activo' : 
+                   mostrarModalDetalleNegocio.estado === 'bloqueado' ? '🚫 Bloqueado' : '⏳ Vencido'}
+                </span>
+                <span className="text-white/70 text-sm">
+                  📅 Vence: {fmtFecha(mostrarModalDetalleNegocio.fecha_vencimiento)} 
+                  ({diasRestantes(mostrarModalDetalleNegocio.fecha_vencimiento)} días)
+                </span>
+              </div>
+            </div>
+
+            {/* Contenido del Modal */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* Estadísticas Principales */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-blue-600">{mostrarModalDetalleNegocio.total_ventas}</p>
+                  <p className="text-xs text-blue-600/70 mt-1">Ventas Totales</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-bold text-green-600">{fmt(mostrarModalDetalleNegocio.total_facturado)}</p>
+                  <p className="text-xs text-green-600/70 mt-1">Facturación</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-purple-600">{mostrarModalDetalleNegocio.total_usuarios}</p>
+                  <p className="text-xs text-purple-600/70 mt-1">Usuarios</p>
+                </div>
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-orange-600">{mostrarModalDetalleNegocio.total_productos}</p>
+                  <p className="text-xs text-orange-600/70 mt-1">Productos</p>
+                </div>
+              </div>
+
+              {/* Información del Negocio */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-lg">📋</span> Información del Negocio
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-gray-500">Teléfono</p>
+                    <p className="font-medium text-gray-800">{mostrarModalDetalleNegocio.telefono || 'No especificado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Plan</p>
+                    <p className="font-medium text-gray-800 capitalize">{mostrarModalDetalleNegocio.plan || 'Mensual'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Días de Uso</p>
+                    <p className="font-medium text-gray-800">{mostrarModalDetalleNegocio.dias_uso || 30} días</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Dirección</p>
+                    <p className="font-medium text-gray-800">{mostrarModalDetalleNegocio.direccion || 'No especificada'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones de Acción Grandes */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="text-lg">⚡</span> Acciones Disponibles
+                </h3>
+                
+                {/* Acceder al Panel */}
+                <button onClick={() => {
+                  accederNegocio(mostrarModalDetalleNegocio.id);
+                  setMostrarModalDetalleNegocio(null);
+                }}
+                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    🔓
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Acceder al Panel</p>
+                    <p className="text-white/80 text-sm">Entrar al panel de administración de este negocio</p>
+                  </div>
+                </button>
+
+                {/* Renovar Suscripción */}
+                <button onClick={() => {
+                  setMostrarModalDetalleNegocio(null);
+                  setMostrarModalRenovar(mostrarModalDetalleNegocio);
+                  setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
+                }}
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    🔄
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Renovar Suscripción</p>
+                    <p className="text-white/80 text-sm">Extender el período de uso del negocio</p>
+                  </div>
+                </button>
+
+                {/* Editar Días de Uso */}
+                <button onClick={() => {
+                  setMostrarModalDetalleNegocio(null);
+                  setMostrarModalDias(mostrarModalDetalleNegocio);
+                  setFormDias({ dias: mostrarModalDetalleNegocio.dias_uso?.toString() || '30' });
+                }}
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    📅
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Editar Días de Uso</p>
+                    <p className="text-white/80 text-sm">Modificar la cantidad de días disponibles</p>
+                  </div>
+                </button>
+
+                {/* Ver Historial de Pagos */}
+                <button onClick={() => {
+                  setMostrarModalDetalleNegocio(null);
+                  setMostrarModalHistorial(mostrarModalDetalleNegocio);
+                  cargarHistorialPagos(mostrarModalDetalleNegocio.id);
+                }}
+                  className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    📊
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Ver Historial de Pagos</p>
+                    <p className="text-white/80 text-sm">Consultar todos los pagos y renovaciones realizadas</p>
+                  </div>
+                </button>
+
+                {/* Ver Salud del Negocio */}
+                <button onClick={() => {
+                  setMostrarModalDetalleNegocio(null);
+                  setMostrarModalSalud(mostrarModalDetalleNegocio);
+                  cargarSaludNegocio(mostrarModalDetalleNegocio.id);
+                }}
+                  className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    ❤️
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Ver Salud del Negocio</p>
+                    <p className="text-white/80 text-sm">Analizar actividad, errores y estado general</p>
+                  </div>
+                </button>
+
+                {/* Gestionar Tickets */}
+                <button onClick={() => {
+                  setMostrarModalDetalleNegocio(null);
+                  setMostrarModalGestionTickets(mostrarModalDetalleNegocio);
+                  cargarTickets();
+                }}
+                  className="w-full bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                    🎫
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Gestionar Tickets</p>
+                    <p className="text-white/80 text-sm">Responder solicitudes de soporte del cliente</p>
+                  </div>
+                </button>
+
+                {/* Bloquear/Activar */}
+                {mostrarModalDetalleNegocio.estado === 'activo' ? (
+                  <button onClick={() => {
+                    cambiarEstado(mostrarModalDetalleNegocio.id, 'bloqueado');
+                    setMostrarModalDetalleNegocio(null);
+                  }}
+                    className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                      🚫
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-lg">Bloquear Negocio</p>
+                      <p className="text-white/80 text-sm">Suspender el acceso a este negocio</p>
+                    </div>
+                  </button>
+                ) : (
+                  <button onClick={() => {
+                    cambiarEstado(mostrarModalDetalleNegocio.id, 'activo');
+                    setMostrarModalDetalleNegocio(null);
+                  }}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white p-4 rounded-xl flex items-center gap-4 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
+                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                      ✅
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-lg">Activar Negocio</p>
+                      <p className="text-white/80 text-sm">Restaurar el acceso a este negocio</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-gray-50">
+              <button onClick={() => setMostrarModalDetalleNegocio(null)}
+                className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-semibold transition-colors">
                 Cerrar
               </button>
             </div>
