@@ -5,21 +5,42 @@ const TemaContext = createContext(null);
 export const useTema = () => useContext(TemaContext);
 
 export function TemaProvider({ children }) {
-  const [colorPrimario, setColorPrimario] = useState('#f97316');
+  const [colorPrimario, setColorPrimario] = useState(() => {
+    // Cargar color del localStorage al inicializar
+    return localStorage.getItem('color_primario') || '#f97316';
+  });
+  const [cargado, setCargado] = useState(false);
 
   useEffect(() => {
+    // Aplicar color inmediatamente desde localStorage
+    const colorGuardado = localStorage.getItem('color_primario') || '#f97316';
+    aplicarColor(colorGuardado);
+    
+    // Luego cargar de la BD para sincronizar
     cargarTema();
   }, []);
 
   const cargarTema = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return; // Si no hay token no cargamos el tema
-      const res = await api.get('/api/configuracion');
-      if (res.data?.color_primario) {
-        aplicarColor(res.data.color_primario);
+      if (!token) {
+        setCargado(true);
+        return;
       }
-    } catch {}
+      
+      const res = await api.get('/api/configuracion');
+      const color = res.data?.color_primario || '#f97316';
+      
+      // Si el color en BD es diferente al del localStorage, actualizamos
+      if (color !== localStorage.getItem('color_primario')) {
+        localStorage.setItem('color_primario', color);
+        aplicarColor(color);
+      }
+    } catch (err) {
+      console.error('Error cargando tema:', err);
+    } finally {
+      setCargado(true);
+    }
   };
 
   const aplicarColor = (color) => {
@@ -32,14 +53,22 @@ export function TemaProvider({ children }) {
   };
 
   const cambiarColor = async (color) => {
+    // Aplicar inmediatamente en la UI
     aplicarColor(color);
+    
+    // Guardar en localStorage
+    localStorage.setItem('color_primario', color);
+    
+    // Guardar en la BD
     try {
       await api.put('/api/configuracion', { color_primario: color });
-    } catch {}
+    } catch (err) {
+      console.error('Error guardando color:', err);
+    }
   };
 
   return (
-    <TemaContext.Provider value={{ colorPrimario, cambiarColor, aplicarColor }}>
+    <TemaContext.Provider value={{ colorPrimario, cambiarColor, aplicarColor, cargado }}>
       {children}
     </TemaContext.Provider>
   );

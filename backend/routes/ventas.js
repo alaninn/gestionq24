@@ -200,8 +200,10 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
         }
         
         // Actualizar venta
-        await db.query('UPDATE ventas SET items = $1, metodo_pago = $2, descuento = $3, recargo = $4, total = $5, cliente_id = $6, es_fiado = $7 WHERE id = $8 AND negocio_id = $9',
-            [items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]);
+        await db.query(
+            'UPDATE ventas SET metodo_pago = $1, descuento = $2, recargo = $3, total = $4, cliente_id = $5, es_fiado = $6 WHERE id = $7 AND negocio_id = $8',
+            [metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, req.usuario.negocio_id || 1]
+        );
         
         res.json({ mensaje: 'Venta actualizada correctamente' });
     } catch (error) {

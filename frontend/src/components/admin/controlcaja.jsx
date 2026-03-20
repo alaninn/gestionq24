@@ -445,9 +445,7 @@ function ControlCaja() {
     }
   };
 
-  const fmt = (n) => new Intl.NumberFormat('es-AR', {
-    style: 'currency', currency: 'ARS', minimumFractionDigits: 0
-  }).format(n || 0);
+
 
   return (
     <div className="space-y-4">

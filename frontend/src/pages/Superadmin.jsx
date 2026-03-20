@@ -52,6 +52,7 @@ function Superadmin() {
 
   useEffect(() => {
     cargarDatos();
+    // Cargar alertas sin bloquear la UI
     cargarAlertas();
     // Recargar alertas cada 30 segundos
     const interval = setInterval(cargarAlertas, 30000);
@@ -61,6 +62,7 @@ function Superadmin() {
   const cargarDatos = async () => {
     try {
       setCargando(true);
+      // Cargar stats y negocios en paralelo
       const [resStats, resNegocios] = await Promise.all([
         api.get('/api/superadmin/stats'),
         api.get('/api/superadmin/negocios'),
@@ -68,7 +70,9 @@ function Superadmin() {
       setStats(resStats.data);
       setNegocios(resNegocios.data);
     } catch (err) {
-      console.error('Error:', err);
+      console.error('Error cargando datos:', err);
+      setStats(null);
+      setNegocios([]);
     } finally {
       setCargando(false);
     }
@@ -228,58 +232,68 @@ function Superadmin() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
 
-      {/* Barra superior */}
-      <div className="bg-gray-900 text-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
-            <span>👑</span>
+      {/* Barra superior mejorada */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 text-white px-8 py-6 flex items-center justify-between sticky top-0 z-40 shadow-2xl">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
+            <span className="text-xl">👑</span>
           </div>
           <div>
-            <h1 className="font-bold text-lg">Centro de Control SuperAdmin</h1>
-            <p className="text-gray-400 text-xs">Gestión de Negocios — {usuario?.nombre}</p>
+            <h1 className="font-bold text-2xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Centro de Control SuperAdmin</h1>
+            <p className="text-slate-400 text-sm mt-0.5">Gestión Global de Negocios • {usuario?.nombre}</p>
           </div>
         </div>
         <button onClick={logout}
-          className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition-colors">
-          Cerrar Sesión
+          className="bg-red-600 hover:bg-red-700 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
+          🚪 Cerrar Sesión
         </button>
       </div>
 
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-8 space-y-8 max-w-7xl mx-auto">
 
-        {/* Mensajes */}
-        {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">✅ {exito}</div>}
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
+        {/* Mensajes mejorados */}
+        {exito && (
+          <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 text-green-400 px-6 py-4 rounded-xl backdrop-blur-sm shadow-lg flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <span className="font-medium">{exito}</span>
+          </div>
+        )}
+        {error && (
+          <div className="bg-gradient-to-r from-red-500/10 to-pink-500/10 border border-red-500/30 text-red-400 px-6 py-4 rounded-xl backdrop-blur-sm shadow-lg flex items-center gap-3">
+            <span className="text-2xl">❌</span>
+            <span className="font-medium">{error}</span>
+          </div>
+        )}
 
-        {/* Widget Alertas */}
+        {/* Widget Alertas Mejorado */}
         {alertas.length > 0 && (
-          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 rounded-xl p-5 shadow">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <span className="text-2xl">🚨</span> 
-                ALERTAS ({alertas.length})
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-red-500/30 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-white flex items-center gap-3 text-lg">
+                <span className="text-3xl animate-pulse">🚨</span> 
+                <span>ALERTAS CRÍTICAS <span className="bg-red-500 text-white px-2.5 py-0.5 rounded-full text-sm ml-2">{alertas.length}</span></span>
               </h3>
               <button onClick={cargarAlertas}
-                className="text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg transition-colors">
+                className="text-xs bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all duration-200 font-semibold shadow-lg hover:shadow-xl">
                 🔄 Actualizar
               </button>
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-3 max-h-72 overflow-y-auto">
               {alertas.slice(0, 10).map(alerta => (
-                <div key={alerta.id} className={`p-3 rounded-lg flex items-start justify-between gap-3 ${
-                  alerta.severidad === 'crítica' ? 'bg-red-100 border-l-4 border-red-500' :
-                  alerta.severidad === 'alta' ? 'bg-orange-100 border-l-4 border-orange-500' :
-                  'bg-yellow-100 border-l-4 border-yellow-500'
+                <div key={alerta.id} className={`p-4 rounded-xl flex items-start justify-between gap-3 backdrop-blur-sm border transition-all duration-200 ${
+                  alerta.severidad === 'crítica' ? 'bg-red-500/20 border-red-500/50 hover:bg-red-500/30' :
+                  alerta.severidad === 'alta' ? 'bg-orange-500/20 border-orange-500/50 hover:bg-orange-500/30' :
+                  'bg-yellow-500/20 border-yellow-500/50 hover:bg-yellow-500/30'
                 }`}>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800 text-sm">{alerta.titulo}</p>
-                    <p className="text-xs text-gray-600">{alerta.negocio_nombre}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{alerta.descripcion}</p>
+                    <p className="font-semibold text-white text-sm">{alerta.titulo}</p>
+                    <p className="text-xs text-slate-300 mt-1">{alerta.negocio_nombre}</p>
+                    <p className="text-xs text-slate-400 mt-1.5">{alerta.descripcion}</p>
                   </div>
                   <button onClick={() => resolverAlerta(alerta.id)}
-                    className="text-xs bg-white hover:bg-gray-100 text-gray-700 px-2 py-1 rounded whitespace-nowrap transition-colors">
+                    className="text-xs bg-white/20 hover:bg-white/40 text-white px-3 py-1.5 rounded-lg whitespace-nowrap transition-all duration-200 font-medium backdrop-blur-sm">
                     ✓ Resolver
                   </button>
                 </div>
@@ -288,149 +302,191 @@ function Superadmin() {
           </div>
         )}
 
-        {/* Tarjetas de stats */}
+        {/* Tarjetas de stats mejoradas */}
         {stats && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl p-5 shadow">
-              <p className="text-gray-500 text-sm">Total Negocios</p>
-              <p className="text-3xl font-bold text-gray-800">{stats.total_negocios}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Total Negocios */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 shadow-2xl border border-slate-700 hover:border-slate-600 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl">🏢</span>
+                </div>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</span>
+              </div>
+              <p className="text-slate-400 text-sm font-medium mb-1">Negocios</p>
+              <p className="text-4xl font-bold text-white">{stats.total_negocios}</p>
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <p className="text-xs text-slate-500">Registrados en el sistema</p>
+              </div>
             </div>
-            <div className="bg-green-500 text-white rounded-xl p-5 shadow">
-              <p className="text-green-100 text-sm">Activos</p>
-              <p className="text-3xl font-bold">{stats.negocios_activos}</p>
+
+            {/* Activos */}
+            <div className="bg-gradient-to-br from-green-900/40 to-emerald-900/40 rounded-2xl p-6 shadow-2xl border border-green-500/30 hover:border-green-500/50 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-green-500/30 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl">✅</span>
+                </div>
+                <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">Activos</span>
+              </div>
+              <p className="text-green-300 text-sm font-medium mb-1">En Operación</p>
+              <p className="text-4xl font-bold text-green-400">{stats.negocios_activos}</p>
+              <div className="mt-4 pt-4 border-t border-green-500/20">
+                <p className="text-xs text-green-300/70">{Math.round((stats.negocios_activos / stats.total_negocios) * 100)}% del total</p>
+              </div>
             </div>
-            <div className="bg-red-500 text-white rounded-xl p-5 shadow">
-              <p className="text-red-100 text-sm">Bloqueados</p>
-              <p className="text-3xl font-bold">{stats.negocios_bloqueados}</p>
+
+            {/* Bloqueados */}
+            <div className="bg-gradient-to-br from-red-900/40 to-pink-900/40 rounded-2xl p-6 shadow-2xl border border-red-500/30 hover:border-red-500/50 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-red-500/30 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl">🚫</span>
+                </div>
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">Bloqueados</span>
+              </div>
+              <p className="text-red-300 text-sm font-medium mb-1">Suspendidos</p>
+              <p className="text-4xl font-bold text-red-400">{stats.negocios_bloqueados}</p>
+              <div className="mt-4 pt-4 border-t border-red-500/20">
+                <p className="text-xs text-red-300/70">Requieren atención</p>
+              </div>
             </div>
-            <div className="bg-white rounded-xl p-5 shadow">
-              <p className="text-gray-500 text-sm">Facturación Global</p>
-              <p className="text-2xl font-bold text-green-600">{fmt(stats.total_facturado_global)}</p>
+
+            {/* Facturación */}
+            <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 rounded-2xl p-6 shadow-2xl border border-purple-500/30 hover:border-purple-500/50 transition-all duration-300 transform hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-purple-500/30 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl">💰</span>
+                </div>
+                <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">Ingresos</span>
+              </div>
+              <p className="text-purple-300 text-sm font-medium mb-1">Facturación Global</p>
+              <p className="text-3xl font-bold text-purple-400">{fmt(stats.total_facturado_global)}</p>
+              <div className="mt-4 pt-4 border-t border-purple-500/20">
+                <p className="text-xs text-purple-300/70">Todas las transacciones</p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Lista de negocios */}
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="p-5 border-b flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-800">
-              Negocios ({negocios.length})
-            </h2>
+        {/* Lista de negocios mejorada */}
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+          <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">📊 Gestión de Negocios</h2>
+              <p className="text-sm text-gray-500 mt-1">{negocios.length} negocios registrados en el sistema</p>
+            </div>
             <button onClick={() => setMostrarModalNuevo(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm">
-              + Nuevo Negocio
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center gap-2">
+              ➕ Nuevo Negocio
             </button>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Negocio</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Email</th>
-                  <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Estado</th>
-                  <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Vencimiento</th>
-                  <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Ventas</th>
-                  <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Facturado</th>
-                  <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Acciones</th>
+                  <th className="text-left px-6 py-4 text-gray-700 font-semibold text-sm">Negocio</th>
+                  <th className="text-left px-6 py-4 text-gray-700 font-semibold text-sm">Email</th>
+                  <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm">Estado</th>
+                  <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm">Vencimiento</th>
+                  <th className="text-right px-6 py-4 text-gray-700 font-semibold text-sm">Ventas</th>
+                  <th className="text-right px-6 py-4 text-gray-700 font-semibold text-sm">Facturado</th>
+                  <th className="text-center px-6 py-4 text-gray-700 font-semibold text-sm">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-slate-100">
                 {negocios.map(negocio => {
                   const dias = diasRestantes(negocio.fecha_vencimiento);
                   return (
-                    <tr key={negocio.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800">{negocio.nombre}</p>
-                        <p className="text-xs text-gray-400">{negocio.total_usuarios} usuarios · {negocio.total_productos} productos</p>
+                    <tr key={negocio.id} className="hover:bg-slate-50 transition-colors duration-150">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                            {negocio.nombre.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-800">{negocio.nombre}</p>
+                            <p className="text-xs text-gray-500">{negocio.total_usuarios} usuarios • {negocio.total_productos} productos</p>
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-sm">{negocio.email}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      <td className="px-6 py-4 text-gray-600 text-sm">{negocio.email}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`text-xs px-3 py-1.5 rounded-full font-semibold ${
                           negocio.estado === 'activo' ? 'bg-green-100 text-green-700' :
                           negocio.estado === 'bloqueado' ? 'bg-red-100 text-red-700' :
                           'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {negocio.estado}
+                          {negocio.estado === 'activo' ? '✅ Activo' : negocio.estado === 'bloqueado' ? '🚫 Bloqueado' : '⏳ Vencido'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <p className="text-sm font-medium text-gray-700">{fmtFecha(negocio.fecha_vencimiento)}</p>
-                        <p className={`text-xs ${dias <= 5 ? 'text-red-500 font-medium' : dias <= 10 ? 'text-orange-500' : 'text-gray-400'}`}>
+                      <td className="px-6 py-4 text-center">
+                        <p className="text-sm font-semibold text-gray-700">{fmtFecha(negocio.fecha_vencimiento)}</p>
+                        <p className={`text-xs font-medium mt-1 ${dias <= 5 ? 'text-red-600' : dias <= 10 ? 'text-orange-600' : 'text-green-600'}`}>
                           {dias > 0 ? `${dias} días` : '⚠️ Vencido'}
                         </p>
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-700">{negocio.total_ventas}</td>
-                      <td className="px-4 py-3 text-right font-medium text-green-600">{fmt(negocio.total_facturado)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex justify-center gap-1 flex-wrap">
-                          {/* Acceder panel */}
+                      <td className="px-6 py-4 text-right">
+                        <p className="font-semibold text-gray-800">{negocio.total_ventas}</p>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <p className="font-bold text-green-600 text-lg">{fmt(negocio.total_facturado)}</p>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex justify-center gap-1.5 flex-wrap">
                           <button onClick={() => accederNegocio(negocio.id)}
-                            className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Acceder al panel de administración">
-                            🔓 Acceder
+                            className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Acceder al panel">
+                            🔓
                           </button>
-                          
-                          {/* Renovar */}
                           <button onClick={() => {
                             setMostrarModalRenovar(negocio);
                             setFormRenovar({ dias: '30', monto: '', metodo_pago: 'manual', observaciones: '' });
                           }}
-                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Renovar suscripción">
-                            🔄 Renovar
+                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Renovar">
+                            🔄
                           </button>
-
-                          {/* Editar días */}
                           <button onClick={() => {
                             setMostrarModalDias(negocio);
                             setFormDias({ dias: negocio.dias_uso?.toString() || '30' });
                           }}
-                            className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Editar días de uso">
-                            📅 Días
+                            className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Editar días">
+                            📅
                           </button>
-
-                          {/* Historial */}
                           <button onClick={() => {
                             setMostrarModalHistorial(negocio);
                             cargarHistorialPagos(negocio.id);
                           }}
-                            className="bg-cyan-100 hover:bg-cyan-200 text-cyan-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Ver historial de pagos">
-                            📊 Historial
+                            className="bg-cyan-100 hover:bg-cyan-200 text-cyan-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Historial">
+                            📊
                           </button>
-
-                          {/* Salud */}
                           <button onClick={() => {
                             setMostrarModalSalud(negocio);
                             cargarSaludNegocio(negocio.id);
                           }}
-                            className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Ver estado de salud">
-                            ❤️ Salud
+                            className="bg-green-100 hover:bg-green-200 text-green-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Salud">
+                            ❤️
                           </button>
-
-                          {/* Tickets */}
                           <button onClick={() => {
                             setMostrarModalGestionTickets(negocio);
                             cargarTickets();
                           }}
-                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded text-xs font-medium transition-colors"
-                            title="Gestionar tickets de soporte">
-                            🎫 Tickets
+                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                            title="Tickets">
+                            🎫
                           </button>
-
-                          {/* Bloquear/Activar */}
                           {negocio.estado === 'activo' ? (
                             <button onClick={() => cambiarEstado(negocio.id, 'bloqueado')}
-                              className="bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded text-xs font-medium transition-colors">
-                              🚫 Bloquear
+                              className="bg-red-100 hover:bg-red-200 text-red-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200">
+                              🚫
                             </button>
                           ) : (
                             <button onClick={() => cambiarEstado(negocio.id, 'activo')}
-                              className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs font-medium transition-colors">
-                              ✅ Activar
+                              className="bg-green-100 hover:bg-green-200 text-green-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200">
+                              ✅
                             </button>
                           )}
                         </div>
@@ -443,23 +499,31 @@ function Superadmin() {
           </div>
         </div>
 
-        {/* Top negocios */}
+        {/* Top negocios mejorado */}
         {stats?.top_negocios?.length > 0 && (
-          <div className="bg-white rounded-xl shadow p-5">
-            <h3 className="font-semibold text-gray-700 mb-4">🏆 Top Negocios por Facturación</h3>
-            <div className="space-y-2">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-2xl p-6 border border-slate-700">
+            <h3 className="font-bold text-white mb-6 text-lg flex items-center gap-2">
+              <span className="text-2xl">🏆</span> Top Negocios por Facturación
+            </h3>
+            <div className="space-y-4">
               {stats.top_negocios.map((n, i) => {
                 const maxFact = stats.top_negocios[0]?.total_facturado || 1;
                 const pct = (n.total_facturado / maxFact) * 100;
+                const medallas = ['🥇', '🥈', '🥉'];
                 return (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-gray-400 w-6">#{i + 1}</span>
-                    <span className="text-sm font-medium text-gray-700 w-40 truncate">{n.nombre}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-                      <div className="bg-green-500 h-full rounded-full flex items-center justify-end pr-2 transition-all"
-                        style={{ width: `${pct}%` }}>
-                        <span className="text-white text-xs font-medium">{fmt(n.total_facturado)}</span>
+                  <div key={i} className="flex items-center gap-4">
+                    <span className="text-2xl w-8 text-center">{medallas[i] || '📍'}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-white">{n.nombre}</span>
+                        <span className="text-sm font-bold text-green-400">{fmt(n.total_facturado)}</span>
                       </div>
+                      <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                        <div className="bg-gradient-to-r from-green-400 to-emerald-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }}>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">{n.total_ventas} ventas</p>
                     </div>
                   </div>
                 );

@@ -16,15 +16,11 @@ router.get('/negocios', async (req, res) => {
         const resultado = await db.query(`
             SELECT 
                 n.*,
-                COUNT(DISTINCT u.id) AS total_usuarios,
-                COUNT(DISTINCT p.id) AS total_productos,
-                COUNT(DISTINCT v.id) AS total_ventas,
-                COALESCE(SUM(v.total), 0) AS total_facturado
+                (SELECT COUNT(*) FROM usuarios WHERE negocio_id = n.id AND activo = TRUE) AS total_usuarios,
+                (SELECT COUNT(*) FROM productos WHERE negocio_id = n.id AND activo = TRUE) AS total_productos,
+                (SELECT COUNT(*) FROM ventas WHERE negocio_id = n.id) AS total_ventas,
+                (SELECT COALESCE(SUM(total), 0) FROM ventas WHERE negocio_id = n.id) AS total_facturado
             FROM negocios n
-            LEFT JOIN usuarios u ON u.negocio_id = n.id AND u.activo = TRUE
-            LEFT JOIN productos p ON p.negocio_id = n.id AND p.activo = TRUE
-            LEFT JOIN ventas v ON v.negocio_id = n.id
-            GROUP BY n.id
             ORDER BY n.created_at DESC
         `);
         res.json(resultado.rows);
@@ -158,12 +154,11 @@ router.post('/negocios/:id/renovar', async (req, res) => {
             RETURNING *
         `, [diasNum, id]);
 
-        // Registrar en historial de pagos
+         // Registrar en historial de pagos
         if (monto || metodo_pago) {
             await db.query(`
                 INSERT INTO pagos_historial (negocio_id, dias, monto, metodo_pago, observaciones, tipo)
                 VALUES ($1, $2, $3, $4, $5, 'renovacion')
-                ON CONFLICT DO NOTHING
             `, [id, diasNum, monto || 0, metodo_pago || 'manual', observaciones || null]);
         }
 
@@ -210,13 +205,12 @@ router.post('/negocios/:id/registrar-pago', async (req, res) => {
             `, [pagado, id]);
         }
 
-        // Registrar pago
+         // Registrar pago
         const resultado = await db.query(`
             INSERT INTO pagos_historial 
             (negocio_id, dias, monto, metodo_pago, observaciones, tipo, pagado)
             VALUES ($1, $2, $3, $4, $5, 'pago', $6)
             RETURNING *
-            ON CONFLICT DO NOTHING
         `, [id, dias || 30, monto || 0, metodo_pago || 'pendiente', observaciones || null, pagado ?? true]);
 
         res.json(resultado.rows[0] || { mensaje: 'Pago registrado' });

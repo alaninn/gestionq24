@@ -4,7 +4,7 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || 1;
         // Asegurarnos que los campos existan en la tabla (migración ligera)
         await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket VARCHAR(20) DEFAULT '80'`);
         await db.query(`ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket_personalizado INTEGER DEFAULT 80`);
@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 
 router.put('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || 1;
         const {
             nombre_negocio, cuit, direccion, telefono, email,
             recargo_tarjeta, descuento_maximo, permite_stock_negativo,

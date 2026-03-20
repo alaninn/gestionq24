@@ -11,6 +11,13 @@ api.interceptors.request.use((config) => {
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Si el superadmin está accediendo a otro negocio, enviar el negocio_id en el header
+    const accesoSuperadminNegocio = localStorage.getItem('acceso_superadmin_negocio');
+    if (accesoSuperadminNegocio) {
+        config.headers['x-negocio-id'] = accesoSuperadminNegocio;
+    }
+    
     return config;
 });
 

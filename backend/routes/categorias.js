@@ -4,7 +4,7 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || 1;
         const resultado = await db.query(
             'SELECT * FROM categorias WHERE negocio_id = $1 ORDER BY nombre ASC',
             [negocio_id]
@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || 1;
         const { nombre } = req.body;
         if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
 
@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || 1;
         await db.query(
             'DELETE FROM categorias WHERE id = $1 AND negocio_id = $2',
             [req.params.id, negocio_id]

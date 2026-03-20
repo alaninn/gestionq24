@@ -43,11 +43,20 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    // Guardamos el color antes de limpiar localStorage
+    const colorGuardado = localStorage.getItem('color_primario');
+    
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     localStorage.removeItem('pos_pestanas');
     localStorage.removeItem('pos_pestana_activa');
     localStorage.removeItem('pos_contador_ventas');
+    
+    // Restauramos el color después de limpiar
+    if (colorGuardado) {
+      localStorage.setItem('color_primario', colorGuardado);
+    }
+    
     setUsuario(null);
     window.location.href = '/login';
   };

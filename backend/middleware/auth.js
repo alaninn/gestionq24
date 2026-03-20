@@ -9,7 +9,15 @@ const verificarToken = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.usuario = decoded;
-        req.negocio_id = decoded.negocio_id;
+        
+        // Si es superadmin accediendo a otro negocio, usar ese negocio_id
+        const negocioIdHeader = req.headers['x-negocio-id'];
+        if (decoded.rol === 'superadmin' && negocioIdHeader) {
+            req.negocio_id = parseInt(negocioIdHeader);
+        } else {
+            req.negocio_id = decoded.negocio_id;
+        }
+        
         next();
     } catch (error) {
         res.status(401).json({ error: 'Token inválido o expirado' });

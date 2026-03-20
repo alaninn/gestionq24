@@ -72,6 +72,7 @@ router.post('/login', async (req, res) => {
                 rol: usuario.rol,
                 negocio_id: usuario.negocio_id,
                 negocio_nombre: usuario.negocio_nombre,
+                permisos: usuario.permisos,
             },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
