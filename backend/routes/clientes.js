@@ -4,7 +4,8 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { buscar } = req.query;
         let consulta = 'SELECT * FROM clientes WHERE activo = TRUE AND negocio_id = $1';
         let valores = [negocio_id];
@@ -19,7 +20,8 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const cliente = await db.query('SELECT * FROM clientes WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
         if (cliente.rows.length === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
 
@@ -34,7 +36,8 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { nombre, telefono, email, direccion } = req.body;
         if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
 
@@ -50,7 +53,8 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.usuario.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { nombre, telefono, email, direccion } = req.body;
         const resultado = await db.query(
             'UPDATE clientes SET nombre=$1, telefono=$2, email=$3, direccion=$4 WHERE id=$5 AND negocio_id=$6 RETURNING *',
@@ -64,7 +68,8 @@ router.put('/:id', async (req, res) => {
 
 router.post('/:id/pago', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.usuario.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { monto, metodo_pago, nota } = req.body;
         if (!monto || monto <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
 
@@ -83,7 +88,8 @@ router.post('/:id/pago', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const negocio_id = req.usuario.negocio_id || 1;
+        const negocio_id = req.usuario.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         await db.query('UPDATE clientes SET activo = FALSE WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
         res.json({ mensaje: 'Cliente desactivado' });
     } catch (error) {

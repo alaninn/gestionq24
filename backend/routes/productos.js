@@ -7,7 +7,8 @@ const db = require('../config/database');
 router.get('/', async (req, res) => {
     try {
         const { buscar, categoria, pagina, limite = 50 } = req.query;
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         let whereClause = 'WHERE p.activo = TRUE AND p.negocio_id = $1';
         let valores = [negocio_id];
@@ -83,7 +84,8 @@ router.get('/', async (req, res) => {
 
 router.get('/stock-bajo', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(`
             SELECT p.*, c.nombre AS categoria_nombre
             FROM productos p
@@ -101,7 +103,8 @@ router.get('/stock-bajo', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(`
             SELECT p.*, c.nombre AS categoria_nombre
             FROM productos p
@@ -120,7 +123,8 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', verificarPermiso('productos', 'crear'), async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const {
             codigo, nombre, categoria_id, precio_costo,
             precio_venta, precio_mayorista, stock,
@@ -173,7 +177,8 @@ router.post('/', verificarPermiso('productos', 'crear'), async (req, res) => {
 
 router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { id } = req.params;
         const {
             codigo, nombre, categoria_id, precio_costo,
@@ -225,7 +230,8 @@ router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => 
 
 router.delete('/:id', verificarPermiso('productos', 'eliminar'), async (req, res) => {
     try {
-      const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+      const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         await db.query(
             'UPDATE productos SET activo = FALSE WHERE id = $1 AND negocio_id = $2',
             [req.params.id, negocio_id]
@@ -243,7 +249,8 @@ router.delete('/:id', verificarPermiso('productos', 'eliminar'), async (req, res
 // -----------------------------------------------
 router.post('/:id/codigos', async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { codigo } = req.body;
 
         console.log('Agregando código:', codigo, 'producto:', req.params.id, 'negocio:', negocio_id);
@@ -274,7 +281,8 @@ router.post('/:id/codigos', async (req, res) => {
 // -----------------------------------------------
 router.delete('/codigos/:codigoId', async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+       const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         await db.query(
             'DELETE FROM producto_codigos WHERE id = $1 AND negocio_id = $2',
             [req.params.codigoId, negocio_id]
@@ -282,6 +290,52 @@ router.delete('/codigos/:codigoId', async (req, res) => {
         res.json({ mensaje: 'Código eliminado' });
     } catch (error) {
         res.status(500).json({ error: 'Error al eliminar código' });
+    }
+});
+
+// GET /api/productos/buscar-codigo/:codigo
+// Búsqueda exacta por código principal o alternativo — optimizada para scanner
+router.get('/buscar-codigo/:codigo', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const { codigo } = req.params;
+
+        // Buscar primero por código principal exacto
+        const porCodigoPrincipal = await db.query(`
+            SELECT p.*, c.nombre AS categoria_nombre
+            FROM productos p
+            LEFT JOIN categorias c ON p.categoria_id = c.id
+            WHERE p.activo = TRUE 
+              AND p.negocio_id = $1
+              AND LOWER(p.codigo) = LOWER($2)
+            LIMIT 1
+        `, [negocio_id, codigo]);
+
+        if (porCodigoPrincipal.rows.length > 0) {
+            return res.json({ encontrado: true, producto: porCodigoPrincipal.rows[0] });
+        }
+
+        // Si no encontró, buscar en códigos alternativos
+        const porCodigoAlternativo = await db.query(`
+            SELECT p.*, c.nombre AS categoria_nombre
+            FROM productos p
+            LEFT JOIN categorias c ON p.categoria_id = c.id
+            INNER JOIN producto_codigos pc ON pc.producto_id = p.id
+            WHERE p.activo = TRUE
+              AND p.negocio_id = $1
+              AND LOWER(pc.codigo) = LOWER($2)
+            LIMIT 1
+        `, [negocio_id, codigo]);
+
+        if (porCodigoAlternativo.rows.length > 0) {
+            return res.json({ encontrado: true, producto: porCodigoAlternativo.rows[0] });
+        }
+
+        res.json({ encontrado: false, producto: null });
+    } catch (error) {
+        console.error('Error búsqueda scanner:', error);
+        res.status(500).json({ error: 'Error al buscar producto' });
     }
 });
 

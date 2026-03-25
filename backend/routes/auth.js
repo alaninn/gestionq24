@@ -8,16 +8,49 @@ const router = express.Router();
 const db = require('../config/database');
 const jwt = require('jsonwebtoken');
 
+// Cache simple para rate limiting de login
+// ADVERTENCIA: loginAttempts vive en memoria. Si el servidor se reinicia,
+// todos los contadores se resetean. En producción reemplazar por Redis:
+// const redis = require("redis"); const client = redis.createClient();
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutos
+
+// Función para limpiar intentos expirados
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, data] of loginAttempts.entries()) {
+        if (now - data.lastAttempt > LOGIN_LOCKOUT_TIME) {
+            loginAttempts.delete(key);
+        }
+    }
+}, 60000); // Limpiar cada minuto
+
 // -----------------------------------------------
 // RUTA: POST /api/auth/login
-// FUNCIÓN: Iniciar sesión
+// FUNCIÓN: Iniciar sesión con rate limiting
 // -----------------------------------------------
 router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
+        const clientIP = req.ip || req.connection.remoteAddress;
+        const attemptKey = `${clientIP}-${username}`;
 
         if (!username || !password) {
             return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
+        }
+
+        // Verificar rate limiting
+        const now = Date.now();
+        const attempts = loginAttempts.get(attemptKey);
+        
+        if (attempts) {
+            if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
+                const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
+                return res.status(429).json({ 
+                    error: `Demasiados intentos fallidos. Intentá de nuevo en ${timeLeft} minutos.` 
+                });
+            }
         }
 
       // Buscamos solo por username
@@ -36,6 +69,12 @@ router.post('/login', async (req, res) => {
         `, [username, password]);
 
         if (resultado.rows.length === 0) {
+            // Registrar intento fallido
+            const attempts = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
+            attempts.count++;
+            attempts.lastAttempt = now;
+            loginAttempts.set(attemptKey, attempts);
+            
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
 
@@ -78,6 +117,9 @@ router.post('/login', async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        // Login exitoso - limpiar intentos fallidos
+        loginAttempts.delete(attemptKey);
+
         // Enviamos el token y los datos del usuario
         res.json({
             token,
@@ -97,6 +139,21 @@ router.post('/login', async (req, res) => {
         res.status(500).json({ error: 'Error al iniciar sesión' });
     }
 });
+
+// Función auxiliar para registrar intento fallido (se usa internamente)
+const registrarIntentoFallido = (req) => {
+    const { username } = req.body;
+    const clientIP = req.ip || req.connection.remoteAddress;
+    const attemptKey = `${clientIP}-${username}`;
+    const now = Date.now();
+    
+    const attempts = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
+    attempts.count++;
+    attempts.lastAttempt = now;
+    loginAttempts.set(attemptKey, attempts);
+};
+
+// registrarIntentoFallido no se exporta — la lógica ya está inline en el endpoint
 
 // -----------------------------------------------
 // RUTA: GET /api/auth/me

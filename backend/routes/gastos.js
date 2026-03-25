@@ -5,7 +5,8 @@ const db = require('../config/database');
 
 router.get('/', verificarPermiso('gastos', 'ver'), async (req, res) => {
     try {
-    const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta, tipo } = req.query;
 
         let consulta = 'SELECT * FROM gastos WHERE negocio_id = $1';
@@ -26,7 +27,8 @@ router.get('/', verificarPermiso('gastos', 'ver'), async (req, res) => {
 
 router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
     try {
-      const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { descripcion, monto, categoria, turno_id, tipo, metodo_pago } = req.body;
 
         if (!monto) return res.status(400).json({ error: 'El monto es obligatorio' });
@@ -44,7 +46,8 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
 
 router.delete('/:id', verificarPermiso('gastos', 'eliminar'), async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         await db.query('DELETE FROM gastos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
         res.json({ mensaje: 'Gasto eliminado correctamente' });
     } catch (error) {

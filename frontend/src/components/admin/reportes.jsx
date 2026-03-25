@@ -67,8 +67,7 @@ function Reportes() {
 
   // ---- CALCULAR FECHAS SEGÚN FILTRO ----
 const calcularFechas = () => {
-    const ahora = new Date();
-    const hoy = new Date(ahora - ahora.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const hoy = hoyArgentina();
 
     if (filtroPeriodo === 'hoy') return { desde: hoy, hasta: hoy };
 

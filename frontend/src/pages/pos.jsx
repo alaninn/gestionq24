@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { useConectividad } from '../context/ConectividadContext';
 import { ModalGasto } from '../components/admin/Gastos';
 import ModalDetalleVenta from '../components/admin/DetalleVenta';
 import { imprimirTicket } from '../components/ticket';
@@ -364,8 +365,8 @@ function ModalHistorial({ turno, onCerrar, config }) {
 // =============================================
 function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCerrar }) {
   const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [descuento, setDescuento] = useState('');
   const [recargo, setRecargo] = useState('');
+  const [redondeo, setRedondeo] = useState(0);
   const [efectivoEntregado, setEfectivoEntregado] = useState('');
   const [cargando, setCargando] = useState(false);
   const [buscarCliente, setBuscarCliente] = useState('');
@@ -374,6 +375,14 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
   const [mostrarFormNuevoCliente, setMostrarFormNuevoCliente] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [nuevoClienteTel, setNuevoClienteTel] = useState('');
+
+  // Descuento fijo: empieza DESACTIVADO, el cajero lo activa si quiere
+  const tieneDescuentoFijo = config?.descuento_modo === 'fijo' && config?.descuento_maximo > 0;
+  const [descuentoActivo, setDescuentoActivo] = useState(false);
+  const montoDescuento = descuentoActivo ? Math.round(total * config.descuento_maximo / 100) : 0;
+
+  // Redondeo
+  const multiplo = parseInt(config?.redondeo_precios) || 0;
 
   const metodosActivos = typeof config?.metodos_pago_activos === 'string'
     ? JSON.parse(config.metodos_pago_activos)
@@ -393,6 +402,7 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
     } else {
       setRecargo('');
     }
+    setRedondeo(0);
   }, [metodoPago]);
 
   useEffect(() => {
@@ -403,8 +413,17 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
     }
   }, [buscarCliente]);
 
-  const totalFinal = total - (parseFloat(descuento) || 0) + (parseFloat(recargo) || 0);
+  const totalSinRedondeo = total - montoDescuento + (parseFloat(recargo) || 0);
+  const totalFinal = totalSinRedondeo + redondeo;
   const vuelto = metodoPago === 'efectivo' ? (parseFloat(efectivoEntregado) || 0) - totalFinal : 0;
+
+  const aplicarRedondeo = (direccion) => {
+    if (!multiplo) return;
+    const ajuste = direccion === 'arriba'
+      ? Math.ceil(totalSinRedondeo / multiplo) * multiplo - totalSinRedondeo
+      : Math.floor(totalSinRedondeo / multiplo) * multiplo - totalSinRedondeo;
+    setRedondeo(ajuste);
+  };
 
   const confirmar = async () => {
     if (metodoPago === 'cuenta_corriente' && !clienteSeleccionado) {
@@ -414,8 +433,10 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
     setCargando(true);
     try {
       await onConfirmar({
-        metodoPago, descuento: parseFloat(descuento) || 0,
-        recargo: parseFloat(recargo) || 0, totalFinal,
+        metodoPago,
+        descuento: montoDescuento,
+        recargo: (parseFloat(recargo) || 0) + redondeo,
+        totalFinal,
         clienteId: clienteSeleccionado?.id || null,
         esFiado: metodoPago === 'cuenta_corriente',
       });
@@ -452,19 +473,61 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
               ))}
             </div>
           </div>
+      
+
+         {/* Descuento + Redondeo en una sola línea */}
+          {(tieneDescuentoFijo || multiplo > 0) && (
+            <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+
+              {/* Botón descuento */}
+              {tieneDescuentoFijo && (
+                <button type="button"
+                  onClick={() => { setDescuentoActivo(!descuentoActivo); setRedondeo(0); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${descuentoActivo ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                  Descuento % {config.descuento_maximo}
+                  {descuentoActivo && <span className="text-green-100 text-xs">− {fmt(montoDescuento)}</span>}
+                </button>
+              )}
+
+              {/* Separador */}
+              {tieneDescuentoFijo && multiplo > 0 && <div className="w-px h-6 bg-gray-300" />}
+
+              {/* Botones redondeo */}
+              {multiplo > 0 && (
+                <>
+                  <button type="button" onClick={() => aplicarRedondeo('abajo')}
+                    className="px-3 py-2 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-sm font-medium text-gray-700 transition-all">
+                    ↓ Bajar
+                  </button>
+                  <button type="button" onClick={() => aplicarRedondeo('arriba')}
+                    className="px-3 py-2 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-sm font-medium text-gray-700 transition-all">
+                    ↑ Subir
+                  </button>
+                  {redondeo !== 0 && (
+                    <button type="button" onClick={() => setRedondeo(0)}
+                      className="text-gray-400 hover:text-red-500 text-xl leading-none transition-colors">×</button>
+                  )}
+                  {redondeo !== 0 && (
+                    <span className={`text-sm font-semibold ml-1 ${redondeo > 0 ? 'text-blue-600' : 'text-red-500'}`}>
+                      {redondeo > 0 ? '+' : ''}{fmt(redondeo)}
+                    </span>
+                  )}
+                </>
+              )}
+
+            </div>
+          )}
+
+          {/* Recargo manual (solo si no es tarjeta con recargo automático) */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Descuento $</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
-                <input type="number" value={descuento} onChange={(e) => setDescuento(e.target.value)} min="0"
-                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" />
-              </div>
+            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+              <p className="text-xs text-gray-400 mb-0.5">Subtotal productos</p>
+              <p className="text-lg font-bold text-gray-800">{fmt(total)}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Recargo $</label>
+              <label className="block text-xs text-gray-500 mb-1">Recargo $</label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
+                <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
                 <input type="number" value={recargo} onChange={(e) => setRecargo(e.target.value)} min="0"
                   className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" />
               </div>
@@ -773,7 +836,7 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
 }
 
 function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
- const { usuario, logout } = useAuth();
+  const { usuario, logout } = useAuth();
   const [datos, setDatos] = useState({
     efectivo_retirado: '', dinero_siguiente: '',
     total_tarjetas: '', total_mercadopago: '',
@@ -1568,8 +1631,31 @@ function ModalFiados({ onCerrar }) {
 // =============================================
 // COMPONENTE PRINCIPAL: POS
 // =============================================
+function SincronizacionExitosa({ ultimaSincronizacion }) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), 5000);
+    return () => clearTimeout(timer);
+  }, [ultimaSincronizacion]);
+
+  if (!visible) return null;
+
+  return (
+    <div className="bg-green-600 text-white px-4 py-2 flex items-center gap-2 text-sm flex-shrink-0">
+      <span>✅</span>
+      <span className="font-semibold">Ventas sincronizadas correctamente</span>
+      <span className="text-green-200">
+        a las {ultimaSincronizacion.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+      </span>
+    </div>
+  );
+}
+
 function POS() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline } = useConectividad();
   const [turno, setTurno] = useState(null);
   const [cajasAbiertas, setCajasAbiertas] = useState([]);
   const [cargandoTurno, setCargandoTurno] = useState(true);
@@ -1609,23 +1695,48 @@ function POS() {
   const carritoActivo = pestanas.find(p => p.id === pestanaActiva)?.carrito || [];
 
   useEffect(() => { verificarTurno(); cargarConfig(); }, []);
-  useEffect(() => { localStorage.setItem('pos_pestanas', JSON.stringify(pestanas)); }, [pestanas]);
-  useEffect(() => { localStorage.setItem('pos_pestana_activa', pestanaActiva.toString()); }, [pestanaActiva]);
-  useEffect(() => { localStorage.setItem('pos_contador_ventas', contadorVentas.toString()); }, [contadorVentas]);
+  // Guardar pestañas con throttle — máximo una vez cada 2 segundos
+  // para no trabar el POS con localStorage en cada keystroke
+ // Guardar pestañas con throttle — máximo una vez cada 2 segundos
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      localStorage.setItem('pos_pestanas', JSON.stringify(pestanas));
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [pestanas]);
 
   useEffect(() => {
-    if (buscar.trim().length > 0) {
-      const timer = setTimeout(async () => {
-        try {
-          const res = await api.get(`/api/productos?buscar=${buscar}`);
+    localStorage.setItem('pos_pestana_activa', pestanaActiva.toString());
+  }, [pestanaActiva]);
+
+  useEffect(() => {
+    localStorage.setItem('pos_contador_ventas', contadorVentas.toString());
+  }, [contadorVentas]);
+
+useEffect(() => {
+    if (buscar.trim().length === 0) {
+      setProductos([]);
+      return;
+    }
+
+    const terminoBuscado = buscar.trim();
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/productos?buscar=${terminoBuscado}`);
+        // Solo actualizar si el término no cambió mientras esperábamos la respuesta
+        if (terminoBuscado === buscar.trim()) {
           const resultados = res.data;
           setProductos(resultados);
           if (resultados.length === 1) agregarAlCarrito(resultados[0]);
-        } catch { }
-      }, 400);
-      return () => clearTimeout(timer);
-    } else { setProductos([]); }
+        }
+      } catch { }
+    }, 400);
+
+    return () => clearTimeout(timer);
   }, [buscar]);
+
+    
 
   // ---- ATAJOS DE TECLADO ----
   useEffect(() => {
@@ -1671,35 +1782,27 @@ function POS() {
     return () => window.removeEventListener('keydown', manejarTeclado);
   }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, pestanaActiva, pestanas, carritoActivo]);
 
-  const buscarPorCodigoScanner = async (codigo) => {
+ const buscarPorCodigoScanner = async (codigo) => {
     try {
-      const res = await api.get(`/api/productos?buscar=${codigo}`);
-      const prods = res.data;
-      if (prods.length === 0) {
+      const res = await api.get(`/api/productos/buscar-codigo/${encodeURIComponent(codigo)}`);
+
+      if (!res.data.encontrado || !res.data.producto) {
         setMensajeScanner({ tipo: 'error', texto: `❌ No encontrado: ${codigo}` });
         setTimeout(() => setMensajeScanner(null), 2500);
+        inputBuscarRef.current?.focus();
         return;
       }
-      let producto = prods.find(p => p.codigo?.toLowerCase() === codigo.toLowerCase());
-      if (!producto) {
-        for (const p of prods) {
-          try {
-            const resCodigos = await api.get(`/api/productos/${p.id}/codigos`);
-            if (resCodigos.data.some(c => c.codigo?.toLowerCase() === codigo.toLowerCase())) { producto = p; break; }
-          } catch { continue; }
-        }
-      }
-      if (!producto && prods.length === 1) producto = prods[0];
-      if (producto) {
-        agregarAlCarrito(producto);
-        setMensajeScanner({ tipo: 'ok', texto: `✅ ${producto.nombre}` });
-      } else {
-        setMensajeScanner({ tipo: 'error', texto: `❌ No encontrado: ${codigo}` });
-      }
-      setBuscar(''); setProductos([]);
+
+      agregarAlCarrito(res.data.producto);
+      setMensajeScanner({ tipo: 'ok', texto: `✅ ${res.data.producto.nombre}` });
+      setBuscar('');
+      setProductos([]);
       setTimeout(() => setMensajeScanner(null), 2000);
       inputBuscarRef.current?.focus();
-    } catch { }
+    } catch {
+      setMensajeScanner({ tipo: 'error', texto: '❌ Error al buscar' });
+      setTimeout(() => setMensajeScanner(null), 2500);
+    }
   };
 
   const verificarTurno = async () => {
@@ -1859,78 +1962,96 @@ function POS() {
   const total = carritoActivo.reduce((acc, item) => acc + item.subtotal, 0);
 
   const confirmarVenta = async ({ metodoPago, descuento, recargo, totalFinal, clienteId, esFiado }) => {
-    try {
-      const itemsReales = carritoActivo.filter(item => !item.esRapida);
-      const itemsRapidos = carritoActivo.filter(item => item.esRapida);
-      
-      let resVenta;
-      
-      if (itemsReales.length > 0) {
-        // Si hay productos regulares, crear la venta con ellos
-        resVenta = await api.post('/api/ventas', {
-          turno_id: turno?.id,
-          items: itemsReales.map(item => ({ 
-            producto_id: item.producto_id, 
-            nombre_producto: item.nombre_producto, 
-            cantidad: parseFloat(item.cantidad), 
-            precio_unitario: parseFloat(item.precio_unitario), 
-            subtotal: parseFloat(item.subtotal) 
-          })),
-          metodo_pago: metodoPago, 
-          descuento: parseFloat(descuento) || 0, 
-          recargo: parseFloat(recargo) || 0, 
-          total: parseFloat(totalFinal),
-          cliente_id: clienteId || null, 
-          es_fiado: esFiado || false,
-        });
-        
-        // Si también hay productos rápidos, crear una segunda venta para ellos
-        if (itemsRapidos.length > 0) {
-          await api.post('/api/ventas', {
-            turno_id: turno?.id,
-            items: itemsRapidos.map(i => ({ producto_id: null, nombre_producto: i.nombre_producto, cantidad: i.cantidad, precio_unitario: i.precio_unitario, subtotal: i.subtotal })),
-            metodo_pago: metodoPago, descuento: 0, recargo: 0,
-            total: itemsRapidos.reduce((acc, i) => acc + i.subtotal, 0),
-            cliente_id: null, es_fiado: false,
-          });
-        }
-      } else if (itemsRapidos.length > 0) {
-        // Si solo hay productos rápidos, crear la venta directamente con ellos
-        resVenta = await api.post('/api/ventas', {
-          turno_id: turno?.id,
-          items: itemsRapidos.map(i => ({ producto_id: null, nombre_producto: i.nombre_producto, cantidad: i.cantidad, precio_unitario: i.precio_unitario, subtotal: i.subtotal })),
-          metodo_pago: metodoPago, descuento: 0, recargo: 0,
-          total: itemsRapidos.reduce((acc, i) => acc + i.subtotal, 0),
-          cliente_id: null, es_fiado: false,
-        });
-      }
-      
-      // Guardar la información de la venta recién creada para poder imprimirla
-      if (resVenta && resVenta.data) {
-        // Obtener los items completos de la venta para el ticket
-        const ventaCompleta = await api.get(`/api/ventas/${resVenta.data.id}`);
-        setUltimaVenta(ventaCompleta.data);
-      }
-      
+    // Crear una sola venta unificada con todos los items (rápidos + stock)
+    const todosLosItems = carritoActivo.map(item => ({
+      producto_id: item.esRapida ? null : item.producto_id,
+      nombre_producto: item.nombre_producto,
+      cantidad: parseFloat(item.cantidad),
+      precio_unitario: parseFloat(item.precio_unitario),
+      subtotal: parseFloat(item.subtotal)
+    }));
+
+    if (todosLosItems.length === 0) return;
+
+    const ventaPayload = {
+      turno_id: turno?.id,
+      items: todosLosItems,
+      metodo_pago: metodoPago,
+      descuento: parseFloat(descuento) || 0,
+      recargo: parseFloat(recargo) || 0,
+      total: parseFloat(totalFinal),
+      cliente_id: clienteId || null,
+      es_fiado: esFiado || false,
+    };
+
+    // ---- MODO OFFLINE ----
+    if (!online) {
+      agregarVentaOffline(ventaPayload);
+
+      // Limpiar carrito y mostrar éxito igual que online
       const nuevoNumero = contadorVentas + 1;
       setContadorVentas(nuevoNumero);
-      setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p));
+      setPestanas(prev => prev.map(p =>
+        p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p
+      ));
       setMostrarModalVenta(false);
-      
-      // Mostrar modal de venta exitosa en lugar de imprimir directamente
-     
+      setTotalUltimaVenta(totalFinal);
+      setUltimaVenta(null); // No hay ID real todavía, el ticket no se puede reimprimir
+      setVentaExitosa(true);
+      inputBuscarRef.current?.focus();
+      return;
+    }
+
+    // ---- MODO ONLINE (comportamiento normal) ----
+    try {
+      const resVenta = await api.post('/api/ventas', ventaPayload);
+
+      // Obtener items completos para el ticket
+      if (resVenta?.data?.id) {
+        try {
+          const ventaCompleta = await api.get(`/api/ventas/${resVenta.data.id}`);
+          setUltimaVenta(ventaCompleta.data);
+        } catch { setUltimaVenta(null); }
+      }
+
+      const nuevoNumero = contadorVentas + 1;
+      setContadorVentas(nuevoNumero);
+      setPestanas(prev => prev.map(p =>
+        p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p
+      ));
+      setMostrarModalVenta(false);
       setTotalUltimaVenta(totalFinal);
       setVentaExitosa(true);
       cargarProductos();
       inputBuscarRef.current?.focus();
-    } catch (err) { alert(err.response?.data?.error || 'Error al registrar la venta'); }
+    } catch (err) {
+      // Si falla por error de red, guardar offline automáticamente
+      if (!err.response) {
+        agregarVentaOffline(ventaPayload);
+        const nuevoNumero = contadorVentas + 1;
+        setContadorVentas(nuevoNumero);
+        setPestanas(prev => prev.map(p =>
+          p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p
+        ));
+        setMostrarModalVenta(false);
+        setTotalUltimaVenta(totalFinal);
+        setUltimaVenta(null);
+        setVentaExitosa(true);
+        inputBuscarRef.current?.focus();
+      } else {
+        alert(err.response?.data?.error || 'Error al registrar la venta');
+      }
+    }
   };
 
   // Función para imprimir ticket desde el modal de venta exitosa
-  const imprimirTicketDesdeModal = () => {
-    // Validar que haya una venta para imprimir
+const imprimirTicketDesdeModal = () => {
     if (!ultimaVenta) {
-      alert('No hay una venta para imprimir');
+      if (!online) {
+        alert('⚠️ Ticket no disponible en modo offline.\nCuando vuelva el internet la venta se sincroniza y podrás reimprimir desde el historial.');
+      } else {
+        alert('No hay una venta para imprimir');
+      }
       return;
     }
 
@@ -2011,75 +2132,106 @@ function POS() {
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
 
+      {/* ---- BANNER OFFLINE ---- */}
+      {!online && (
+        <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between text-sm flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="animate-pulse">🔴</span>
+            <span className="font-semibold">SIN INTERNET — Modo Offline</span>
+            <span className="text-red-200">Las ventas se guardan localmente y se sincronizarán cuando vuelva la conexión</span>
+          </div>
+          {pendientes.length > 0 && (
+            <span className="bg-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+              {pendientes.length} venta{pendientes.length > 1 ? 's' : ''} pendiente{pendientes.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ---- BANNER SINCRONIZANDO ---- */}
+      {online && sincronizando && (
+        <div className="bg-blue-600 text-white px-4 py-2 flex items-center gap-2 text-sm flex-shrink-0">
+          <span className="animate-spin">⏳</span>
+          <span className="font-semibold">Sincronizando ventas offline...</span>
+        </div>
+      )}
+
+      {/* ---- BANNER SINCRONIZACIÓN EXITOSA ---- */}
+      {online && !sincronizando && pendientes.length === 0 && ultimaSincronizacion && (
+        <SincronizacionExitosa ultimaSincronizacion={ultimaSincronizacion} />
+      )}
+
       {/* ---- BARRA SUPERIOR MODERNA ---- */}
-      <div className="bg-gray-900 text-white flex items-center gap-1.5 px-3 py-2 flex-shrink-0 border-b border-gray-700">
+      <div className="bg-gray-900 text-white flex-shrink-0 border-b border-gray-700 px-4 py-3">
+      <div className="max-w-7xl mx-auto flex items-center gap-2">
 
         {/* Logo/Brand */}
-        <div className="flex items-center gap-2 mr-3">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+        <div className="flex items-center gap-2 mr-4">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg"
             style={{ backgroundColor: 'var(--color-primario)' }}>S</div>
           <span className="text-sm font-semibold text-gray-300 hidden lg:block">POS</span>
         </div>
 
-        <div className="w-px h-6 bg-gray-700 mr-1.5" />
+        <div className="w-px h-7 bg-gray-700 mr-2" />
 
         {/* Botones principales */}
         <button onClick={() => setMostrarModalRapida(true)}
-          className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          ⚡ <span className="hidden sm:inline">Rápida</span>
+          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          ⚡ Rápida
           <span className="text-purple-300 text-xs hidden lg:inline">[F1]</span>
         </button>
 
         <button onClick={() => setMostrarModalFiados(true)}
           style={{ backgroundColor: 'var(--color-primario)' }}
-          className="flex items-center gap-1.5 hover:opacity-80 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          👥 <span className="hidden sm:inline">Fiados</span>
+          className="flex items-center gap-2 hover:opacity-80 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          👥 Fiados
           <span className="text-white text-opacity-60 text-xs hidden lg:inline">[F3]</span>
         </button>
 
         <button onClick={() => setMostrarModalHistorial(true)}
-          className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          📋 <span className="hidden sm:inline">Historial</span>
+          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          📋 Historial
           <span className="text-gray-400 text-xs hidden lg:inline">[F5]</span>
         </button>
 
         <button onClick={() => setMostrarModalGasto(true)}
-          className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          💸 <span className="hidden sm:inline">Gastos</span>
-          <span className="text-gray-400 text-xs hidden lg:inline">[F10]</span>
+          className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          💸 Gastos
+          <span className="text-amber-200 text-xs hidden lg:inline">[F10]</span>
         </button>
 
         <button onClick={() => setMostrarModalCierre(true)}
-          className="flex items-center gap-1.5 bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          🔒 <span className="hidden sm:inline">Cierre</span>
+          className="flex items-center gap-2 bg-red-700 hover:bg-red-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          🔒 Cierre
           <span className="text-red-300 text-xs hidden lg:inline">[F4]</span>
         </button>
 
         <button onClick={() => navigate('/admin')}
-          className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          ⚙️ <span className="hidden sm:inline">Admin</span>
+          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          ⚙️ Admin
         </button>
 
         <button onClick={logout}
-          className="flex items-center gap-1.5 bg-red-800 hover:bg-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-          🚪 <span className="hidden sm:inline">Salir</span>
+          className="flex items-center gap-2 bg-gray-800 hover:bg-red-800 border border-gray-600 hover:border-red-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+          🚪 Salir
         </button>
 
         {/* Status derecha */}
         <div className="ml-auto flex items-center gap-3">
           {mensajeScanner && (
-            <span className={`text-xs font-medium px-2 py-1 rounded-lg ${mensajeScanner.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
+            <span className={`text-xs font-semibold px-3 py-1.5 rounded-xl ${mensajeScanner.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
               {mensajeScanner.texto}
             </span>
           )}
           {ventaExitosa && !mensajeScanner && (
-            <span className="text-xs font-medium px-2 py-1 rounded-lg bg-green-600">✅ Venta registrada</span>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-green-600">✅ Venta registrada</span>
           )}
-          <div className="flex items-center gap-1.5 bg-gray-800 rounded-lg px-2.5 py-1.5">
-            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
-            <span className="text-xs text-gray-300">{turno?.nombre || 'Caja'}</span>
+          <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            <span className="text-sm font-medium text-gray-300">{turno?.nombre || 'Caja'}</span>
           </div>
         </div>
+      </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">

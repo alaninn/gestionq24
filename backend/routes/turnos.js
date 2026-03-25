@@ -5,7 +5,8 @@ const db = require('../config/database');
 // GET turno actual del usuario
 router.get('/actual', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const usuario_id = req.usuario.id;
 
         // Buscamos si el usuario está en alguna caja abierta
@@ -29,7 +30,8 @@ router.get('/actual', async (req, res) => {
 // GET todas las cajas abiertas del negocio
 router.get('/abiertas', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         const resultado = await db.query(`
             SELECT 
@@ -55,7 +57,8 @@ router.get('/abiertas', async (req, res) => {
 // GET todos los turnos
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(
             'SELECT * FROM turnos WHERE negocio_id = $1 ORDER BY fecha_apertura DESC',
             [negocio_id]
@@ -69,7 +72,8 @@ router.get('/', async (req, res) => {
 // POST abrir nueva caja
 router.post('/abrir', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const usuario_id = req.usuario.id;
         const { inicio_caja, nombre } = req.body;
 
@@ -109,7 +113,8 @@ router.post('/abrir', async (req, res) => {
 // POST unirse a una caja existente
 router.post('/:id/unirse', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const usuario_id = req.usuario.id;
         const { id } = req.params;
 
@@ -147,7 +152,8 @@ router.post('/:id/unirse', async (req, res) => {
 // PUT cerrar caja
 router.put('/:id/cerrar', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { id } = req.params;
         const { 
             efectivo_retirado, dinero_siguiente, 

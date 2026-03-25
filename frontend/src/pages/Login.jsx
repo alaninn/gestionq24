@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTema } from '../context/TemaContext';
 
 function Login() {
  const [username, setUsername] = useState('');
@@ -13,6 +14,7 @@ function Login() {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const { login } = useAuth();
+  const { cargarTema } = useTema();
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -22,6 +24,7 @@ function Login() {
 
     try {
       const usuario = await login(username, password);
+      await cargarTema();
 
   
 // Redirigimos según rol y permisos reales

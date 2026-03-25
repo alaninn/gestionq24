@@ -4,7 +4,8 @@ const db = require('../config/database');
 
 router.get('/historial', async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta, turno_id } = req.query;
 
         let consulta = `
@@ -46,7 +47,8 @@ router.get('/historial', async (req, res) => {
 
 router.get('/productos-vendidos', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta } = req.query;
 
         const resultado = await db.query(`
@@ -79,7 +81,8 @@ router.get('/productos-vendidos', async (req, res) => {
 
 router.get('/por-turno', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta } = req.query;
 
         const resultado = await db.query(`
@@ -116,7 +119,8 @@ router.get('/por-turno', async (req, res) => {
 
 router.get('/rentabilidad', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta } = req.query;
 
         const porProducto = await db.query(`
@@ -169,7 +173,8 @@ router.get('/rentabilidad', async (req, res) => {
 
 router.get('/stock', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         const resultado = await db.query(`
             SELECT p.*, c.nombre AS categoria,
@@ -195,7 +200,8 @@ router.get('/stock', async (req, res) => {
 
 router.get('/por-categoria', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta, categoria_id } = req.query;
 
         const resultado = await db.query(`
@@ -235,7 +241,8 @@ router.get('/por-categoria', async (req, res) => {
 
 router.get('/control-caja', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta } = req.query;
 
         const resultado = await db.query(`
@@ -277,7 +284,8 @@ router.get('/control-caja', async (req, res) => {
 
 router.get('/dashboard', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const hoy = new Date();
         const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
         const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];

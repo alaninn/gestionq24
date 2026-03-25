@@ -33,21 +33,46 @@ const COLORES_PIE = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'];
 function Dashboard() {
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
   const [periodo, setPeriodo] = useState('mes');
+  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+  const [mostrarStockBajo, setMostrarStockBajo] = useState(false);
+  const [productosStockBajo, setProductosStockBajo] = useState([]);
+  const [cargandoStock, setCargandoStock] = useState(false);
 
   useEffect(() => {
     cargarDatos();
+    // Auto-actualizar cada 5 minutos
+    const intervalo = setInterval(cargarDatos, 5 * 60 * 1000);
+    return () => clearInterval(intervalo);
   }, []);
 
   const cargarDatos = async () => {
     try {
       setCargando(true);
+      setError(false);
       const res = await api.get('/api/reportes/dashboard');
       setDatos(res.data);
+      setUltimaActualizacion(new Date());
+    } catch (err) {
+      console.error('Error:', err);
+      setError(true);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const verStockBajo = async () => {
+    setMostrarStockBajo(true);
+    if (productosStockBajo.length > 0) return;
+    try {
+      setCargandoStock(true);
+      const res = await api.get('/api/productos/stock-bajo');
+      setProductosStockBajo(res.data);
     } catch (err) {
       console.error('Error:', err);
     } finally {
-      setCargando(false);
+      setCargandoStock(false);
     }
   };
 
@@ -56,6 +81,20 @@ function Dashboard() {
       <div className="text-center">
         <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <p className="text-gray-500">Cargando dashboard...</p>
+      </div>
+    </div>
+  );
+
+if (error) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="text-center">
+        <p className="text-5xl mb-4">⚠️</p>
+        <p className="text-gray-700 font-semibold mb-2">No se pudo cargar el dashboard</p>
+        <p className="text-gray-400 text-sm mb-4">Verificá la conexión con el servidor</p>
+        <button onClick={cargarDatos}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          🔄 Reintentar
+        </button>
       </div>
     </div>
   );
@@ -92,10 +131,17 @@ function Dashboard() {
           <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
           <p className="text-gray-500">Resumen del negocio — {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
-        <button onClick={cargarDatos}
-          className="bg-white border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 transition-colors shadow-sm">
-          🔄 Actualizar
-        </button>
+        <div className="text-right">
+          {ultimaActualizacion && (
+            <p className="text-xs text-gray-400 mb-1">
+              Actualizado a las {ultimaActualizacion.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
+          <button onClick={cargarDatos} disabled={cargando}
+            className="bg-white border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm text-gray-600 transition-colors shadow-sm disabled:opacity-50">
+            {cargando ? '⏳ Actualizando...' : '🔄 Actualizar'}
+          </button>
+        </div>
       </div>
 
       {/* Widget de Salud del Negocio */}
@@ -147,12 +193,13 @@ function Dashboard() {
           <p className="text-2xl font-bold text-gray-800 mt-1">{stats.total_productos}</p>
           <p className="text-gray-400 text-sm mt-1">activos en stock</p>
         </div>
-        <div className={`rounded-xl p-4 shadow ${parseInt(stats.stock_bajo) > 0 ? 'bg-orange-50 border border-orange-200' : 'bg-white'}`}>
-          <p className="text-gray-500 text-xs uppercase font-medium">STOCK BAJO</p>
-          <p className={`text-2xl font-bold mt-1 ${parseInt(stats.stock_bajo) > 0 ? 'text-orange-500' : 'text-gray-800'}`}>
-            {stats.stock_bajo}
+        <div className="bg-white rounded-2xl p-5 shadow border-l-4 border-orange-400 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={verStockBajo}>
+          <p className="text-gray-500 text-sm font-medium">STOCK BAJO</p>
+          <p className="text-3xl font-bold text-orange-500 mt-2">{stats.stock_bajo}</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {stats.stock_bajo > 0 ? '⚠️ Click para ver cuáles' : 'Todo en orden ✅'}
           </p>
-          <p className="text-gray-400 text-sm mt-1">productos a reponer</p>
         </div>
       </div>
 
@@ -293,6 +340,63 @@ function Dashboard() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+   {/* Modal Stock Bajo */}
+      {mostrarStockBajo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">⚠️ Productos con Stock Bajo</h3>
+                <p className="text-sm text-gray-500">Productos que llegaron o superaron su stock mínimo</p>
+              </div>
+              <button onClick={() => setMostrarStockBajo(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {cargandoStock ? (
+                <div className="text-center py-8 text-gray-400">Cargando...</div>
+              ) : productosStockBajo.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-4xl mb-2">✅</p>
+                  <p className="text-gray-500">Todos los productos tienen stock suficiente</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-gray-600">Producto</th>
+                      <th className="text-left px-3 py-2 text-gray-600">Categoría</th>
+                      <th className="text-center px-3 py-2 text-gray-600">Stock actual</th>
+                      <th className="text-center px-3 py-2 text-gray-600">Stock mínimo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {productosStockBajo.map(p => (
+                      <tr key={p.id} className="hover:bg-orange-50">
+                        <td className="px-3 py-2 font-medium text-gray-800">{p.nombre}</td>
+                        <td className="px-3 py-2 text-gray-500">{p.categoria_nombre || '-'}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`font-bold ${p.stock <= 0 ? 'text-red-600' : 'text-orange-500'}`}>
+                            {p.stock} {p.unidad}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center text-gray-500">{p.stock_minimo} {p.unidad}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="p-4 border-t bg-gray-50">
+              <button onClick={() => setMostrarStockBajo(false)}
+                className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

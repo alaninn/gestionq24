@@ -6,7 +6,6 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-
   const [usuario, setUsuario] = useState(null);
   const [cargando, setCargando] = useState(true);
 
@@ -37,12 +36,12 @@ export function AuthProvider({ children }) {
 const login = async (username, password) => {
     // Limpiar caché del negocio anterior antes de loguear
     localStorage.removeItem('config_negocio');
-    localStorage.removeItem('color_primario');
+    //localStorage.removeItem('color_primario');
 
     const res = await api.post('/api/auth/login', { username, password });
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
-    setUsuario(res.data.usuario);
+   setUsuario(res.data.usuario);
     return res.data.usuario;
   };
 
@@ -63,7 +62,6 @@ const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     localStorage.removeItem('config_negocio');
-    localStorage.removeItem('color_primario');
     localStorage.removeItem('pos_pestanas');
     localStorage.removeItem('pos_pestana_activa');
     localStorage.removeItem('pos_contador_ventas');

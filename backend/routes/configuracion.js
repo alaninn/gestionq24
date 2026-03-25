@@ -5,12 +5,13 @@ const { soloAdmin } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(
             'SELECT * FROM configuracion WHERE negocio_id = $1 LIMIT 1',
             [negocio_id]
         );
-        res.json(resultado.rows[0]);
+        res.json(resultado.rows[0] || {});
     } catch (error) {
         console.error('Error al obtener configuración:', error);
         res.status(500).json({ error: 'Error al obtener configuración' });
@@ -19,7 +20,8 @@ router.get('/', async (req, res) => {
 
 router.put('/', soloAdmin, async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const {
             nombre_negocio, cuit, direccion, telefono, email,
             recargo_tarjeta, descuento_maximo, permite_stock_negativo,

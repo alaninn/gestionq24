@@ -1,11 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useTema } from './context/TemaContext';
 import Login from './pages/Login';
 import POS from './pages/pos';
 import Admin from './pages/admin';
 import Superadmin from './pages/Superadmin';
 import { TemaProvider } from './context/TemaContext';
-
+import { ConectividadProvider } from './context/ConectividadContext';
 
 // Función helper: un usuario puede entrar al panel admin si tiene
 // al menos un permiso de módulo, o si es admin/superadmin
@@ -15,7 +16,6 @@ function puedeEntrarAdmin(usuario) {
   const permisos = typeof usuario.permisos === 'string'
     ? JSON.parse(usuario.permisos || '{}')
     : (usuario.permisos || {});
-  // Tiene acceso al admin si tiene al menos un módulo con al menos un permiso
   return Object.values(permisos).some(lista => Array.isArray(lista) && lista.length > 0);
 }
 
@@ -28,8 +28,9 @@ function redireccionInicio(usuario) {
 
 function RutaProtegida({ children, soloSuperadmin = false, requiereAdmin = false }) {
   const { usuario, cargando } = useAuth();
+  const { cargado } = useTema();
 
-  if (cargando) {
+  if (cargando || !cargado) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <p className="text-white">Cargando...</p>
@@ -103,7 +104,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <TemaProvider>
-          <AppRoutes />
+          <ConectividadProvider>
+            <AppRoutes />
+          </ConectividadProvider>
         </TemaProvider>
       </AuthProvider>
     </BrowserRouter>

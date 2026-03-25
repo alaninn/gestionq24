@@ -17,12 +17,14 @@ router.use(verificarToken);
 // -----------------------------------------------
 router.get('/', soloAdmin, async (req, res) => {
     try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(`
             SELECT id, nombre, email, rol, permisos, activo, ultimo_acceso, created_at
             FROM usuarios
             WHERE negocio_id = $1
             ORDER BY created_at ASC
-        `, [req.negocio_id]);
+        `, [negocio_id]);
 
         res.json(resultado.rows);
     } catch (error) {
@@ -43,21 +45,26 @@ router.post('/', soloAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Nombre, usuario y contraseña son obligatorios' });
         }
 
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        
         // Verificar que el username no esté en uso en el mismo negocio
         const usernameExiste = await db.query(
             'SELECT id FROM usuarios WHERE username = $1 AND negocio_id = $2 AND activo = TRUE',
-            [username, req.negocio_id]
+            [username, negocio_id]
         );
         if (usernameExiste.rows.length > 0) {
             return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
         }
+
+        const rolFinal = rol || 'cajero';
 
         const resultado = await db.query(`
             INSERT INTO usuarios (negocio_id, nombre, username, email, password_hash, rol, permisos)
             VALUES ($1, $2, $3, $4, crypt($5, gen_salt('bf')), $6, $7)
             RETURNING id, nombre, username, email, rol, permisos, activo, created_at
         `, [
-            req.negocio_id,
+            negocio_id,
             nombre,
             username,
             email || null,
@@ -83,29 +90,42 @@ router.post('/', soloAdmin, async (req, res) => {
 router.put('/:id', soloAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, email, rol, permisos, activo, password } = req.body;
+        const { nombre, username, email, rol, permisos, activo, password } = req.body;
 
-        // Si viene nueva contraseña, la actualizamos también
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        
+        // Verificar que el username no esté en uso por otro usuario del mismo negocio
+        if (username) {
+            const usernameExiste = await db.query(
+                'SELECT id FROM usuarios WHERE username = $1 AND negocio_id = $2 AND id != $3 AND activo = TRUE',
+                [username, negocio_id, id]
+            );
+            if (usernameExiste.rows.length > 0) {
+                return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
+            }
+        }
+
         if (password) {
             await db.query(`
                 UPDATE usuarios SET
-                    nombre = $1, email = $2, rol = $3,
-                    permisos = $4, activo = $5,
-                    password_hash = crypt($6, gen_salt('bf'))
-                WHERE id = $7 AND negocio_id = $8
-            `, [nombre, email, rol, JSON.stringify(permisos || {}), activo, password, id, req.negocio_id]);
+                    nombre = $1, username = $2, email = $3, rol = $4,
+                    permisos = $5, activo = $6,
+                    password_hash = crypt($7, gen_salt('bf'))
+                WHERE id = $8 AND negocio_id = $9
+            `, [nombre, username, email || null, rol, JSON.stringify(permisos || {}), activo, password, id, negocio_id]);
         } else {
             await db.query(`
                 UPDATE usuarios SET
-                    nombre = $1, email = $2, rol = $3,
-                    permisos = $4, activo = $5
-                WHERE id = $6 AND negocio_id = $7
-            `, [nombre, email, rol, JSON.stringify(permisos || {}), activo, id, req.negocio_id]);
+                    nombre = $1, username = $2, email = $3, rol = $4,
+                    permisos = $5, activo = $6
+                WHERE id = $7 AND negocio_id = $8
+            `, [nombre, username, email || null, rol, JSON.stringify(permisos || {}), activo, id, negocio_id]);
         }
 
        const resultado = await db.query(
             'SELECT id, nombre, email, rol, permisos, activo FROM usuarios WHERE id = $1 AND negocio_id = $2',
-            [id, req.negocio_id]
+            [id, negocio_id]
         );
         if (resultado.rows.length === 0) {
             return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -130,9 +150,12 @@ router.delete('/:id', soloAdmin, async (req, res) => {
             return res.status(400).json({ error: 'No podés desactivar tu propio usuario' });
         }
 
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        
         await db.query(
             'UPDATE usuarios SET activo = FALSE WHERE id = $1 AND negocio_id = $2',
-            [id, req.negocio_id]
+            [id, negocio_id]
         );
 
         res.json({ mensaje: 'Usuario desactivado correctamente' });

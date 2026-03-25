@@ -21,11 +21,27 @@ const rutasSuperadmin = require('./routes/superadmin');
 const rutasSalud = require('./routes/salud');
 const rutasSoporte = require('./routes/soporte');
 
-const { verificarToken, verificarPermiso } = require('./middleware/auth');
+const { verificarToken, verificarPermiso, soloSuperadmin } = require('./middleware/auth');
+
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+    strictTransportSecurity: false,
+    originAgentCluster: false,
+}));
+app.use(rateLimit({ 
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    skip: (req) => !req.path.startsWith('/api')
+}));
 app.use(express.json());
-app.use(cors());
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 
 // Rutas públicas
 app.use('/api/auth', rutasAuth);
@@ -61,8 +77,8 @@ app.use('/api/salud', rutasSalud);
 app.use('/api/soporte', rutasSoporte);
 
 // Usuarios y superadmin
-app.use('/api/usuarios', rutasUsuarios);
-app.use('/api/superadmin', rutasSuperadmin);
+app.use('/api/usuarios', verificarToken, rutasUsuarios);
+app.use('/api/superadmin', verificarToken, soloSuperadmin, rutasSuperadmin);
 
 // Servir el frontend
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
@@ -80,10 +96,9 @@ app.listen(PUERTO, '0.0.0.0', () => {
     console.log(`📦 API disponible en http://localhost:${PUERTO}/api`);
 });
 
-// Importar la lógica directamente en lugar de llamar al endpoint HTTP
-const { Pool } = require('pg');
+// Pool ya disponible via require('./config/database')
 
-schedule.scheduleJob('*/5 * * * *', async () => {
+schedule.scheduleJob('0 * * * *', async () => { // cada hora
     try {
         const db = require('./config/database');
 

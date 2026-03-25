@@ -4,7 +4,8 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(
             'SELECT * FROM categorias WHERE negocio_id = $1 ORDER BY nombre ASC',
             [negocio_id]
@@ -17,7 +18,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { nombre } = req.body;
         if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
 
@@ -34,7 +36,8 @@ router.post('/', async (req, res) => {
 // Endpoint para obtener o crear la categoría por defecto
 router.post('/default', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         // Buscar si ya existe "General"
         const existe = await db.query(
@@ -59,7 +62,8 @@ router.post('/default', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         // Verificar si hay productos usando esta categoría
         const productos = await db.query(

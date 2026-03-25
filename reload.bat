@@ -48,7 +48,7 @@ echo   SISTEMA ACTUALIZADO Y ONLINE
 echo ========================================
 echo.
 echo   Local:  http://192.168.1.58:3001
-echo   Online: https://gestionq24.ddns.net:3001
+echo   Online: http://gestionq24.ddns.net:3001
 echo.
 echo   Presiona Ctrl+C para detener el servidor
 echo ========================================

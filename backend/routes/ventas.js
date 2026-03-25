@@ -5,7 +5,8 @@ const db = require('../config/database');
 
 router.get('/', verificarPermiso('ventas', 'ver'), async (req, res) => {
     try {
-        const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { fecha_desde, fecha_hasta, turno_id } = req.query;
 
         let consulta = `
@@ -33,7 +34,8 @@ router.get('/', verificarPermiso('ventas', 'ver'), async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const venta = await db.query(
             'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
             [req.params.id, negocio_id]
@@ -49,7 +51,8 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
     try {
-       const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { turno_id, cliente_id, items, metodo_pago, descuento, recargo, es_fiado, total } = req.body;
 
         if (!items || items.length === 0) {
@@ -65,16 +68,20 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         // Si no existe configuración, crear una por defecto
         if (configResult.rows.length === 0) {
             await db.query(
-                'INSERT INTO configuracion (negocio_id, permite_stock_negativo) VALUES ($1, false) ON CONFLICT DO NOTHING',
+                'INSERT INTO configuracion (negocio_id, permite_stock_negativo) VALUES ($1, false) ON CONFLICT (negocio_id) DO UPDATE SET permite_stock_negativo = COALESCE(configuracion.permite_stock_negativo, false)',
                 [negocio_id]
             );
+            // Volver a consultar después de insertar/actualizar
             configResult = await db.query(
                 'SELECT permite_stock_negativo FROM configuracion WHERE negocio_id = $1',
                 [negocio_id]
             );
         }
         
-        const permiteStockNegativo = configResult.rows[0]?.permite_stock_negativo || false;
+        // Asegurar que tenemos un valor válido
+        const permiteStockNegativo = configResult.rows.length > 0 
+            ? (configResult.rows[0]?.permite_stock_negativo || false)
+            : false;
 
         await db.query('BEGIN');
 
@@ -197,18 +204,21 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
         const { items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado } = req.body;
         
         // Validar que el turno esté abierto
-        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id]);
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
         
         // Validar que el turno esté abierto
-        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id]);
         if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
             return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
         }
         
         // Actualizar venta
-      const negocio_id = req.negocio_id || req.usuario.negocio_id || 1;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
+       await db.query('BEGIN');
+        try {
         // Actualizar datos principales de la venta
         await db.query(
             'UPDATE ventas SET metodo_pago = $1, descuento = $2, recargo = $3, total = $4, cliente_id = $5, es_fiado = $6 WHERE id = $7 AND negocio_id = $8',
@@ -248,7 +258,12 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
             }
         }
 
+        await db.query('COMMIT');
         res.json({ mensaje: 'Venta actualizada correctamente' });
+        } catch (innerError) {
+            await db.query('ROLLBACK');
+            throw innerError;
+        }
     } catch (error) {
         console.error('Error al editar venta:', error);
         res.status(500).json({ error: 'Error al editar venta' });
@@ -260,43 +275,58 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
     try {
         const { id } = req.params;
         
+        // Convertir negocio_id a entero válido (maneja formato con punto como separador de miles)
+        const negocioId = parseInt(String(req.usuario.negocio_id).replace(/\./g, '').replace(',', '.'));
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        
         // Validar que el turno esté abierto y la venta pertenezca al turno actual
-        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocioId]);
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
         
         // Validar que el turno esté abierto
-        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id || 1]);
+        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, negocioId]);
         if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
             return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
         }
         
-      // Restaurar stock de los productos antes de eliminar
+        await db.query('BEGIN');
+        try {
+        // Restaurar stock de los productos antes de eliminar
         const itemsVenta = await db.query(
             'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
             [id]
         );
         for (const item of itemsVenta.rows) {
+            // Convertir cantidad a número válido (maneja formato con punto como separador de miles)
+            const cantidadItem = parseFloat(String(item.cantidad).replace(/\./g, '').replace(',', '.')) || 0;
             await db.query(
                 'UPDATE productos SET stock = stock + $1 WHERE id = $2 AND negocio_id = $3',
-                [item.cantidad, item.producto_id, req.usuario.negocio_id || 1]
+                [cantidadItem, item.producto_id, negocioId]
             );
         }
 
         // Restaurar saldo de deuda si era venta fiada
         const ventaInfo = await db.query(
             'SELECT cliente_id, total, es_fiado FROM ventas WHERE id = $1 AND negocio_id = $2',
-            [id, req.usuario.negocio_id || 1]
+            [id, negocioId]
         );
         if (ventaInfo.rows[0]?.es_fiado && ventaInfo.rows[0]?.cliente_id) {
+            // Convertir total a número válido (maneja formato con punto como separador de miles)
+            const totalVenta = parseFloat(String(ventaInfo.rows[0].total).replace(/\./g, '').replace(',', '.')) || 0;
             await db.query(
                 'UPDATE clientes SET saldo_deuda = GREATEST(saldo_deuda - $1, 0) WHERE id = $2',
-                [ventaInfo.rows[0].total, ventaInfo.rows[0].cliente_id]
+                [totalVenta, ventaInfo.rows[0].cliente_id]
             );
         }
 
         // Eliminar venta
-        await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id || 1]);
+        await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocioId]);
+        await db.query('COMMIT');
         res.json({ mensaje: 'Venta eliminada correctamente' });
+        } catch (innerError) {
+            await db.query('ROLLBACK');
+            throw innerError;
+        }
     } catch (error) {
         console.error('Error al eliminar venta:', error);
         res.status(500).json({ error: 'Error al eliminar venta' });
@@ -309,7 +339,7 @@ router.get('/:id/ticket', async (req, res) => {
         const { id } = req.params;
         const venta = await db.query(
             'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
-            [id, req.usuario.negocio_id || 1]
+            [id, req.usuario.negocio_id]
         );
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
 
