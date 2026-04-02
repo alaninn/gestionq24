@@ -36,20 +36,24 @@ export function imprimirTicket({ venta, items, config, negocio, modo = 'automati
         
         body {
           font-family: 'Courier New', Courier, monospace;
-          font-size: 12px;
+          font-size: 16px;
+          font-weight: bold;
           width: ${anchoTicket}mm;
           max-width: ${anchoTicket}mm;
           padding: 4mm;
           color: #000;
           background: #fff;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
         }
 
         .center { text-align: center; }
         .right { text-align: right; }
         .left { text-align: left; }
-        .bold { font-weight: bold; }
-        .grande { font-size: 16px; }
-        .small { font-size: 10px; }
+        .bold { font-weight: 900; }
+        .grande { font-size: 22px; font-weight: 900; }
+        .small { font-size: 13px; font-weight: bold; }
 
         .separador {
           border-top: 1px dashed #000;
@@ -93,15 +97,17 @@ export function imprimirTicket({ venta, items, config, negocio, modo = 'automati
         }
 
         .total-grande {
-          font-size: 18px;
-          font-weight: bold;
+          font-size: 24px;
+          font-weight: 900;
           text-align: right;
+          letter-spacing: 1px;
         }
 
         .gracias {
-          font-size: 11px;
+          font-size: 14px;
           text-align: center;
-          margin-top: 6px;
+          margin-top: 8px;
+          font-weight: bold;
         }
 
         /* Botones para modo vista previa */

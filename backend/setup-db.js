@@ -107,6 +107,7 @@ ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS mostrar_stock_pos BOOLEAN DEF
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS ocultar_stock_pos BOOLEAN DEFAULT FALSE;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_primario VARCHAR(20) DEFAULT '#f97316';
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS modo_oscuro BOOLEAN DEFAULT TRUE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS entorno_arca VARCHAR(20) DEFAULT 'homologacion';
 
 -- Tabla de codigos alternativos de productos (si no existe)
 CREATE TABLE IF NOT EXISTS producto_codigos (
@@ -128,6 +129,152 @@ WHERE username IS NOT NULL;
 
 -- Poblar username con el email actual para usuarios existentes
 UPDATE usuarios SET username = SPLIT_PART(email, '@', 1) WHERE username IS NULL;
+
+-- =============================================
+-- TABLA: certificados_arca
+-- Descripción: Almacena certificados digitales para facturación electrónica
+-- =============================================
+CREATE TABLE IF NOT EXISTS certificados_arca (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    cert_path VARCHAR(500),
+    key_path VARCHAR(500),
+    csr_path VARCHAR(500),
+    cuit VARCHAR(15),
+    punto_venta INTEGER DEFAULT 1,
+    regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto', -- 'responsable_inscripto', 'monotributista'
+    activo BOOLEAN DEFAULT true,
+    fecha_vencimiento DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_certificados_negocio ON certificados_arca(negocio_id);
+
+-- =============================================
+-- TABLA: comprobantes_electronicos
+-- Descripción: Registra comprobantes electrónicos emitidos (facturas, notas de crédito)
+-- =============================================
+CREATE TABLE IF NOT EXISTS comprobantes_electronicos (
+    id SERIAL PRIMARY KEY,
+    venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    cae VARCHAR(50),
+    cae_vencimiento DATE,
+    numero_comprobante INTEGER,
+    punto_venta INTEGER,
+    tipo_comprobante INTEGER, -- 1=Fact A, 6=Fact B, 11=Fact C, 3=NC A, 8=NC B, 13=NC C
+    tipo_documento INTEGER, -- 80=CUIT, 96=DNI, 99=Consumidor Final
+    numero_documento VARCHAR(20),
+    denominacion_comprador VARCHAR(200),
+    importe_total DECIMAL(12,2),
+    importe_neto DECIMAL(12,2),
+    importe_iva DECIMAL(12,2),
+    xml_enviado TEXT,
+    xml_respuesta TEXT,
+    estado VARCHAR(20) DEFAULT 'emitido', -- 'emitido', 'anulado', 'error'
+    fecha_emision TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_comprobantes_negocio ON comprobantes_electronicos(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_venta ON comprobantes_electronicos(venta_id);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_estado ON comprobantes_electronicos(estado);
+
+-- Columnas nuevas en configuración para facturación electrónica
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS punto_venta_arca INTEGER DEFAULT 1;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tipo_comprobante_default INTEGER DEFAULT 1;
+
+-- Columna nueva en ventas para tipo de facturación
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS tipo_facturacion VARCHAR(20) DEFAULT 'x'; -- 'electronica' o 'x'
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS comprobante_electronico_id INTEGER REFERENCES comprobantes_electronicos(id);
+
+-- =============================================
+-- TABLA: tickets_acceso_wsaa
+-- Descripción: Almacena tickets de acceso del WSAA para reutilizar
+-- =============================================
+CREATE TABLE IF NOT EXISTS tickets_acceso_wsaa (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    servicio VARCHAR(50) DEFAULT 'wsfe', -- 'wsfe', 'wsmtxca', etc.
+    token TEXT NOT NULL,
+    sign TEXT NOT NULL,
+    expiracion TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_wsaa_negocio ON tickets_acceso_wsaa(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_wsaa_expiracion ON tickets_acceso_wsaa(expiracion);
+
+-- =============================================
+-- TABLA: proveedores
+-- Descripción: Gestión de proveedores con saldo bidireccional
+-- =============================================
+CREATE TABLE IF NOT EXISTS proveedores (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    nombre VARCHAR(255) NOT NULL,
+    telefono VARCHAR(20),
+    email VARCHAR(100),
+    direccion TEXT,
+    saldo_deuda DECIMAL(12, 2) DEFAULT 0,
+    saldo_a_favor DECIMAL(12, 2) DEFAULT 0,
+    notas TEXT,
+    activo BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_proveedores_negocio ON proveedores(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_proveedores_activo ON proveedores(activo);
+CREATE INDEX IF NOT EXISTS idx_proveedores_nombre ON proveedores(nombre);
+
+-- =============================================
+-- Modificar tabla gastos para agregar referencia a proveedores, recibo y datos de compra/iva
+-- =============================================
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS proveedor_id INTEGER REFERENCES proveedores(id) ON DELETE SET NULL;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS recibo_url TEXT;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS es_compra BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(50); -- 'boleta', 'sin_boleta', 'factura'
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS tipo_comprobante VARCHAR(50); -- 'sin_factura', 'factura_a', 'factura_b', 'factura_c'
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS condicion_iva_proveedor VARCHAR(50);
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS numero_boleta VARCHAR(100);
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS iva_incluido BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS porcentaje_iva DECIMAL(5,2) DEFAULT 0;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS monto_iva DECIMAL(12,2) DEFAULT 0;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS productos_json JSONB;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS tipo_pago_proveedor VARCHAR(50);
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) DEFAULT 'pagado';
+
+CREATE INDEX IF NOT EXISTS idx_gastos_proveedor ON gastos(proveedor_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_es_compra ON gastos(es_compra);
+CREATE INDEX IF NOT EXISTS idx_gastos_tipo_documento ON gastos(tipo_documento);
 `;
 
 async function setupDB() {
