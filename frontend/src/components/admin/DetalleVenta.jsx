@@ -102,39 +102,83 @@ function ModalDetalleVenta({ venta, onClose, onReimprimir, onEliminar }) {
                 </div>
               </div>
 
-              {/* Totales */}
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
-                <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Resumen de Totales
-                </h4>
+            {/* Tipo de Comprobante */}
+            <div className={`rounded-xl p-4 border-2 ${
+              venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200' 
+                : 'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200'
+            }`}>
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${
+                  venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                    ? 'bg-green-500' 
+                    : 'bg-gray-400'
+                }`}></span>
+                Tipo de Comprobante
+              </h4>
+              
+              <div className={`rounded-lg p-4 text-center ${
+                venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' 
+                  : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
+              }`}>
+                <div className="text-3xl mb-2">
+                  {venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id ? '🧾' : '📄'}
+                </div>
+                <p className="font-bold text-lg">
+                  {venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                    ? 'Facturación Electrónica' 
+                    : 'Factura X'}
+                </p>
+                <p className="text-sm opacity-90 mt-1">
+                  {venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                    ? 'Comprobante válido ante ARCA' 
+                    : 'Sin valor fiscal'}
+                </p>
+              </div>
+            </div>
+
+            {/* Totales */}
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                Resumen de Totales
+              </h4>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between items-center bg-white rounded-lg p-3">
+                  <span className="text-sm text-gray-600">Subtotal</span>
+                  <span className="font-medium text-gray-800">{fmt(venta.subtotal_items || 0)}</span>
+                </div>
                 
-                <div className="space-y-2">
+                {(venta.descuento || 0) > 0 && (
                   <div className="flex justify-between items-center bg-white rounded-lg p-3">
-                    <span className="text-sm text-gray-600">Subtotal</span>
-                    <span className="font-medium text-gray-800">{fmt(venta.subtotal_items || 0)}</span>
+                    <span className="text-sm text-gray-600">Descuento</span>
+                    <span className="font-medium text-red-600">-{fmt(venta.descuento || 0)}</span>
                   </div>
-                  
-                  {(venta.descuento || 0) > 0 && (
-                    <div className="flex justify-between items-center bg-white rounded-lg p-3">
-                      <span className="text-sm text-gray-600">Descuento</span>
-                      <span className="font-medium text-red-600">-{fmt(venta.descuento || 0)}</span>
-                    </div>
-                  )}
-                  
-                  {(venta.recargo || 0) > 0 && (
-                    <div className="flex justify-between items-center bg-white rounded-lg p-3">
-                      <span className="text-sm text-gray-600">Recargo</span>
-                      <span className="font-medium text-blue-600">+{fmt(venta.recargo || 0)}</span>
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-100">
-                    <span className="font-semibold text-gray-800">Total Final</span>
-                    <span className="text-2xl font-bold text-gray-900">{fmt(venta.total)}</span>
+                )}
+                
+                {(venta.recargo || 0) > 0 && (
+                  <div className="flex justify-between items-center bg-white rounded-lg p-3">
+                    <span className="text-sm text-gray-600">Recargo</span>
+                    <span className="font-medium text-blue-600">+{fmt(venta.recargo || 0)}</span>
                   </div>
+                )}
+                
+                <div className={`flex justify-between items-center rounded-lg p-3 border ${
+                  venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-100' 
+                    : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'
+                }`}>
+                  <span className="font-semibold text-gray-800">Total Final</span>
+                  <span className={`text-2xl font-bold ${
+                    venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                      ? 'text-green-700' 
+                      : 'text-gray-900'
+                  }`}>{fmt(venta.total)}</span>
                 </div>
               </div>
+            </div>
             </div>
 
             {/* Productos Vendidos */}

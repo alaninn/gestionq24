@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import api from '../../api/axios';
 
 import { useTema } from '../../context/TemaContext';
+import FacturacionElectronica from './FacturacionElectronica';
 
 // ---- COMPONENTE TOGGLE ----
 // Reutilizable para todos los switches de la pantalla
@@ -62,12 +63,16 @@ function Configuracion() {
       const res = await api.get('/api/configuracion');
       const cfg = res.data || {};
       setConfig({
-        ...cfg,
-        tamanio_ticket: cfg.tamanio_ticket || '80',
-        tamanio_ticket_personalizado: cfg.tamanio_ticket_personalizado || 80,
-        impresion_tickets: cfg.impresion_tickets ?? true,
-        impresion_tickets_automatica: cfg.impresion_tickets_automatica ?? true,
-      });
+  ...cfg,
+  tamanio_ticket: cfg.tamanio_ticket || '80',
+  tamanio_ticket_personalizado: cfg.tamanio_ticket_personalizado || 80,
+  impresion_tickets: cfg.impresion_tickets ?? true,
+  impresion_tickets_automatica: cfg.impresion_tickets_automatica ?? true,
+  facturacion_electronica_activa: cfg.facturacion_electronica_activa === true || cfg.facturacion_electronica_activa === 'true',
+  metodos_pago_activos: typeof cfg.metodos_pago_activos === 'string'
+    ? JSON.parse(cfg.metodos_pago_activos)
+    : (cfg.metodos_pago_activos || ['efectivo']),
+});
     } catch (err) {
       console.error('Error:', err);
     } finally {
@@ -107,6 +112,7 @@ function Configuracion() {
     { id: 'negocio', label: '🏪 Negocio' },
     { id: 'configuraciones', label: '⚙️ Configuraciones' },
     { id: 'sistema', label: '🖥️ Sistema' },
+    { id: 'facturacion', label: '🧾 Facturación' },
   ];
 
   return (
@@ -122,7 +128,7 @@ function Configuracion() {
       {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">{exito}</div>}
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">{error}</div>}
 
-      <form onSubmit={guardar}>
+      <div>
         <div className="bg-white rounded-xl shadow overflow-hidden">
 
           {/* Pestañas */}
@@ -278,6 +284,20 @@ function Configuracion() {
 
 
             </div>
+
+            
+          )}
+         {/* Botón guardar — Negocio */}
+          {pestanaActiva === 'negocio' && (
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
+              <button
+                onClick={guardar}
+                disabled={guardando}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {guardando ? 'Guardando...' : '💾 Guardar'}
+              </button>
+            </div>
           )}
 
           {/* ==============================
@@ -312,12 +332,6 @@ function Configuracion() {
                       descripcion="Habilitar precio mayorista en el punto de venta"
                       valor={config?.permite_precio_mayorista}
                       onChange={(v) => set('permite_precio_mayorista', v)}
-                    />
-                    <FilaToggle
-                      titulo="Ocultar Stock en POS"
-                      descripcion="No mostrar la cantidad disponible en el POS"
-                      valor={config?.ocultar_stock_pos}
-                      onChange={(v) => set('ocultar_stock_pos', v)}
                     />
                     <FilaToggle
                       titulo="Validar Monto en Efectivo"
@@ -380,24 +394,80 @@ function Configuracion() {
                       valor={config?.escaner_barras}
                       onChange={(v) => set('escaner_barras', v)}
                     />
-                    <FilaToggle
-                      titulo="Imprimir automáticamente"
-                      descripcion="Genera y manda a imprimir el ticket al finalizar cada venta"
-                      valor={config?.impresion_tickets_automatica}
-                      onChange={(v) => {
-                        set('impresion_tickets_automatica', v);
-                        if (v) set('impresion_tickets', false);
-                      }}
-                    />
-                    <FilaToggle
-                      titulo="Mostrar vista previa"
-                      descripcion="Abre una ventana con el ticket para que puedas revisarlo antes de imprimir"
-                      valor={config?.impresion_tickets}
-                      onChange={(v) => {
-                        set('impresion_tickets', v);
-                        if (v) set('impresion_tickets_automatica', false);
-                      }}
-                    />
+
+                    {/* Modo de impresión - Selector de opciones */}
+                    <div className="p-4 rounded-lg border bg-gray-50 border-gray-200">
+                      <p className="font-medium text-gray-700 mb-1">🖨️ Modo de impresión de tickets</p>
+                      <p className="text-sm text-gray-500 mb-3">Elegí cómo se comporta el sistema al finalizar una venta</p>
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set('impresion_tickets_automatica', true);
+                            set('impresion_tickets', false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                            config?.impresion_tickets_automatica
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                            config?.impresion_tickets_automatica ? 'border-green-500' : 'border-gray-300'
+                          }`}>
+                            {config?.impresion_tickets_automatica && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-700 text-sm">⚡ Imprimir automáticamente</p>
+                            <p className="text-xs text-gray-500">Envía el ticket directo a la impresora al confirmar</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set('impresion_tickets', true);
+                            set('impresion_tickets_automatica', false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                            config?.impresion_tickets
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                            config?.impresion_tickets ? 'border-green-500' : 'border-gray-300'
+                          }`}>
+                            {config?.impresion_tickets && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-700 text-sm">👁️ Mostrar vista previa</p>
+                            <p className="text-xs text-gray-500">Abre una ventana con el ticket para revisar antes de imprimir</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set('impresion_tickets_automatica', false);
+                            set('impresion_tickets', false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                            !config?.impresion_tickets_automatica && !config?.impresion_tickets
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                            !config?.impresion_tickets_automatica && !config?.impresion_tickets ? 'border-green-500' : 'border-gray-300'
+                          }`}>
+                            {!config?.impresion_tickets_automatica && !config?.impresion_tickets && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-700 text-sm">🚫 No imprimir</p>
+                            <p className="text-xs text-gray-500">Solo registrar la venta, sin generar ticket</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="bg-white border border-gray-200 rounded-lg p-4">
                       <p className="font-medium text-gray-800 mb-2">Tamaño de papel</p>
@@ -713,6 +783,46 @@ function Configuracion() {
             </div>
           )}
 
+          {/* Botón guardar — Sistema */}
+          {pestanaActiva === 'sistema' && (
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
+              <button
+                onClick={guardar}
+                disabled={guardando}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {guardando ? 'Guardando...' : '💾 Guardar'}
+              </button>
+            </div>
+          )}
+
+          {/* ==============================
+              PESTAÑA: FACTURACIÓN ELECTRÓNICA
+          ============================== */}
+
+        
+          {pestanaActiva === 'facturacion' && (
+            <div className="p-6">
+              <FacturacionElectronica config={config} setConfig={setConfig} />
+            </div>
+          )}
+
+
+         
+
+         
+{/* Botón guardar — Configuraciones */}
+          {pestanaActiva === 'configuraciones' && (
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
+              <button
+                onClick={guardar}
+                disabled={guardando}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {guardando ? 'Guardando...' : '💾 Guardar'}
+              </button>
+            </div>
+          )}
           {/* ==============================
               PESTAÑA: SISTEMA
           ============================== */}
@@ -822,20 +932,12 @@ function Configuracion() {
 
             </div>
           )}
+           
 
-          {/* Botón guardar */}
-          <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
-            <button
-              type="submit"
-              disabled={guardando}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {guardando ? 'Guardando...' : '💾 Guardar Configuración'}
-            </button>
-          </div>
+          
 
-        </div>
-      </form>
+       </div>
+      </div>
 
     </div>
   );

@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import Usuarios from '../components/admin/Usuarios';
 import Soporte from '../components/admin/Soporte';
+import Proveedores from '../components/admin/Proveedores';
 
 function NombreNegocio() {
   const [nombre, setNombre] = useState(() => {
@@ -132,7 +133,7 @@ function Admin() {
             </>
           )}
 
-          {(tienePermiso('ventas', 'ver') || tienePermiso('clientes', 'ver')) && (
+          {(tienePermiso('ventas', 'ver') || tienePermiso('clientes', 'ver') || tienePermiso('proveedores', 'ver') || tienePermiso('gastos', 'ver')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Finanzas</p>
           )}
           {tienePermiso('ventas', 'ver') && (
@@ -141,15 +142,18 @@ function Admin() {
           {tienePermiso('clientes', 'ver') && (
             <NavLink to="/admin/cuentas-corrientes" icon="👥" label="Cuentas Corrientes" />
           )}
+          {tienePermiso('proveedores', 'ver') && (
+            <NavLink to="/admin/proveedores" icon="📦" label="Proveedores" />
+          )}
+          {tienePermiso('gastos', 'ver') && (
+            <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
+          )}
 
-          {(tienePermiso('reportes', 'ver') || tienePermiso('gastos', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
+          {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
           )}
           {tienePermiso('reportes', 'ver') && (
             <NavLink to="/admin/reportes" icon="📈" label="Reportes" />
-          )}
-          {tienePermiso('gastos', 'ver') && (
-            <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
           )}
           {tienePermiso('soporte', 'ver') && (
             <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
@@ -240,6 +244,7 @@ function Admin() {
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/cuentas-corrientes" element={<CuentasCorrientes />} />
             <Route path="/caja" element={<ControlCaja />} />
+            <Route path="/proveedores" element={<Proveedores />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/soporte" element={<Soporte />} />
           </Routes>

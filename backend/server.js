@@ -20,6 +20,8 @@ const rutasUsuarios = require('./routes/usuarios');
 const rutasSuperadmin = require('./routes/superadmin');
 const rutasSalud = require('./routes/salud');
 const rutasSoporte = require('./routes/soporte');
+const rutasArca = require('./routes/arca');
+const rutasProveedores = require('./routes/proveedores');
 
 const { verificarToken, verificarPermiso, soloSuperadmin } = require('./middleware/auth');
 
@@ -64,6 +66,9 @@ app.use('/api/turnos', verificarToken, rutasTurnos);
 // Clientes
 app.use('/api/clientes', verificarToken, rutasClientes);
 
+// Proveedores
+app.use('/api/proveedores', verificarToken, rutasProveedores);
+
 // Reportes — requiere permiso
 app.use('/api/reportes', verificarToken, verificarPermiso('reportes', 'ver'), rutasReportes);
 
@@ -75,6 +80,9 @@ app.use('/api/salud', rutasSalud);
 
 // Soporte técnico
 app.use('/api/soporte', rutasSoporte);
+
+// Facturación Electrónica ARCA
+app.use('/api/arca', verificarToken, rutasArca);
 
 // Usuarios y superadmin
 app.use('/api/usuarios', verificarToken, rutasUsuarios);

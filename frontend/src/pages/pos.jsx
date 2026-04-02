@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +6,7 @@ import { useConectividad } from '../context/ConectividadContext';
 import { ModalGasto } from '../components/admin/Gastos';
 import ModalDetalleVenta from '../components/admin/DetalleVenta';
 import { imprimirTicket } from '../components/ticket';
+import ComprobanteElectronico from '../components/ComprobanteElectronico';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import VentaProductoModal from '../components/admin/VentaProductoModal';
 
@@ -195,6 +196,7 @@ function ModalHistorial({ turno, onCerrar, config }) {
   const [actualizando, setActualizando] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
   const [detalleVenta, setDetalleVenta] = useState(null);
+const [comprobanteReimprimir, setComprobanteReimprimir] = useState(null);
 
   // Función para cargar ventas del turno actual
   const cargarVentas = async () => {
@@ -248,11 +250,22 @@ function ModalHistorial({ turno, onCerrar, config }) {
   };
 
   // Función para reimprimir ticket
-  const reimprimirTicket = async (venta) => {
+const reimprimirTicket = async (venta) => {
     try {
       setActualizando(true);
-      // Solicitamos la venta completa (incluye items) y la imprimimos
       const res = await api.get(`/api/ventas/${venta.id}`);
+      
+      // Si tiene comprobante electrónico, mostrarlo en lugar del ticket común
+      if (res.data.comprobante_electronico_id) {
+        try {
+          const resComp = await api.get(`/api/arca/comprobantes?venta_id=${venta.id}`);
+          if (resComp.data?.length > 0) {
+            setComprobanteReimprimir(resComp.data[0]);
+            return;
+          }
+        } catch { }
+      }
+      
       imprimirTicket({
         venta: res.data,
         items: res.data.items || [],
@@ -299,39 +312,82 @@ function ModalHistorial({ turno, onCerrar, config }) {
               </div>
             ) : (
               ventas.map(venta => (
-                <div key={venta.id} className="bg-gray-50 rounded-xl p-3 flex items-center justify-between border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors"
+                <div key={venta.id} 
+                  className={`bg-white rounded-xl p-4 border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${
+                    venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                      ? 'border-green-200 bg-gradient-to-r from-green-50 to-white hover:border-green-300' 
+                      : 'border-gray-200 hover:border-orange-300'
+                  }`}
                   onClick={() => cargarDetalleVenta(venta.id)}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-green-100 text-green-700 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0">
-                      #{venta.id}
+                  <div className="flex items-center justify-between">
+                    {/* Izquierda: ID + Tipo + Método de pago */}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 shadow-md ${
+                        venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                          ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                          : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                      }`}>
+                        #{venta.id}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-semibold text-gray-800">
+                            {venta.metodo_pago === 'efectivo' ? '💵' : venta.metodo_pago === 'tarjeta' ? '💳' : venta.metodo_pago === 'mercadopago' ? '📱' : '🏦'} {venta.metodo_pago}
+                          </p>
+                          {(venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id) && (
+                            <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-medium shadow-sm">
+                              🧾 Electrónica
+                            </span>
+                          )}
+                          {venta.tipo_facturacion === 'x' && !venta.comprobante_electronico_id && (
+                            <span className="bg-gray-400 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                              📄 Factura X
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {new Date(venta.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          {venta.es_fiado && <span className="ml-2 bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-xs font-medium">Fiado</span>}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">
-                        {venta.metodo_pago === 'efectivo' ? '💵' : venta.metodo_pago === 'tarjeta' ? '💳' : venta.metodo_pago === 'mercadopago' ? '📱' : '🏦'} {venta.metodo_pago}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {new Date(venta.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                        {venta.es_fiado && <span className="ml-2 bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-xs">Fiado</span>}
-                      </p>
+
+                    {/* Derecha: Total + Acciones */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className={`text-xl font-bold ${
+                          venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                            ? 'text-green-700' 
+                            : 'text-gray-800'
+                        }`}>
+                          {fmt(venta.total)}
+                        </p>
+                        <p className="text-xs text-gray-400">Total</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          reimprimirTicket(venta);
+                        }}
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            venta.tipo_facturacion === 'electronica' || venta.comprobante_electronico_id
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200 hover:shadow-md' 
+                              : 'bg-blue-100 text-blue-700 hover:bg-blue-200 hover:shadow-md'
+                          }`}
+                          title="Reimprimir">
+                          🖨️
+                        </button>
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          eliminarVenta(venta.id, venta.total);
+                        }}
+                          className="p-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 hover:shadow-md transition-all duration-200"
+                          title="Eliminar">
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={(e) => {
-                      e.stopPropagation();
-                      reimprimirTicket(venta);
-                    }}
-                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors">
-                      🖨️ Reimprimir
-                    </button>
-                    <button onClick={(e) => {
-                      e.stopPropagation();
-                      eliminarVenta(venta.id, venta.total);
-                    }}
-                      className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors">
-                      🗑️ Eliminar
-                    </button>
-                  </div>
-                  <p className="font-bold text-gray-800">{fmt(venta.total)}</p>
                 </div>
               ))
             )}
@@ -345,6 +401,14 @@ function ModalHistorial({ turno, onCerrar, config }) {
       </div>
 
       {/* Modal de Detalle de Venta */}
+      {comprobanteReimprimir && (
+        <ComprobanteElectronico
+          comprobante={comprobanteReimprimir}
+          config={config}
+          onClose={() => setComprobanteReimprimir(null)}
+        />
+      )}
+
       {detalleVenta && (
         <ModalDetalleVenta
           venta={detalleVenta}
@@ -363,7 +427,26 @@ function ModalHistorial({ turno, onCerrar, config }) {
 // =============================================
 // MODAL: CONFIRMAR VENTA
 // =============================================
-function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCerrar }) {
+const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({ 
+  carrito, 
+  total, 
+  config, 
+  turno, 
+  facturacionElectronica,
+  setFacturacionElectronica,
+  tipoComprobante,
+  setTipoComprobante,
+  tipoDocumento,
+  setTipoDocumento,
+  numeroDocumento,
+  setNumeroDocumento,
+  denominacionComprador,
+  setDenominacionComprador,
+  tiposComprobante,
+  setTiposComprobante,
+  onConfirmar, 
+  onCerrar 
+}, ref) {
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [recargo, setRecargo] = useState('');
   const [redondeo, setRedondeo] = useState(0);
@@ -375,6 +458,23 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
   const [mostrarFormNuevoCliente, setMostrarFormNuevoCliente] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [nuevoClienteTel, setNuevoClienteTel] = useState('');
+  
+  // Exponer la función confirmar al padre
+  useImperativeHandle(ref, () => ({
+    confirmar
+  }));
+
+  // Cargar tipos de comprobante según régimen fiscal
+  useEffect(() => {
+    if (config?.facturacion_electronica_activa && config?.regimen_fiscal) {
+      api.get(`/api/arca/tipos-comprobante/${config.regimen_fiscal}`)
+        .then(res => {
+          setTiposComprobante(res.data);
+          if (res.data.length > 0) setTipoComprobante(res.data[0].codigo);
+        })
+        .catch(() => {});
+    }
+  }, [config?.facturacion_electronica_activa, config?.regimen_fiscal]);
 
   // Descuento fijo: empieza DESACTIVADO, el cajero lo activa si quiere
   const tieneDescuentoFijo = config?.descuento_modo === 'fijo' && config?.descuento_maximo > 0;
@@ -430,6 +530,14 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
       alert('Seleccioná un cliente para la cuenta corriente');
       return;
     }
+    // Validar monto en efectivo si está activado
+    if (metodoPago === 'efectivo' && config?.validar_monto_efectivo) {
+      const entregado = parseFloat(efectivoEntregado) || 0;
+      if (entregado < totalFinal) {
+        alert(`❌ El monto entregado (${fmt(entregado)}) es menor al total (${fmt(totalFinal)})`);
+        return;
+      }
+    }
     setCargando(true);
     try {
       await onConfirmar({
@@ -445,15 +553,15 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b bg-gray-800 text-white">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh]">
+       <div className="flex items-center justify-between p-6 border-b bg-gray-800 text-white flex-shrink-0">
           <div>
             <h3 className="text-xl font-bold">💳 Confirmar Venta</h3>
             <p className="text-gray-400 text-sm">F8 para confirmar · Esc para cancelar</p>
           </div>
           <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-5 overflow-y-auto flex-1">
           <div className="bg-gray-50 rounded-xl p-5 flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{carrito.length} productos</p>
@@ -608,6 +716,91 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
             </div>
           )}
 
+          {/* Facturación Electrónica */}
+          {config?.facturacion_electronica_activa && (
+            <div className="space-y-3">
+              {/* Botón principal de facturación */}
+              <button type="button"
+                onClick={() => setFacturacionElectronica(!facturacionElectronica)}
+                className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                  facturacionElectronica 
+                    ? 'border-green-500 bg-green-50' 
+                    : 'border-gray-200 bg-white hover:border-orange-300'
+                }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🧾</span>
+                  <div>
+                    <p className="font-medium text-gray-700 text-sm">Facturación Electrónica</p>
+                    <p className="text-xs text-gray-500">
+                      {facturacionElectronica ? 'Comprobante válido ante ARCA' : 'Factura X (sin valor fiscal)'}
+                    </p>
+                  </div>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  facturacionElectronica ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {facturacionElectronica ? 'ACTIVADO' : 'DESACTIVADO'}
+                </div>
+              </button>
+
+              {/* Campos de facturación electrónica */}
+              {facturacionElectronica && (
+                <div className="space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Comprobante</label>
+                    <select
+                      value={tipoComprobante}
+                      onChange={(e) => setTipoComprobante(parseInt(e.target.value))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    >
+                      {tiposComprobante.map(t => (
+                        <option key={t.codigo} value={t.codigo}>{t.emoji} {t.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Documento</label>
+                    <select
+                      value={tipoDocumento}
+                      onChange={(e) => setTipoDocumento(parseInt(e.target.value))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    >
+                      <option value={99}>Consumidor Final</option>
+                      <option value={96}>DNI</option>
+                      <option value={80}>CUIT</option>
+                    </select>
+                  </div>
+
+                  {tipoDocumento !== 99 && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Número de Documento</label>
+                        <input
+                          type="text"
+                          value={numeroDocumento}
+                          onChange={(e) => setNumeroDocumento(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                          placeholder="Ej: 12345678"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Denominación Comprador</label>
+                        <input
+                          type="text"
+                          value={denominacionComprador}
+                          onChange={(e) => setDenominacionComprador(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                          placeholder="Ej: Juan Pérez"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-xl p-5 text-white" style={{ backgroundColor: 'var(--color-primario)' }}>
             <div className="flex justify-between items-center">
               <span className="font-medium text-white text-opacity-90">Total a cobrar</span>
@@ -621,25 +814,24 @@ function ModalConfirmarVenta({ carrito, total, config, turno, onConfirmar, onCer
             )}
           </div>
         </div>
-        <div className="flex gap-4 p-6 pt-0">
+        <div className="flex gap-4 p-6 pt-0 flex-shrink-0">
           <button onClick={onCerrar} className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
             Cancelar
           </button>
           <button onClick={confirmar} disabled={cargando}
             style={{ backgroundColor: 'var(--color-primario)' }}
             className="flex-grow py-3 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50">
-            {cargando ? 'Procesando...' : '✅ Confirmar Venta [F8]'}
+            {cargando 
+  ? (facturacionElectronica ? '🧾 Emitiendo comprobante ARCA...' : 'Procesando...') 
+  : '✅ Confirmar Venta [F8]'}
           </button>
         </div>
       </div>
     </div>
   );
-}
+});
 
-// =============================================
-// MODAL: VENTA EXITOSA
-// =============================================
-function ModalVentaExitosa({ total, onSeguirVendiendo, onImprimir, config }) {
+const ModalVentaExitosa = ({ total, onSeguirVendiendo, onImprimir, config, tieneComprobanteElectronico }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -666,7 +858,7 @@ function ModalVentaExitosa({ total, onSeguirVendiendo, onImprimir, config }) {
             </button>
             <button onClick={onImprimir}
               className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
-              🖨️ Imprimir ticket
+              {tieneComprobanteElectronico ? '🧾 Ver Comprobante Electrónico' : '🖨️ Imprimir ticket'}
             </button>
           </div>
         </div>
@@ -1527,6 +1719,7 @@ function ModalFiados({ onCerrar }) {
           {!clienteSeleccionado ? (
             <>
               <input type="text" value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
+                onFocus={() => { scannerBuffer.current = ''; }}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400"
                 placeholder="🔍 Buscar por nombre o teléfono..." />
               {cargando ? (
@@ -1656,6 +1849,7 @@ function POS() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline } = useConectividad();
+  const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
   const [cajasAbiertas, setCajasAbiertas] = useState([]);
   const [cargandoTurno, setCargandoTurno] = useState(true);
@@ -1671,10 +1865,20 @@ function POS() {
   const [mostrarModalHistorial, setMostrarModalHistorial] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [mensajeScanner, setMensajeScanner] = useState(null);
-  const [ultimaVenta, setUltimaVenta] = useState(null); // Para guardar la venta recién creada
-  const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null); // Producto para vender por peso/cantidad
- const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
+  const [ultimaVenta, setUltimaVenta] = useState(null);
+  const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null);
+  const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
+  const [editandoCantidad, setEditandoCantidad] = useState(null);
 
+  // Estados para facturación electrónica (se resetean por venta)
+  const [facturacionElectronica, setFacturacionElectronica] = useState(false);
+  const [tipoComprobante, setTipoComprobante] = useState(0);
+  const [tipoDocumento, setTipoDocumento] = useState(99);
+  const [numeroDocumento, setNumeroDocumento] = useState('');
+  const [denominacionComprador, setDenominacionComprador] = useState('');
+ const [tiposComprobante, setTiposComprobante] = useState([]);
+  const [ultimoComprobante, setUltimoComprobante] = useState(null);
+  const [mostrarComprobanteElectronico, setMostrarComprobanteElectronico] = useState(false);
 
   const [pestanas, setPestanas] = useState(() => {
     try { const g = localStorage.getItem('pos_pestanas'); return g ? JSON.parse(g) : [{ id: 1, nombre: 'Venta 1', carrito: [] }]; }
@@ -1693,6 +1897,17 @@ function POS() {
   const scannerBuffer = useRef('');
   const scannerTimer = useRef(null);
   const carritoActivo = pestanas.find(p => p.id === pestanaActiva)?.carrito || [];
+
+  // Función para resetear estados de facturación electrónica
+  const resetearFacturacion = (mantenerComprobante = false) => {
+    setFacturacionElectronica(false);
+    setTipoComprobante('');
+    setTipoDocumento(99);
+    setNumeroDocumento('');
+    setDenominacionComprador('');
+    setTiposComprobante([]);
+    if (!mantenerComprobante) setUltimoComprobante(null);
+  };
 
   useEffect(() => { verificarTurno(); cargarConfig(); }, []);
   // Guardar pestañas con throttle — máximo una vez cada 2 segundos
@@ -1749,7 +1964,15 @@ useEffect(() => {
       if (e.key === 'F3') { e.preventDefault(); setMostrarModalFiados(true); return; }
       if (e.key === 'F4') { e.preventDefault(); setMostrarModalCierre(true); return; }
       if (e.key === 'F5') { e.preventDefault(); setMostrarModalHistorial(true); return; }
-      if (e.key === 'F8') { e.preventDefault(); if (carritoActivo.length > 0) setMostrarModalVenta(true); return; }
+      if (e.key === 'F8') { 
+        e.preventDefault(); 
+        if (mostrarModalVenta && modalVentaRef.current) {
+          modalVentaRef.current.confirmar();
+        } else if (carritoActivo.length > 0) {
+          setMostrarModalVenta(true);
+        }
+        return; 
+      }
       if (e.key === 'F9') { e.preventDefault(); if (window.confirm('¿Limpiar carrito?')) limpiarCarrito(); return; }
       if (e.key === 'F10') { e.preventDefault(); setMostrarModalGasto(true); return; }
       if (e.key === 'Escape') {
@@ -1982,6 +2205,7 @@ useEffect(() => {
       total: parseFloat(totalFinal),
       cliente_id: clienteId || null,
       es_fiado: esFiado || false,
+      tipo_facturacion: facturacionElectronica ? 'electronica' : 'x',
     };
 
     // ---- MODO OFFLINE ----
@@ -2006,6 +2230,39 @@ useEffect(() => {
     try {
       const resVenta = await api.post('/api/ventas', ventaPayload);
 
+      // Si es facturación electrónica, emitir comprobante
+      if (facturacionElectronica && resVenta?.data?.id) {
+        try {
+          const comprobanteData = {
+            venta_id: resVenta.data.id,
+            tipo_comprobante: tipoComprobante,
+            punto_venta: config?.punto_venta_arca || 1,
+            tipo_documento: tipoDocumento,
+            numero_documento: numeroDocumento || null,
+            denominacion_comprador: denominacionComprador || null,
+            importe_total: parseFloat(totalFinal),
+// Factura C (monotributista): IVA = 0, neto = total
+// Factura A/B (responsable inscripto): IVA = 21%
+importe_neto: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
+    ? parseFloat(totalFinal)                           // Factura C: neto = total (sin IVA)
+    : parseFloat((totalFinal / 1.21).toFixed(2)),      // Factura A/B: neto = total / 1.21
+importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
+    ? 0                                                // Factura C: sin IVA
+    : parseFloat((totalFinal - totalFinal / 1.21).toFixed(2)), // Factura A/B: IVA = total - neto
+          };
+
+          const resComprobante = await api.post('/api/arca/emitir', comprobanteData);
+          
+          if (resComprobante.data.exito) {
+            console.log('✅ Comprobante electrónico emitido:', resComprobante.data.comprobante.cae);
+            setUltimoComprobante(resComprobante.data.comprobante);
+          }
+        } catch (errArca) {
+          console.error('⚠️ Error al emitir comprobante ARCA:', errArca);
+          // No detener el flujo, la venta ya se registró
+        }
+      }
+
       // Obtener items completos para el ticket
       if (resVenta?.data?.id) {
         try {
@@ -2022,6 +2279,7 @@ useEffect(() => {
       setMostrarModalVenta(false);
       setTotalUltimaVenta(totalFinal);
       setVentaExitosa(true);
+      resetearFacturacion(true); // mantener comprobante para mostrarlo
       cargarProductos();
       inputBuscarRef.current?.focus();
     } catch (err) {
@@ -2046,6 +2304,12 @@ useEffect(() => {
 
   // Función para imprimir ticket desde el modal de venta exitosa
 const imprimirTicketDesdeModal = () => {
+    // Si fue una venta con facturación electrónica y hay comprobante, mostrar ese
+    if (ultimoComprobante) {
+      setVentaExitosa(false);
+      setTimeout(() => setMostrarComprobanteElectronico(true), 150);
+      return;
+    }
     if (!ultimaVenta) {
       if (!online) {
         alert('⚠️ Ticket no disponible en modo offline.\nCuando vuelva el internet la venta se sincroniza y podrás reimprimir desde el historial.');
@@ -2054,10 +2318,7 @@ const imprimirTicketDesdeModal = () => {
       }
       return;
     }
-
-    // Lógica de impresión basada en configuración (usando nombres correctos del componente de Configuración)
     if (config?.impresion_tickets_automatica) {
-      // Imprimir directamente sin vista previa
       imprimirTicket({
         venta: ultimaVenta,
         items: ultimaVenta.items || [],
@@ -2065,7 +2326,6 @@ const imprimirTicketDesdeModal = () => {
         modo: 'automatico'
       });
     } else if (config?.impresion_tickets) {
-      // Mostrar vista previa
       imprimirTicket({
         venta: ultimaVenta,
         items: ultimaVenta.items || [],
@@ -2073,7 +2333,6 @@ const imprimirTicketDesdeModal = () => {
         modo: 'vista_previa'
       });
     } else {
-      // Si no hay configuración de impresión, mostrar alerta
       alert('Configurá la impresión en Configuración > Impresión');
     }
   };
@@ -2081,23 +2340,53 @@ const imprimirTicketDesdeModal = () => {
   const oscuro = config?.modo_oscuro !== false;
 
   const estilos = {
-    panelBusqueda: oscuro ? { background: '#111827', borderRight: '0.5px solid rgba(255,255,255,0.08)' } : { background: '#fff', borderRight: '0.5px solid #e5e7eb' },
-    inputBuscar: oscuro ? { background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.9)' } : { background: '#f9fafb', border: '1px solid #e5e7eb', color: '#111827' },
-    textoProducto: oscuro ? { color: 'rgba(255,255,255,0.9)' } : { color: '#111827' },
-    textoSecundario: oscuro ? { color: 'rgba(255,255,255,0.35)' } : { color: '#6b7280' },
-    fondoCarrito: oscuro ? 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f1a2e 100%)' : '#f9fafb',
-    fondoFooter: oscuro ? '#0f0f1a' : '#fff',
+    panelBusqueda: oscuro 
+      ? { background: '#111827', borderRight: '0.5px solid rgba(255,255,255,0.08)' } 
+      : { background: '#f8fafc', borderRight: '1px solid #e2e8f0' },
+    inputBuscar: oscuro 
+      ? { background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.9)' } 
+      : { background: '#ffffff', border: '1px solid #d1d5db', color: '#1f2937', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+    textoProducto: oscuro 
+      ? { color: 'rgba(255,255,255,0.9)' } 
+      : { color: '#1f2937' },
+    textoSecundario: oscuro 
+      ? { color: 'rgba(255,255,255,0.35)' } 
+      : { color: '#6b7280' },
+    fondoCarrito: oscuro 
+      ? 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f1a2e 100%)' 
+      : 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 50%, #e5e7eb 100%)',
+    fondoFooter: oscuro ? '#0f0f1a' : '#ffffff',
     borderFooter: oscuro ? 'rgba(255,255,255,0.08)' : '#e5e7eb',
     textoTotal: oscuro ? 'rgba(255,255,255,0.5)' : '#6b7280',
     textoTotalMonto: oscuro ? '#ffffff' : '#111827',
-    fondoPestanas: oscuro ? '#1a1a2e' : '#fff',
-    itemCarrito: oscuro ? { background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(10px)', border: '0.5px solid rgba(255,255,255,0.12)' } : { background: '#fff', border: '1px solid #f3f4f6' },
-    textoItemCarrito: oscuro ? { color: 'rgba(255,255,255,0.9)' } : { color: '#111827' },
-    textoItemSecundario: oscuro ? { color: 'rgba(255,255,255,0.4)' } : { color: '#6b7280' },
-    botonCantidad: oscuro ? { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' } : { background: '#f3f4f6', color: '#374151' },
-    botonBasura: oscuro ? { background: 'rgba(239,68,68,0.15)', color: 'rgba(239,68,68,0.7)' } : { background: '#fee2e2', color: '#ef4444' },
-    botonLimpiar: oscuro ? { background: 'rgba(239,68,68,0.15)', color: 'rgba(239,68,68,0.7)' } : { background: '#fee2e2', color: '#ef4444' },
-    textoVacio: oscuro ? { color: 'rgba(255,255,255,0.3)' } : { color: '#9ca3af' },
+    fondoPestanas: oscuro ? '#1a1a2e' : '#f3f4f6',
+    itemCarrito: oscuro 
+      ? { background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(10px)', border: '0.5px solid rgba(255,255,255,0.12)' } 
+      : { background: '#ffffff', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    textoItemCarrito: oscuro 
+      ? { color: 'rgba(255,255,255,0.9)' } 
+      : { color: '#111827' },
+    textoItemSecundario: oscuro 
+      ? { color: 'rgba(255,255,255,0.4)' } 
+      : { color: '#9ca3af' },
+    botonCantidad: oscuro 
+      ? { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' } 
+      : { background: '#e5e7eb', color: '#374151' },
+    botonBasura: oscuro 
+      ? { background: 'rgba(239,68,68,0.15)', color: 'rgba(239,68,68,0.7)' } 
+      : { background: '#fef2f2', color: '#dc2626' },
+    botonLimpiar: oscuro 
+      ? { background: 'rgba(239,68,68,0.15)', color: 'rgba(239,68,68,0.7)' } 
+      : { background: '#fef2f2', color: '#dc2626' },
+    textoVacio: oscuro 
+      ? { color: 'rgba(255,255,255,0.3)' } 
+      : { color: '#9ca3af' },
+    productoItem: oscuro
+      ? { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.06)' }
+      : { background: '#ffffff', border: '1px solid #e5e7eb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' },
+    productoItemHover: oscuro
+      ? { background: 'rgba(249,115,22,0.1)', border: '0.5px solid rgba(249,115,22,0.3)' }
+      : { background: '#fff7ed', border: '1px solid #fed7aa', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' },
   };
 
 
@@ -2130,7 +2419,7 @@ const imprimirTicketDesdeModal = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: oscuro ? '#0f0f1a' : '#f1f5f9' }}>
 
       {/* ---- BANNER OFFLINE ---- */}
       {!online && (
@@ -2226,6 +2515,19 @@ const imprimirTicketDesdeModal = () => {
           {ventaExitosa && !mensajeScanner && (
             <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-green-600">✅ Venta registrada</span>
           )}
+
+          {/* Resumen del turno */}
+          {carritoActivo.length > 0 && (
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+              style={{ background: oscuro ? 'rgba(255,255,255,0.06)' : '#e2e8f0', border: oscuro ? '0.5px solid rgba(255,255,255,0.1)' : '1px solid #cbd5e1' }}>
+              <span className="text-xs font-semibold" style={{ color: 'var(--color-primario)' }}>
+                {carritoActivo.length} prod
+              </span>
+              <span className={oscuro ? 'text-gray-600' : 'text-gray-400'}>·</span>
+              <span className={`text-xs font-bold ${oscuro ? 'text-white' : 'text-gray-800'}`}>{fmt(total)}</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
             <span className="text-sm font-medium text-gray-300">{turno?.nombre || 'Caja'}</span>
@@ -2240,76 +2542,120 @@ const imprimirTicketDesdeModal = () => {
        <div className="w-80 lg:w-96 flex flex-col flex-shrink-0" style={estilos.panelBusqueda}>
 
           {/* Buscador */}
-          <div className="p-3" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
+          <div className="p-3" style={{ borderBottom: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #d1d5db' }}>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>🔍</span>
+              <span className="absolute left-3 top-2.5 text-sm" style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#64748b' }}>🔍</span>
               <input ref={inputBuscarRef} type="text" value={buscar}
                 onChange={(e) => setBuscar(e.target.value)} autoFocus
                 placeholder="Buscar por nombre o código... [F2]"
-                className="w-full rounded-xl pl-8 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="w-full rounded-xl pl-8 pr-8 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                 style={estilos.inputBuscar} />
+              {buscar && (
+                <button onClick={() => { setBuscar(''); setProductos([]); inputBuscarRef.current?.focus(); }}
+                  className="absolute right-3 top-2.5 text-sm transition-opacity hover:opacity-100"
+                  style={{ color: oscuro ? 'rgba(255,255,255,0.4)' : '#64748b' }}>✕</button>
+              )}
             </div>
           </div>
 
-          {/* Ordenar */}
+          {/* Barra de ordenar / contador */}
          {productos.length > 0 && (
-            <div className="px-3 py-2 flex gap-1.5 items-center" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Orden:</span>
-              {[{ id: 'nombre', label: 'A-Z' }, { id: 'precio_asc', label: '$ ↑' }, { id: 'precio_desc', label: '$ ↓' }].map(o => (
-                <button key={o.id} onClick={() => setOrdenar(o.id)}
-                  style={ordenar === o.id ? { backgroundColor: 'var(--color-primario)' } : {}}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${ordenar === o.id ? 'text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                  {o.label}
-                </button>
-              ))}
+            <div className="px-3 py-2 flex gap-1.5 items-center justify-between" style={{ borderBottom: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #cbd5e1' }}>
+              <div className="flex gap-1.5 items-center">
+                <span className="text-xs" style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#64748b' }}>Orden:</span>
+                {[{ id: 'nombre', label: 'A-Z' }, { id: 'precio_asc', label: '$ ↑' }, { id: 'precio_desc', label: '$ ↓' }].map(o => (
+                  <button key={o.id} onClick={() => setOrdenar(o.id)}
+                    style={ordenar === o.id ? { backgroundColor: 'var(--color-primario)' } : {}}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${ordenar === o.id ? 'text-white' : oscuro ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: oscuro ? 'rgba(255,255,255,0.07)' : '#e2e8f0', color: oscuro ? 'rgba(255,255,255,0.4)' : '#64748b' }}>
+                {productos.length} resultado{productos.length !== 1 ? 's' : ''}
+              </span>
             </div>
           )}
 
           {/* Lista productos */}
           <div className="flex-1 overflow-y-auto p-2">
             {buscar.trim() === '' ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-300 py-12">
-                <p className="text-5xl mb-3">🔍</p>
-                <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Buscá un producto</p>
-                <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>por nombre o escaneá el código</p>
-                <div className="mt-6 space-y-1.5 w-full px-4">
-                  {[['F1', 'Venta Rápida', 'purple'], ['F3', 'Fiados', 'orange'], ['F8', 'Confirmar Venta', 'green'], ['F9', 'Limpiar carrito', 'red']].map(([key, label, color]) => (
-                    <div key={key} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-gray-500">{label}</span>
-                      <span className={`text-xs font-mono font-bold bg-${color}-100 text-${color}-600 px-2 py-0.5 rounded`}>{key}</span>
+              <div className="flex flex-col items-center justify-center h-full py-8 px-4">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: oscuro ? 'rgba(255,255,255,0.06)' : '#e2e8f0', border: oscuro ? '0.5px solid rgba(255,255,255,0.1)' : '1px solid #cbd5e1' }}>
+                  <span className="text-3xl opacity-60">🔍</span>
+                </div>
+                <p className="text-sm font-semibold mb-1" style={{ color: oscuro ? 'rgba(255,255,255,0.5)' : '#475569' }}>Buscá un producto</p>
+                <p className="text-xs text-center mb-6" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>por nombre, o escaneá el código de barras</p>
+                <div className="w-full space-y-1.5">
+                  <p className="text-xs mb-2 uppercase tracking-widest" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>Atajos de teclado</p>
+                  {[
+                    { key: 'F1', label: 'Venta Rápida', color: '#7c3aed', bg: 'rgba(124,58,237,0.15)' },
+                    { key: 'F3', label: 'Fiados', color: 'var(--color-primario)', bg: 'rgba(249,115,22,0.1)' },
+                    { key: 'F8', label: 'Confirmar Venta', color: '#16a34a', bg: 'rgba(22,163,74,0.12)' },
+                    { key: 'F9', label: 'Limpiar carrito', color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
+                  ].map(({ key, label, color, bg }) => (
+                    <div key={key} className="flex items-center justify-between rounded-xl px-3 py-2"
+                      style={{ background: bg, border: `0.5px solid ${color}30` }}>
+                      <span className="text-xs font-medium" style={estilos.textoSecundario}>{label}</span>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-lg"
+                        style={{ background: `${color}25`, color }}>{key}</span>
                     </div>
                   ))}
                 </div>
               </div>
             ) : productos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-300 py-12">
-                <p className="text-5xl mb-3">📦</p>
-                <p className="text-sm text-gray-400">No se encontraron productos</p>
+              <div className="flex flex-col items-center justify-center h-full py-12">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: oscuro ? 'rgba(255,255,255,0.05)' : '#e2e8f0', border: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #cbd5e1' }}>
+                  <span className="text-3xl opacity-50">📦</span>
+                </div>
+                <p className="text-sm font-medium" style={{ color: oscuro ? 'rgba(255,255,255,0.4)' : '#64748b' }}>Sin resultados</p>
+                <p className="text-xs mt-1" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>Probá con otro nombre o código</p>
               </div>
             ) : (
-              <div className="space-y-1">
-                {productosOrdenados.map(producto => (
-                 <button key={producto.id} onClick={() => agregarAlCarrito(producto)}
-                    className="w-full rounded-xl p-3 text-left transition-all flex items-center gap-3"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.06)' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(249,115,22,0.12)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 text-white"
-                      style={{ backgroundColor: 'var(--color-primario)' }}>
-                      {producto.nombre.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: 'rgba(255,255,255,0.9)' }}>{producto.nombre}</p>
-                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{producto.categoria_nombre || 'Sin categoría'}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-sm" style={{ color: 'var(--color-primario)' }}>{fmt(producto.precio_venta)}</p>
-                      <p className={`text-xs ${producto.stock <= 0 ? 'text-red-500' : producto.stock <= producto.stock_minimo ? 'text-yellow-500' : 'text-gray-400'}`}>
-                        {producto.stock} {producto.unidad}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+              <div className="space-y-1.5">
+                {productosOrdenados.map(producto => {
+                  const sinStock = producto.stock <= 0;
+                  const stockBajo = !sinStock && producto.stock <= producto.stock_minimo;
+                  const stockOk = !sinStock && !stockBajo;
+                  const stockColor = sinStock ? '#ef4444' : stockBajo ? '#f59e0b' : '#22c55e';
+                  const stockBg = sinStock ? 'rgba(239,68,68,0.12)' : stockBajo ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.1)';
+
+                  return (
+                    <button key={producto.id} onClick={() => agregarAlCarrito(producto)}
+                      className="w-full rounded-xl p-3 text-left transition-all flex items-center gap-3 group"
+                      style={estilos.productoItem}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = oscuro ? 'rgba(249,115,22,0.1)' : '#fff7ed';
+                        e.currentTarget.style.border = oscuro ? '0.5px solid rgba(249,115,22,0.3)' : '1px solid #fed7aa';
+                        e.currentTarget.style.transform = 'translateX(2px)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = estilos.productoItem.background;
+                        e.currentTarget.style.border = estilos.productoItem.border;
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 text-white"
+                        style={{ backgroundColor: 'var(--color-primario)' }}>
+                        {producto.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate leading-tight" style={{ color: oscuro ? 'rgba(255,255,255,0.9)' : '#111827' }}>
+                          {producto.nombre}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}>{producto.categoria_nombre || 'Sin categoría'}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
+                        <p className="font-bold text-sm" style={{ color: 'var(--color-primario)' }}>{fmt(producto.precio_venta)}</p>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                          style={{ color: stockColor, background: stockBg }}>
+                          {sinStock ? 'Sin stock' : `${producto.stock} ${producto.unidad}`}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2326,7 +2672,7 @@ const imprimirTicketDesdeModal = () => {
                   pestanaActiva === p.id ? 'text-orange-400' : 'text-gray-500 hover:text-gray-300'
                 }`}
                style={{ 
-                  borderRight: '0.5px solid rgba(255,255,255,0.06)',
+                  borderRight: oscuro ? '0.5px solid rgba(255,255,255,0.06)' : '1px solid #e2e8f0',
                   ...(pestanaActiva === p.id ? { borderBottom: '2px solid var(--color-primario)' } : {})
                 }}>
                 <span className="text-sm font-medium">{p.nombre}</span>
@@ -2334,53 +2680,85 @@ const imprimirTicketDesdeModal = () => {
                   <span className="text-xs rounded-full px-1.5 py-0.5 text-white" style={{ backgroundColor: 'var(--color-primario)' }}>{p.carrito.length}</span>
                 )}
                 {pestanas.length > 1 && (
-                  <button onClick={(e) => cerrarPestana(p.id, e)} className="text-gray-300 hover:text-red-500 text-xs ml-1 transition-colors">✕</button>
+                  <button onClick={(e) => cerrarPestana(p.id, e)} className={`text-xs ml-1 transition-colors ${oscuro ? 'text-gray-300 hover:text-red-500' : 'text-gray-400 hover:text-red-500'}`}>✕</button>
                 )}
               </div>
             ))}
             <button onClick={agregarPestana}
               className="px-3 py-3 transition-colors flex-shrink-0 text-xl font-light"
-            style={{ color: 'rgba(255,255,255,0.3)' }}
+            style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#94a3b8' }}
               title="Nueva venta">+</button>
           </div>
 
           {/* Items del carrito */}
-          <div className="flex-1 overflow-y-auto p-4" style={{ background: estilos.fondoCarrito }}>
+          <div className="flex-1 overflow-y-auto p-3" style={{ background: estilos.fondoCarrito }}>
               {carritoActivo.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-12">
-                <p className="text-7xl mb-4 opacity-30">🛒</p>
-                <p className="text-base font-medium" style={estilos.textoVacio}>Carrito vacío</p>
-                <p className="text-sm mt-1" style={estilos.textoVacio}>Buscá o escaneá productos</p>
-                <p className="text-xs mt-4 px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)' }}>F8 confirmar · F9 limpiar</p>
+                <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 opacity-20"
+                  style={{ background: oscuro ? 'rgba(255,255,255,0.08)' : '#e2e8f0', border: oscuro ? '0.5px solid rgba(255,255,255,0.1)' : '1px solid #cbd5e1' }}>
+                  <span className="text-4xl">🛒</span>
+                </div>
+                <p className="text-base font-semibold mb-1" style={estilos.textoVacio}>Carrito vacío</p>
+                <p className="text-sm mt-1" style={{ ...estilos.textoVacio, opacity: 0.6 }}>Buscá o escaneá productos</p>
+                <div className="mt-5 flex gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-lg font-mono" style={estilos.textoSecundario}>F8 confirmar</span>
+                  <span className="text-xs px-2.5 py-1 rounded-lg font-mono" style={estilos.textoSecundario}>F9 limpiar</span>
+                </div>
               </div>
             ) : (
               <div className="space-y-2 max-w-2xl mx-auto">
-                {carritoActivo.map(item => (
-               <div key={item.producto_id} className="flex items-center gap-3 p-4 rounded-2xl transition-all" style={estilos.itemCarrito}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${item.esRapida ? 'bg-purple-100 text-purple-700' : 'text-white'}`}
+                {carritoActivo.map((item, idx) => (
+               <div key={item.producto_id}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all"
+                  style={{ ...estilos.itemCarrito, animationDelay: `${idx * 30}ms` }}>
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${item.esRapida ? 'bg-purple-500 bg-opacity-20 text-purple-300' : 'text-white'}`}
                       style={!item.esRapida ? { backgroundColor: 'var(--color-primario)' } : {}}>
                       {item.esRapida ? '⚡' : item.nombre_producto.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate text-sm" style={estilos.textoItemCarrito}>{item.nombre_producto}</p>
-                      <p className="text-xs" style={estilos.textoItemSecundario}>{fmt(item.precio_unitario)} c/u</p>
+                      <p className="font-semibold truncate text-sm leading-tight" style={estilos.textoItemCarrito}>{item.nombre_producto}</p>
+                      <p className="text-xs mt-0.5" style={estilos.textoItemSecundario}>{fmt(item.precio_unitario)} c/u</p>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       <button onClick={() => cambiarCantidad(item.producto_id, item.cantidad - 1)}
-                        className="w-7 h-7 rounded-lg font-bold text-sm transition-all"
+                        className="w-7 h-7 rounded-lg font-bold text-sm transition-all hover:scale-105 active:scale-95"
                         style={estilos.botonCantidad}>−</button>
-                      <span className="w-8 text-center font-bold text-sm" style={estilos.textoItemCarrito}>{item.cantidad}</span>
+                      {editandoCantidad === item.producto_id ? (
+                        <input
+                          type="number" min="1" autoFocus
+                          defaultValue={item.cantidad}
+                          className="w-10 h-7 text-center font-bold text-sm rounded-lg outline-none border-0 bg-white text-gray-900"
+                          onBlur={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (v > 0) cambiarCantidad(item.producto_id, v);
+                            setEditandoCantidad(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') setEditandoCantidad(null);
+                          }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setEditandoCantidad(item.producto_id)}
+                          className="w-10 h-7 rounded-lg font-bold text-sm transition-all hover:bg-white hover:bg-opacity-10"
+                          style={estilos.textoItemCarrito}
+                          title="Click para editar cantidad">
+                          {item.cantidad}
+                        </button>
+                      )}
                       <button onClick={() => cambiarCantidad(item.producto_id, item.cantidad + 1)}
-                        className="w-7 h-7 rounded-lg font-bold text-sm transition-all"
+                        className="w-7 h-7 rounded-lg font-bold text-sm transition-all hover:scale-105 active:scale-95"
                         style={estilos.botonCantidad}>+</button>
                     </div>
-                    <div className="text-right flex-shrink-0 w-20">
-                      <p className="font-bold text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{fmt(item.subtotal)}</p>
+                      <div className="text-right flex-shrink-0 w-20">
+                      <p className="font-bold text-sm" style={estilos.textoItemCarrito}>{fmt(item.subtotal)}</p>
                     </div>
                     <button onClick={() => eliminarDelCarrito(item.producto_id)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-sm"
-                      style={estilos.botonBasura}>
-                      🗑️
+                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-xs hover:scale-110"
+                      style={estilos.botonBasura}
+                      title="Quitar del carrito">
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -2389,30 +2767,43 @@ const imprimirTicketDesdeModal = () => {
           </div>
 
           {/* ---- FOOTER DEL CARRITO ---- */}
-          <div className="border-t p-4 flex-shrink-0" style={{ background: estilos.fondoFooter, borderColor: estilos.borderFooter }}>
-            <div className="max-w-2xl mx-auto">
-              <div className="flex justify-between items-center mb-3">
-              <div className="text-sm" style={{ color: estilos.textoTotal }}>
-                  <span>{carritoActivo.length} productos</span>
-                  <span className="mx-2">·</span>
-                  <span>{carritoActivo.reduce((acc, i) => acc + i.cantidad, 0)} unidades</span>
+          <div className="flex-shrink-0" style={{ background: estilos.fondoFooter, borderTop: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #e2e8f0' }}>
+            <div className="max-w-2xl mx-auto px-4 pt-3 pb-4">
+
+              {/* Resumen items + limpiar */}
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: oscuro ? 'rgba(255,255,255,0.08)' : '#e2e8f0', color: oscuro ? 'rgba(255,255,255,0.5)' : '#475569' }}>
+                    {carritoActivo.length} {carritoActivo.length === 1 ? 'producto' : 'productos'}
+                  </span>
+                  <span className="text-xs" style={{ color: oscuro ? 'rgba(255,255,255,0.25)' : '#94a3b8' }}>
+                    · {carritoActivo.reduce((acc, i) => acc + i.cantidad, 0)} uds
+                  </span>
                 </div>
                 {carritoActivo.length > 0 && (
                   <button onClick={limpiarCarrito}
-                    className="text-xs px-2.5 py-1 rounded-lg transition-all"
+                    className="text-xs px-2.5 py-1 rounded-lg transition-all hover:scale-105"
                     style={estilos.botonLimpiar}>
-                    🗑️ Limpiar [F9]
+                    ✕ Limpiar
                   </button>
                 )}
               </div>
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xl font-semibold" style={{ color: estilos.textoTotal }}>Total</span>
-                <span className="text-4xl font-bold" style={{ color: estilos.textoTotalMonto }}>{fmt(total)}</span>
+
+              {/* Total con animación visual */}
+              <div className="flex justify-between items-end mb-3">
+                <span className="text-sm font-medium" style={{ color: estilos.textoTotal }}>Total a cobrar</span>
+                <span className={`font-bold transition-all ${carritoActivo.length > 0 ? 'text-4xl' : 'text-2xl opacity-40'}`}
+                  style={{ color: carritoActivo.length > 0 ? estilos.textoTotalMonto : estilos.textoTotal }}>
+                  {fmt(total)}
+                </span>
               </div>
+
+              {/* Botón confirmar */}
               <button onClick={() => setMostrarModalVenta(true)} disabled={carritoActivo.length === 0}
                 style={carritoActivo.length > 0 ? { backgroundColor: 'var(--color-primario)' } : {}}
-                className="w-full disabled:bg-gray-200 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg disabled:shadow-none hover:opacity-90">
-                ✅ Confirmar Venta [F8]
+                className="w-full disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40 text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg disabled:shadow-none hover:opacity-90 active:scale-98">
+                {carritoActivo.length > 0 ? '✅ Confirmar Venta [F8]' : 'Agregá productos para vender'}
               </button>
             </div>
           </div>
@@ -2425,9 +2816,31 @@ const imprimirTicketDesdeModal = () => {
           onGuardado={() => setMostrarModalGasto(false)} />
       )}
       {mostrarModalVenta && (
-        <ModalConfirmarVenta carrito={carritoActivo} total={total} config={config} turno={turno}
+        <ModalConfirmarVenta 
+          ref={modalVentaRef}
+          carrito={carritoActivo} 
+          total={total} 
+          config={config} 
+          turno={turno}
+          facturacionElectronica={facturacionElectronica}
+          setFacturacionElectronica={setFacturacionElectronica}
+          tipoComprobante={tipoComprobante}
+          setTipoComprobante={setTipoComprobante}
+          tipoDocumento={tipoDocumento}
+          setTipoDocumento={setTipoDocumento}
+          numeroDocumento={numeroDocumento}
+          setNumeroDocumento={setNumeroDocumento}
+          denominacionComprador={denominacionComprador}
+          setDenominacionComprador={setDenominacionComprador}
+          tiposComprobante={tiposComprobante}
+          setTiposComprobante={setTiposComprobante}
           onConfirmar={confirmarVenta}
-          onCerrar={() => { setMostrarModalVenta(false); inputBuscarRef.current?.focus(); }} />
+          onCerrar={() => { 
+            setMostrarModalVenta(false); 
+            resetearFacturacion(false);
+            inputBuscarRef.current?.focus(); 
+          }}
+        />
       )}
       {mostrarModalCierre && (
         <ModalCierreCaja turno={turno}
@@ -2457,12 +2870,22 @@ const imprimirTicketDesdeModal = () => {
           onCerrar={() => { setMostrarModalHistorial(false); inputBuscarRef.current?.focus(); }}
         />
       )}
+
+{mostrarComprobanteElectronico && ultimoComprobante && (
+        <ComprobanteElectronico
+        comprobante={ultimoComprobante}
+        config={config}
+       onClose={() => { setMostrarComprobanteElectronico(false); setUltimoComprobante(null); }}
+        />
+      )}
+
       {ventaExitosa && (
         <ModalVentaExitosa
           total={totalUltimaVenta}
           onSeguirVendiendo={() => setVentaExitosa(false)}
           onImprimir={imprimirTicketDesdeModal}
           config={config}
+          tieneComprobanteElectronico={!!ultimoComprobante}
         />
       )}
       {mostrarModalVentaProducto && (
