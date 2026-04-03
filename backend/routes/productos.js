@@ -242,6 +242,61 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     }
 });
 
+// =============================================
+// Ajustar stock y registrar historial
+// =============================================
+router.put('/:id/stock', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const { stock } = req.body;
+        const nuevoStock = parseInt(stock, 10);
+        if (isNaN(nuevoStock) || nuevoStock < 0) {
+            return res.status(400).json({ error: 'Stock inválido' });
+        }
+
+        const productoRes = await db.query('SELECT stock FROM productos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
+        if (productoRes.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+
+        const stockAnterior = parseInt(productoRes.rows[0].stock || 0, 10);
+
+        await db.query('UPDATE productos SET stock = $1 WHERE id = $2 AND negocio_id = $3', [nuevoStock, req.params.id, negocio_id]);
+
+        await db.query(
+            'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1, $2, $3, $4)',
+            [negocio_id, req.params.id, stockAnterior, nuevoStock]
+        );
+
+        const productoActualizado = await db.query('SELECT * FROM productos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
+        res.json(productoActualizado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar stock' });
+    }
+});
+
+router.get('/:id/historial-stock', verificarPermiso('productos', 'ver'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const historial = await db.query(
+            `SELECT hs.*, p.nombre AS producto_nombre
+             FROM historial_stock hs
+             LEFT JOIN productos p ON hs.producto_id = p.id
+             WHERE hs.producto_id = $1 AND hs.negocio_id = $2
+             ORDER BY hs.fecha DESC`,
+            [req.params.id, negocio_id]
+        );
+
+        res.json(historial.rows);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener historial de stock' });
+    }
+});
+
 
 // -----------------------------------------------
 // RUTA: POST /api/productos/:id/codigos

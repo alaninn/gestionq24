@@ -272,9 +272,30 @@ ADD COLUMN IF NOT EXISTS tipo_pago_proveedor VARCHAR(50);
 ALTER TABLE gastos
 ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) DEFAULT 'pagado';
 
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS registrar_nueva_factura BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE gastos
+ADD COLUMN IF NOT EXISTS total_factura NUMERIC(12,2) DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_gastos_proveedor ON gastos(proveedor_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_es_compra ON gastos(es_compra);
 CREATE INDEX IF NOT EXISTS idx_gastos_tipo_documento ON gastos(tipo_documento);
+
+-- =============================================
+-- TABLA: historial_stock
+-- =============================================
+CREATE TABLE IF NOT EXISTS historial_stock (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    stock_anterior INTEGER NOT NULL,
+    stock_nuevo INTEGER NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_historial_stock_producto ON historial_stock(producto_id);
+
 `;
 
 async function setupDB() {

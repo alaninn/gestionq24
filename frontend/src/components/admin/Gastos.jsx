@@ -14,13 +14,13 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 // =============================================
 export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
 
+  const [tabActiva, setTabActiva] = useState('gasto'); // 'gasto' | 'proveedor'
   const [formulario, setFormulario] = useState({
     descripcion: '',
     monto: '',
     categoria: '',
     tipo: 'variable',
     metodo_pago: 'efectivo',
-    esPageProveedor: false,
     proveedor_id: '',
     tipo_pago_proveedor: 'a_cuenta',
     recibo_url: '',
@@ -29,6 +29,10 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
     iva_incluido: false,
     porcentaje_iva: '0',
     productos_texto: '',
+    registrar_factura: false,
+    total_factura: '',
+    pago_independiente: false,
+    fecha: new Date().toISOString().split('T')[0]
   });
   const [proveedores, setProveedores] = useState([]);
   const [error, setError] = useState('');
@@ -57,6 +61,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
     }
   }, [modoCompra]);
 
+  const proveedorSeleccionado = proveedores.find(p => p.id == formulario.proveedor_id);
+  
   const cargarProveedores = async () => {
     try {
       const res = await api.get('/api/proveedores');
@@ -92,11 +98,13 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
         }
       }
 
+      const esPagoProveedor = tabActiva === 'proveedor';
+      
       const datosEnvio = {
         descripcion: formulario.descripcion,
         monto: formulario.monto,
-        categoria: formulario.esPageProveedor ? 'Proveedores' : (esCompra ? 'Compras' : formulario.categoria),
-        tipo: esCompra ? 'compra' : formulario.tipo,
+        categoria: esPagoProveedor ? 'Proveedores' : (esCompra ? 'Compras' : formulario.categoria),
+        tipo: esCompra ? 'compra' : (esPagoProveedor ? 'pago_proveedor' : formulario.tipo),
         metodo_pago: formulario.metodo_pago,
         proveedor_id: formulario.proveedor_id || null,
         tipo_pago_proveedor: formulario.tipo_pago_proveedor,
@@ -107,15 +115,58 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
         monto_iva: montoIva,
         productos_json: formulario.productos_texto ? formulario.productos_texto.split('\n').map(item => item.trim()).filter(Boolean) : null,
         recibo_url: formulario.recibo_url,
+        registrar_nueva_factura: formulario.registrar_factura || false,
+        total_factura: formulario.total_factura || null,
+        pago_independiente: formulario.pago_independiente
       };
 
-      if (formulario.esPageProveedor) {
+      if (esPagoProveedor && formulario.proveedor_id) {
         datosEnvio.tipo = 'pago_proveedor';
         datosEnvio.proveedor_id = formulario.proveedor_id;
-        if (formulario.tipo_pago_proveedor === 'a_cuenta') {
-          datosEnvio.descripcion = formulario.descripcion || 'Pago a cuenta de deuda';
+        
+        // Logica para registrar nueva factura
+        if (formulario.registrar_factura && formulario.total_factura) {
+          // Si es factura nueva, primero sumamos el total a la deuda y luego restamos lo que se paga
+          datosEnvio.registrar_nueva_factura = true;
+          datosEnvio.total_factura = formulario.total_factura;
+          console.log('✅ Toggle activado - registrar_nueva_factura:', datosEnvio.registrar_nueva_factura, 'total_factura:', datosEnvio.total_factura);
         } else {
-          datosEnvio.descripcion = formulario.descripcion || 'Pago nuevo/anticipo';
+          console.log('❌ Toggle NO activado - registrar_factura:', formulario.registrar_factura, 'total_factura:', formulario.total_factura);
+        }
+        
+        // Si es pago independiente no modificamos la deuda
+        if (formulario.pago_independiente) {
+          datosEnvio.tipo = 'variable';
+          datosEnvio.descripcion = formulario.descripcion || 'Pago independiente';
+        } else {
+          // Determinar descripción basada en el monto pagado vs total de factura
+          const montoPago = Number(formulario.monto || 0);
+          const totalFactura = Number(formulario.total_factura || 0);
+          
+          console.log('📊 Calculando descripción - montoPago:', montoPago, 'totalFactura:', totalFactura, 'registrar_factura:', formulario.registrar_factura);
+          
+          if (formulario.registrar_factura && totalFactura > 0) {
+            // Hay una nueva factura registrada
+            if (montoPago >= totalFactura) {
+              datosEnvio.descripcion = formulario.descripcion || 'Pago total de factura';
+              console.log('✅ PAGO TOTAL - descripción:', datosEnvio.descripcion);
+            } else if (montoPago > 0) {
+              datosEnvio.descripcion = formulario.descripcion || 'Pago parcial de factura';
+              console.log('⚠️ PAGO PARCIAL - descripción:', datosEnvio.descripcion);
+            } else {
+              datosEnvio.descripcion = formulario.descripcion || 'Registro de factura (sin pago)';
+              console.log('📝 SIN PAGO - descripción:', datosEnvio.descripcion);
+            }
+          } else {
+            // Pago sin nueva factura
+            if (formulario.tipo_pago_proveedor === 'a_cuenta') {
+              datosEnvio.descripcion = formulario.descripcion || 'Pago a cuenta de deuda';
+              console.log('💸 PAGO A CUENTA - descripción:', datosEnvio.descripcion);
+            } else {
+              datosEnvio.descripcion = formulario.descripcion || 'Pago nuevo/anticipo';
+              console.log('💰 PAGO NUEVO - descripción:', datosEnvio.descripcion);
+            }
+          }
         }
       }
 
@@ -135,8 +186,30 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
 
         {/* Encabezado */}
         <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="text-lg font-bold text-gray-800">💸 Registrar Gasto</h3>
+          <h3 className="text-lg font-bold text-gray-800">Nuevo Gasto</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+        </div>
+
+        {/* Pestañas */}
+        <div className="flex border-b">
+          <button 
+            type="button"
+            onClick={() => setTabActiva('gasto')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${tabActiva === 'gasto' 
+              ? 'bg-white text-gray-800 border-b-2 border-gray-800' 
+              : 'bg-gray-50 text-gray-500'}`}
+          >
+            💸 Gasto
+          </button>
+          <button 
+            type="button"
+            onClick={() => setTabActiva('proveedor')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${tabActiva === 'proveedor' 
+              ? 'bg-white text-blue-700 border-b-2 border-blue-600' 
+              : 'bg-gray-50 text-gray-500'}`}
+          >
+            🧾 Pago a Proveedor
+          </button>
         </div>
 
         <form onSubmit={guardar} className="p-5 space-y-4">
@@ -147,295 +220,282 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
             </div>
           )}
 
-          {/* TOGGLE: Es pago a proveedor? */}
-          <div
-            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-              formulario.esPageProveedor
-                ? 'bg-green-50 border-green-300'
-                : 'bg-gray-50 border-gray-200'
-            }`}
-            onClick={() => setFormulario(p => ({
-              ...p,
-              esPageProveedor: !p.esPageProveedor,
-              proveedor_id: '',
-              categoria: ''
-            }))}
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-700">Pago a Proveedor</p>
-              <p className="text-xs text-gray-500">Registrar pago de deuda con proveedor</p>
-            </div>
-            <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${
-              formulario.esPageProveedor ? 'bg-green-500' : 'bg-gray-300'
-            }`}>
-              <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                formulario.esPageProveedor ? 'translate-x-6' : 'translate-x-0'
-              }`} />
-            </div>
-          </div>
-
-          {/* Si es pago proveedor, mostrar selector */}
-          {formulario.esPageProveedor ? (
+          {tabActiva === 'gasto' && (
             <>
+              {/* Monto */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">MONTO *</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={formulario.monto}
+                      onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
+                      required min="0" step="0.01"
+                      autoFocus
+                      className="w-full border border-gray-300 rounded-lg pl-3 pr-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg"
+                      placeholder="$0,00"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-blue-50 border-blue-200">
+                    <div>
+                      <p className="text-sm font-medium text-blue-700">Gasto fijo</p>
+                      <p className="text-xs text-blue-500">Se repite mensualmente</p>
+                    </div>
+                    <div 
+                      className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 cursor-pointer ${
+                        formulario.tipo === 'fijo' ? 'bg-blue-500' : 'bg-gray-300'
+                      }`}
+                      onClick={() => setFormulario(p => ({
+                        ...p,
+                        tipo: p.tipo === 'fijo' ? 'variable' : 'fijo'
+                      }))}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        formulario.tipo === 'fijo' ? 'translate-x-6' : 'translate-x-0'
+                      }`} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CATEGORÍA *</label>
+                  <select
+                    value={formulario.categoria}
+                    onChange={(e) => setFormulario(p => ({ ...p, categoria: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {categorias.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">FECHA</label>
+                  <input
+                    type="date"
+                    value={formulario.fecha}
+                    onChange={(e) => setFormulario(p => ({ ...p, fecha: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">MÉTODO DE PAGO</label>
                 <select
-                  value={formulario.proveedor_id}
-                  onChange={(e) => setFormulario(p => ({ ...p, proveedor_id: e.target.value }))}
-                  required={formulario.esPageProveedor}
+                  value={formulario.metodo_pago}
+                  onChange={(e) => setFormulario(p => ({ ...p, metodo_pago: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
                 >
-                  <option value="">Seleccionar proveedor...</option>
+                  <option value="efectivo">💵 Efectivo</option>
+                  <option value="tarjeta">💳 Tarjeta</option>
+                  <option value="transferencia">🏦 Transferencia</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">DESCRIPCIÓN</label>
+                <textarea
+                  value={formulario.descripcion}
+                  onChange={(e) => setFormulario(p => ({ ...p, descripcion: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                  placeholder="Detalles opcionales..."
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-blue-700 mb-1">📋 Datos fiscales</p>
+                <select
+                  value={formulario.tipo_documento}
+                  onChange={(e) => setFormulario(p => ({ ...p, tipo_documento: e.target.value }))}
+                  className="w-full border border-blue-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
+                >
+                  <option value="sin_boleta">Sin comprobante</option>
+                  <option value="boleta">Boleta</option>
+                  <option value="factura">Factura</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          {tabActiva === 'proveedor' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🧾 PROVEEDOR *</label>
+                <select
+                  value={formulario.proveedor_id}
+                  onChange={(e) => setFormulario(p => ({ ...p, proveedor_id: e.target.value, monto: '' }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50"
+                >
+                  <option value="">Buscar proveedor...</option>
                   {proveedores.map(prov => (
                     <option key={prov.id} value={prov.id}>
-                      {prov.nombre} {prov.saldo_deuda > 0 ? `(debe: $${prov.saldo_deuda})` : ''}
+                      {prov.nombre} {prov.saldo_a_favor > 0 ? `(nosotros le debemos: $${prov.saldo_a_favor})` : prov.saldo_deuda > 0 ? `(nos debe a nosotros: $${prov.saldo_deuda})` : ''}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de pago proveedor *</label>
-                <select
-                  value={formulario.tipo_pago_proveedor}
-                  onChange={(e) => setFormulario(p => ({ ...p, tipo_pago_proveedor: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                >
-                  <option value="a_cuenta">Pago a cuenta</option>
-                  <option value="nuevo">Pago nuevo / anticipo</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subir boleta/recibo (opcional)</label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const data = await convertirArchivoADataURL(file);
-                    setFormulario(p => ({ ...p, recibo_url: data }));
-                  }}
-                  className="w-full text-sm text-gray-600"
-                />
-                {formulario.recibo_url && (
-                  <div className="mt-2 border rounded-lg p-3 bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{formulario.recibo_url.includes('data:image') ? '🖼️' : '📄'}</span>
-                        <span className="text-sm text-gray-600">
-                          Archivo cargado: {formulario.recibo_url.includes('data:image') ? 'Imagen' : 'PDF'}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <a
-                          href={formulario.recibo_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          👁️ Ver
-                        </a>
-                        <button
-                          onClick={() => {
-                            setFormulario(p => ({ ...p, recibo_url: '' }));
-                            // Limpiar el input file
-                            const input = document.querySelector('input[type="file"]');
-                            if (input) input.value = '';
-                          }}
-                          className="text-xs text-red-600 hover:text-red-800 font-medium"
-                        >
-                          ❌ Quitar
-                        </button>
-                      </div>
+              {/* Estado de deuda del proveedor */}
+              {proveedorSeleccionado && (
+                <div className={`p-3 rounded-lg border ${proveedorSeleccionado.saldo_deuda > 0 
+                  ? 'bg-yellow-50 border-yellow-300' 
+                  : 'bg-green-50 border-green-300'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      {proveedorSeleccionado.saldo_deuda > 0 ? (
+                        <>
+                          <p className="text-sm font-medium text-yellow-800">Deuda: ${proveedorSeleccionado.saldo_deuda}</p>
+                          <p className="text-xs text-yellow-600">1 compra(s) pendiente(s)</p>
+                        </>
+                      ) : (
+                        <p className="text-sm font-medium text-green-800">✅ Sin deuda pendiente registrada</p>
+                      )}
                     </div>
+                    {proveedorSeleccionado.saldo_deuda > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFormulario(p => ({ ...p, monto: proveedorSeleccionado.saldo_deuda }))}
+                        className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium"
+                      >
+                        Usar total →
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-              <select
-                value={formulario.categoria}
-                onChange={(e) => setFormulario(p => ({ ...p, categoria: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+                </div>
+              )}
+
+              {/* Toggle registrar nueva factura */}
+              <div
+                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                  formulario.registrar_factura
+                    ? 'bg-purple-50 border-purple-300'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+                onClick={() => setFormulario(p => ({
+                  ...p,
+                  registrar_factura: !p.registrar_factura
+                }))}
               >
-                <option value="">Seleccionar...</option>
-                {categorias.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Sección de compras fiscales */}
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Registrar como compra</p>
-                <p className="text-xs text-gray-500">Agrega boleta/iva y productos</p>
+                <div>
+                    <p className="text-sm font-medium text-gray-700">📦 Registrar nueva factura</p>
+                    <p className="text-xs text-gray-500">Agrega el total de la factura recibida</p>
+                </div>
+                <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${
+                  formulario.registrar_factura ? 'bg-purple-500' : 'bg-gray-300'
+                }`}>
+                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                    formulario.registrar_factura ? 'translate-x-6' : 'translate-x-0'
+                  }`} />
+                </div>
               </div>
-              <input
-                type="checkbox"
-                checked={formulario.es_compra}
-                onChange={(e) => setFormulario(p => ({ ...p, es_compra: e.target.checked }))}
-                className="w-4 h-4"
-              />
-            </div>
 
-            {formulario.es_compra && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de documento</label>
+              {formulario.registrar_factura && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <label className="block text-sm font-medium text-purple-700 mb-1">TOTAL DE LA FACTURA *</label>
+                  <input
+                    type="number"
+                    value={formulario.total_factura}
+                    onChange={(e) => setFormulario(p => ({ ...p, total_factura: e.target.value }))}
+                    className="w-full border border-purple-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    placeholder="$0,00"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PAGÁS AHORA *</label>
+                  <input
+                    type="number"
+                    value={formulario.monto}
+                    onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
+                    min="0" step="0.01"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg"
+                    placeholder="$0,00 (puede ser $0)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">FECHA</label>
+                  <input
+                    type="date"
+                    value={formulario.fecha}
+                    onChange={(e) => setFormulario(p => ({ ...p, fecha: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+
+                  <div className="mt-2">
                     <select
-                      value={formulario.tipo_documento}
-                      onChange={(e) => setFormulario(p => ({ ...p, tipo_documento: e.target.value }))}
+                      value={formulario.metodo_pago}
+                      onChange={(e) => setFormulario(p => ({ ...p, metodo_pago: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
                     >
-                      <option value="sin_boleta">Sin boleta</option>
-                      <option value="boleta">Boleta</option>
-                      <option value="factura">Factura</option>
+                      <option value="efectivo">💵 Efectivo</option>
+                      <option value="tarjeta">💳 Tarjeta</option>
+                      <option value="transferencia">🏦 Transferencia</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">IVA incluido</label>
-                    <input
-                      type="checkbox"
-                      checked={formulario.iva_incluido}
-                      onChange={(e) => setFormulario(p => ({ ...p, iva_incluido: e.target.checked }))}
-                      className="w-4 h-4"
-                    />
-                  </div>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Porcentaje IVA</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formulario.porcentaje_iva}
-                      onChange={(e) => setFormulario(p => ({ ...p, porcentaje_iva: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Monto IVA estimado</label>
-                    <input
-                      type="text"
-                      value={(() => {
-                        const ivaPct = Number(formulario.porcentaje_iva || 0);
-                        const m = Number(formulario.monto || 0);
-                        if (ivaPct <= 0) return '0.00';
-                        const usa = formulario.iva_incluido ? m * ivaPct / (100 + ivaPct) : m * ivaPct / 100;
-                        return usa.toFixed(2);
-                      })()}
-                      readOnly
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100"
-                    />
-                  </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">NOTA (OPC.)</label>
+                <textarea
+                  value={formulario.descripcion}
+                  onChange={(e) => setFormulario(p => ({ ...p, descripcion: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                  placeholder="Ej: pago parcial compra #001..."
+                />
+              </div>
+
+              {/* Toggle pago independiente - TEMPORALMENTE COMENTADO
+              <div
+                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                  formulario.pago_independiente
+                    ? 'bg-gray-50 border-gray-300'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+                onClick={() => setFormulario(p => ({
+                  ...p,
+                  pago_independiente: !p.pago_independiente
+                }))}
+              >
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Pago independiente</p>
+                  <p className="text-xs text-gray-500">No cancela compras ni afecta la deuda del proveedor</p>
                 </div>
-
-                <div className="mt-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Productos (línea por producto)</label>
-                  <textarea
-                    value={formulario.productos_texto}
-                    onChange={(e) => setFormulario(p => ({ ...p, productos_texto: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 min-h-[80px]"
-                    placeholder="Ej: Leche x10 750, Arroz 1kg 2 unidades..."
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Separar por saltos de línea para cada producto.</p>
+                <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${
+                  formulario.pago_independiente ? 'bg-gray-500' : 'bg-gray-300'
+                }`}>
+                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                    formulario.pago_independiente ? 'translate-x-6' : 'translate-x-0'
+                  }`} />
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* Monto */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
-            <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">$</span>
-              <input
-                type="number"
-                value={formulario.monto}
-                onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
-                required min="0" step="0.01"
-                autoFocus
-                className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-
-          {/* Método de pago */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Método de Pago</label>
-            <select
-              value={formulario.metodo_pago}
-              onChange={(e) => setFormulario(p => ({ ...p, metodo_pago: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
-            >
-              <option value="efectivo">💵 Efectivo</option>
-              <option value="tarjeta">💳 Tarjeta</option>
-              <option value="transferencia">🏦 Transferencia</option>
-            </select>
-          </div>
-
-          {/* Si NO es pago a proveedor, mostrar toggle de fijo */}
-          {!formulario.esPageProveedor && (
-          <div
-            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-              formulario.tipo === 'fijo'
-                ? 'bg-blue-50 border-blue-300'
-                : 'bg-gray-50 border-gray-200'
-            }`}
-            onClick={() => setFormulario(p => ({
-              ...p,
-              tipo: p.tipo === 'fijo' ? 'variable' : 'fijo'
-            }))}
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-700">¿Es un gasto fijo?</p>
-              <p className="text-xs text-gray-500">Se repite mensualmente (ej: alquiler, servicios)</p>
-            </div>
-            {/* Toggle visual */}
-            <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${
-              formulario.tipo === 'fijo' ? 'bg-blue-500' : 'bg-gray-300'
-            }`}>
-              <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                formulario.tipo === 'fijo' ? 'translate-x-6' : 'translate-x-0'
-              }`} />
-            </div>
-          </div>
+              </div>
+              */}
+            </>
           )}
 
-          {/* Descripción */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Descripción (opcional)
-            </label>
-            <textarea
-              value={formulario.descripcion}
-              onChange={(e) => setFormulario(p => ({ ...p, descripcion: e.target.value }))}
-              rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
-              placeholder="Detalles del gasto..."
-            />
-          </div>
-
           {/* Botones */}
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-2 border-t mt-4 pt-4">
             <button type="button" onClick={onCerrar}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
               Cancelar
             </button>
             <button type="submit" disabled={guardando}
-              className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50">
-              {guardando ? 'Guardando...' : '✅ Guardar'}
+              className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50">
+              {guardando ? 'Guardando...' : 'Registrar gasto'}
             </button>
           </div>
 
@@ -698,6 +758,20 @@ function Gastos() {
         recibo_url: compra.recibo_url || null,
       };
 
+      // Calcular monto a registrar segun estado de pago
+      let montoFinal = totalCompra;
+      let montoPagado = totalCompra;
+      
+      if (compra.estado_pago === 'parcial') {
+        montoPagado = compra.monto_pagado || 0;
+      } else if (compra.estado_pago === 'deuda') {
+        montoPagado = 0;
+      }
+
+      datos.monto = montoPagado;
+      datos.total_factura = totalCompra;
+      datos.registrar_nueva_factura = true;
+      
       await api.post('/api/gastos', datos);
       setExito('Compra registrada correctamente');
 
@@ -902,7 +976,7 @@ function Gastos() {
             onClick={() => setModo('compra')}
             className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
-            + Nueva Compra
+            + Nuevo Gasto AVANZADO
           </button>
         </div>
       </div>
@@ -920,197 +994,9 @@ function Gastos() {
           onClick={() => setModo('compra')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${modo === 'compra' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
-          Compras
-        </button>
-        <button
-          onClick={() => setModo('libro_iva')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${modo === 'libro_iva' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          Libro de IVA
+          Gasto Avanzado
         </button>
       </div>
-
-      {modo === 'libro_iva' && (
-        <div className="bg-white rounded-xl shadow p-4 mt-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-semibold">Libro de IVA</h3>
-            <button
-              onClick={() => setModo('gastos')}
-              className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-lg"
-            >
-              Volver a Gastos
-            </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Desde</label>
-              <input
-                type="date"
-                value={fechaDesdeLibro}
-                onChange={(e) => setFechaDesdeLibro(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Hasta</label>
-              <input
-                type="date"
-                value={fechaHastaLibro}
-                onChange={(e) => setFechaHastaLibro(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-            <div className="md:col-span-2 flex gap-2 mt-2">
-              <button
-                type="button"
-                onClick={cargarLibroIVA}
-                className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                Actualizar
-              </button>
-              <button
-                type="button"
-                onClick={exportarLibroAExcel}
-                className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
-              >
-                Exportar Excel
-              </button>
-            </div>
-          </div>
-
-          {cargandoLibro ? (
-            <p className="text-gray-500 mt-4">Cargando datos de Libro de IVA...</p>
-          ) : (
-            <>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                  <p className="text-xs text-blue-600">Ventas Arca</p>
-                  <p className="text-xl font-bold text-blue-900">{libroVentas.length}</p>
-                </div>
-                <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
-                  <p className="text-xs text-green-600">Total Vendido</p>
-                  <p className="text-xl font-bold text-green-900">AR$ {totalVentasLibro.toFixed(2)}</p>
-                </div>
-                <div className="bg-orange-50 border border-orange-200 p-3 rounded-lg">
-                  <p className="text-xs text-orange-600">IVA Ventas</p>
-                  <p className="text-xl font-bold text-orange-900">AR$ {totalIvaVentasLibro.toFixed(2)}</p>
-                </div>
-                <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg">
-                  <p className="text-xs text-purple-600">IVA Compras (Crédito)</p>
-                  <p className="text-xl font-bold text-purple-900">AR$ {totalIvaComprasLibro.toFixed(2)}</p>
-                </div>
-              </div>
-
-              <div className="mt-3 bg-gray-50 border border-gray-200 p-3 rounded-lg">
-                <div className="flex justify-between text-sm text-gray-700">
-                  <span>Deuda IVA</span>
-                  <span className={`font-bold ${deudaIvaLibro >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    AR$ {deudaIvaLibro.toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">IVA ventas - IVA compras</p>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-white border border-gray-200 rounded-lg p-3">
-                  <p className="text-sm font-semibold mb-2">Ventas Arca por día</p>
-                  <div style={{ width: '100%', height: 240 }}>
-                    <ResponsiveContainer>
-                      <BarChart
-                        data={Object.entries(libroVentas.reduce((acc, v) => {
-                          const dia = new Date(v.fecha).toISOString().split('T')[0];
-                          acc[dia] = (acc[dia] || 0) + Number(v.total || 0);
-                          return acc;
-                        }, {})).map(([fecha, total]) => ({ fecha, total }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => [`AR$ ${Number(value).toFixed(2)}`, 'Total']} />
-                        <Legend />
-                        <Bar dataKey="total" name="Ventas" fill="#3b82f6" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="bg-white border border-gray-200 rounded-lg p-3">
-                  <p className="text-sm font-semibold mb-2">Compras blanco por día</p>
-                  <div style={{ width: '100%', height: 240 }}>
-                    <ResponsiveContainer>
-                      <BarChart
-                        data={Object.entries(libroCompras.reduce((acc, c) => {
-                          const dia = new Date(c.fecha).toISOString().split('T')[0];
-                          acc[dia] = (acc[dia] || 0) + Number(c.monto || 0);
-                          return acc;
-                        }, {})).map(([fecha, total]) => ({ fecha, total }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => [`AR$ ${Number(value).toFixed(2)}`, 'Total']} />
-                        <Legend />
-                        <Bar dataKey="total" name="Compras" fill="#10b981" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 overflow-x-auto bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-sm font-semibold mb-2">Ventas facturadas Arca</p>
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-2">Fecha</th><th className="p-2">Cliente</th><th className="p-2">Total</th><th className="p-2">IVA</th><th className="p-2">Tipo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {libroVentas.map(v => {
-                      const { iva } = calcularIvaIncluido(Number(v.total || 0), 21);
-                      return (
-                        <tr key={v.id} className="border-t border-gray-100">
-                          <td className="p-2">{new Date(v.fecha).toLocaleDateString('es-AR')}</td>
-                          <td className="p-2">{v.cliente_nombre || 'Consumidor Final'}</td>
-                          <td className="p-2">AR$ {Number(v.total || 0).toFixed(2)}</td>
-                          <td className="p-2">AR$ {iva.toFixed(2)}</td>
-                          <td className="p-2">{v.tipo_facturacion || 'N/A'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-4 overflow-x-auto bg-white border border-gray-200 rounded-lg p-3">
-                <p className="text-sm font-semibold mb-2">Compras en blanco</p>
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-2">Fecha</th><th className="p-2">Proveedor</th><th className="p-2">Total</th><th className="p-2">IVA</th><th className="p-2">Comprobante</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {libroCompras.map(c => {
-                      const { iva } = calcularIvaIncluido(Number(c.monto || 0), Number(c.porcentaje_iva || 21));
-                      return (
-                        <tr key={c.id} className="border-t border-gray-100">
-                          <td className="p-2">{new Date(c.fecha).toLocaleDateString('es-AR')}</td>
-                          <td className="p-2">{c.proveedor_nombre || 'Sin proveedor'}</td>
-                          <td className="p-2">AR$ {Number(c.monto || 0).toFixed(2)}</td>
-                          <td className="p-2">AR$ {iva.toFixed(2)}</td>
-                          <td className="p-2">{c.tipo_comprobante}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {modo === 'compra' && (
         <div className="bg-white rounded-xl shadow p-4 mt-4">
@@ -1231,17 +1117,58 @@ function Gastos() {
                 <option value="transferencia">Transferencia</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado de pago</label>
-              <select
-                value={compra.estado_pago}
-                onChange={(e) => setCompra(prev => ({ ...prev, estado_pago: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="pagado">Pagado</option>
-                <option value="deuda">Con deuda</option>
-              </select>
-            </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Estado de pago</label>
+                  <select
+                    value={compra.estado_pago}
+                    onChange={(e) => setCompra(prev => ({ 
+                      ...prev, 
+                      estado_pago: e.target.value,
+                      monto_pagado: e.target.value === 'pagado' ? totalCompra : ''
+                    }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="pagado">✅ Pago TOTAL</option>
+                    <option value="parcial">⚠️ Pago PARCIAL</option>
+                    <option value="deuda">❌ Sin pagar (DEUDA)</option>
+                  </select>
+                </div>
+                
+                {compra.estado_pago === 'parcial' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Monto que PAGAS AHORA *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={compra.monto_pagado || ''}
+                      onChange={(e) => setCompra(prev => ({ ...prev, monto_pagado: Number(e.target.value || 0) }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="0.00"
+                    />
+                  </div>
+                )}
+              </div>
+              
+              {compra.estado_pago === 'parcial' && compra.monto_pagado >= 0 && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                  <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                    <div>
+                      <p className="text-gray-500">Total compra</p>
+                      <p className="font-bold text-gray-800">{formatearPeso(totalCompra)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Pagas ahora</p>
+                      <p className="font-bold text-green-700">{formatearPeso(compra.monto_pagado || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Deuda restante</p>
+                      <p className="font-bold text-red-600">{formatearPeso(totalCompra - (compra.monto_pagado || 0))}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Costo extra</label>
               <input
@@ -1577,15 +1504,14 @@ function Gastos() {
       {/* ---- TABLA DE GASTOS ---- */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <table className="w-full">
-<thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 text-gray-600 font-medium">Fecha</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Categoría</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Tipo</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Documento</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">IVA</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Método</th>
               <th className="text-left px-4 py-3 text-gray-600 font-medium">Proveedor</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium">Categoría</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium">Tipo Gasto</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium">Comprobante</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium">Método Pago</th>
               <th className="text-left px-4 py-3 text-gray-600 font-medium">Usuario</th>
               <th className="text-left px-4 py-3 text-gray-600 font-medium">Descripción</th>
               <th className="text-center px-4 py-3 text-gray-600 font-medium">Adjunto</th>
@@ -1595,10 +1521,10 @@ function Gastos() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="10" className="text-center py-8 text-gray-400">Cargando gastos...</td></tr>
+              <tr><td colSpan="11" className="text-center py-8 text-gray-400">Cargando gastos...</td></tr>
             ) : gastos.length === 0 ? (
               <tr>
-                <td colSpan="10" className="text-center py-12 text-gray-400">
+                <td colSpan="11" className="text-center py-12 text-gray-400">
                   <p className="text-4xl mb-2">💸</p>
                   <p>No hay gastos en este período</p>
                 </td>
@@ -1629,14 +1555,11 @@ gastos.map(gasto => (
                             ? 'bg-teal-100 text-teal-700'
                             : 'bg-orange-100 text-orange-700'
                     }`}>
-                      {gasto.tipo === 'fijo' ? 'Fijo' : gasto.tipo === 'pago_proveedor' ? 'Pago proveedor' : gasto.tipo === 'compra' ? 'Compra' : 'Variable'}
+                      {gasto.tipo === 'fijo' ? '📌 Fijo' : gasto.tipo === 'pago_proveedor' ? '🧾 Pago Proveedor' : gasto.tipo === 'compra' ? '🛒 Compra' : '📄 Variable'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-700 text-sm">
                     {gasto.tipo_documento ? gasto.tipo_documento.replace('_', ' ').toUpperCase() : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700 text-sm">
-                    {gasto.monto_iva ? `AR$ ${Number(gasto.monto_iva).toFixed(2)}` : '-'}
                   </td>
                   <td className="px-4 py-3 text-gray-600 text-sm">
                     {iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}

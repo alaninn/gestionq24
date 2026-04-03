@@ -129,6 +129,10 @@ router.get('/:id', verificarPermiso('proveedores', 'ver'), async (req, res) => {
                 g.metodo_pago,
                 g.recibo_url,
                 g.tipo,
+                g.es_compra,
+                g.tipo_comprobante,
+                g.registrar_nueva_factura,
+                g.total_factura,
                 'pago' as tipo_movimiento
             FROM gastos g
             WHERE ${whereClause}
