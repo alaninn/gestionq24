@@ -90,7 +90,7 @@ app.use('/api/superadmin', verificarToken, soloSuperadmin, rutasSuperadmin);
 
 // Servir el frontend
 const rutaFrontend = process.env.RENDER 
-    ? path.join(process.cwd(), 'frontend/dist')
+    ? path.join('/opt/render/project/src', 'frontend/dist')
     : path.join(__dirname, '../frontend/dist');
 
 app.use(express.static(rutaFrontend));
