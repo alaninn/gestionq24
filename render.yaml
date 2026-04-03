@@ -14,9 +14,6 @@ services:
     name: almacenq24-backend
     runtime: node
     plan: free
-    envVars:
-      - key: NODE_VERSION
-        value: 20
     buildCommand: |
       echo "🔨 Iniciando build..."
       cd backend
@@ -28,6 +25,8 @@ services:
       echo "✅ Build finalizado correctamente"
     startCommand: cd backend && node server.js
     envVars:
+      - key: NODE_VERSION
+        value: 20
       - key: NODE_ENV
         value: production
       - key: TZ
