@@ -1,5 +1,7 @@
 process.env.TZ = 'America/Argentina/Buenos_Aires';
 
+const express = require('express');
+
 // SI ESTAMOS EN RENDER: BORRAMOS TODAS LAS VARIABLES LOCALES DE BASE DE DATOS
 if(process.env.RENDER) {
     delete process.env.DB_HOST;
@@ -11,7 +13,10 @@ if(process.env.RENDER) {
 
 require('dotenv').config({ override: true });
 
-const express = require('express');
+const app = express();
+
+// Trust proxy para Render
+app.set('trust proxy', process.env.RENDER ? true : false);
 const cors = require('cors');
 const path = require('path');
 const schedule = require('node-schedule');
@@ -36,8 +41,6 @@ const { verificarToken, verificarPermiso, soloSuperadmin } = require('./middlewa
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-
-const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
