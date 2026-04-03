@@ -453,19 +453,19 @@ function Proveedores() {
                   </div>
 
                   <div className={`flex justify-between items-center px-3 py-2 rounded-lg ${
-                    prov.saldo_deuda > 0 ? 'bg-red-50' : 'bg-gray-50'
+                    prov.saldo_deuda > 0 ? 'bg-green-50' : 'bg-gray-50'
                   }`}>
-                    <span className="text-sm text-gray-600">Nos debe:</span>
-                    <span className={`font-bold ${prov.saldo_deuda > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                    <span className="text-sm text-gray-600">✅ Nos debe a nosotros:</span>
+                    <span className={`font-bold ${prov.saldo_deuda > 0 ? 'text-green-600' : 'text-gray-700'}`}>
                       {formatearPeso(prov.saldo_deuda)}
                     </span>
                   </div>
 
                   <div className={`flex justify-between items-center px-3 py-2 rounded-lg ${
-                    prov.saldo_a_favor > 0 ? 'bg-blue-50' : 'bg-gray-50'
+                    prov.saldo_a_favor > 0 ? 'bg-red-50' : 'bg-gray-50'
                   }`}>
-                    <span className="text-sm text-gray-600">Le debemos:</span>
-                    <span className={`font-bold ${prov.saldo_a_favor > 0 ? 'text-blue-600' : 'text-gray-700'}`}>
+                    <span className="text-sm text-gray-600">⚠️ Nosotros le debemos:</span>
+                    <span className={`font-bold ${prov.saldo_a_favor > 0 ? 'text-red-600' : 'text-gray-700'}`}>
                       {formatearPeso(prov.saldo_a_favor)}
                     </span>
                   </div>
@@ -731,15 +731,15 @@ function Proveedores() {
                   💰 Saldos Actuales
                 </h4>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_deuda > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">Nos debe</p>
-                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_deuda > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_deuda > 0 ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">✅ Nos debe a nosotros</p>
+                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_deuda > 0 ? 'text-green-600' : 'text-gray-700'}`}>
                       {formatearPeso(proveedorSeleccionado.saldo_deuda)}
                     </p>
                   </div>
-                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_a_favor > 0 ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">Le debemos</p>
-                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_a_favor > 0 ? 'text-blue-600' : 'text-gray-700'}`}>
+                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_a_favor > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">⚠️ Nosotros le debemos</p>
+                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_a_favor > 0 ? 'text-red-600' : 'text-gray-700'}`}>
                       {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
                     </p>
                   </div>
@@ -875,56 +875,87 @@ function Proveedores() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-semibold text-gray-800 text-sm">{mov.descripcion}</p>
-                          <span className={`text-[10px] px-2 py-1 rounded-full ${mov.tipo === 'pago_proveedor' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`}>
-                            {mov.tipo === 'pago_proveedor' ? '💰 Pago' : '📄 Gasto'}
-                          </span>
+                          {(() => {
+                            // Logica inteligente para tipo de movimiento
+                            if ((mov.tipo === 'pago_proveedor' || mov.es_compra) && mov.registrar_nueva_factura) {
+                              const monto = Number(mov.monto);
+                              const totalFactura = Number(mov.total_factura);
+                              
+                              if (monto >= totalFactura) {
+                                return <span className="text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">✅ PAGO TOTAL FACTURA</span>
+                              }
+                              if (monto < totalFactura && monto > 0) {
+                                return <span className="text-[10px] px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">⚠️ PAGO PARCIAL FACTURA</span>
+                              }
+                              if (monto === 0) {
+                                return <span className="text-[10px] px-2 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">🧾 NUEVA FACTURA (DEUDA)</span>
+                              }
+                            }
+                            if (mov.tipo === 'pago_proveedor' && !mov.total_factura && !mov.registrar_nueva_factura) {
+                              return <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 text-blue-700 border border-blue-200">💸 PAGO A CUENTA DEUDA</span>
+                            }
+                            if (mov.es_compra) {
+                              if (mov.tipo_comprobante === 'factura_a' || mov.tipo_comprobante === 'factura_b' || mov.tipo_comprobante === 'factura_c') {
+                                return <span className="text-[10px] px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">🧾 COMPRA CON FACTURA</span>
+                              }
+                              return <span className="text-[10px] px-2 py-1 rounded-full bg-teal-100 text-teal-700 border border-teal-200">🛒 COMPRA SIN FACTURA</span>
+                            }
+                            return <span className={`text-[10px] px-2 py-1 rounded-full ${mov.tipo === 'pago_proveedor' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}>
+                              {mov.tipo === 'pago_proveedor' ? '💰 Pago Proveedor' : '📄 Gasto General'}
+                            </span>
+                          })()}
                         </div>
                         <p className="text-xs text-gray-500 flex items-center gap-1">📅 {formatearFecha(mov.fecha)}</p>
+                        {mov.total_factura && Number(mov.total_factura) > 0 && (
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Factura total: {formatearPeso(mov.total_factura)} | Pagado: {formatearPeso(mov.monto)} | Deuda restante: {formatearPeso(Number(mov.total_factura) - Number(mov.monto))}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <p className="font-bold text-gray-800 text-lg">{formatearPeso(mov.monto)}</p>
-                          <p className="text-[11px] text-gray-500 capitalize">💳 {mov.metodo_pago}</p>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                          {mov.recibo_url && (
-                            <>
-                              <button
-                                onClick={() => descargarBoleta(mov.recibo_url, mov.id)}
-                                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 rounded hover:bg-indigo-50"
-                                title="Descargar boleta"
-                              >
-                                💾
-                              </button>
-                              <a
-                                href={mov.recibo_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-2 rounded hover:bg-blue-50"
-                                title="Ver boleta"
-                              >
-                                👁️
-                              </a>
-                            </>
-                          )}
-                          <button
-                            onClick={() => {
-                              setMostrarModalHistorial(false);
-                              editarGasto(mov);
-                            }}
-                            className="text-sm text-orange-600 hover:text-orange-800 font-medium px-3 py-2 rounded hover:bg-orange-50"
-                            title="Editar gasto"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => eliminarGasto(mov.id)}
-                            className="text-sm text-red-600 hover:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50"
-                            title="Eliminar gasto"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="font-bold text-gray-800 text-lg">{formatearPeso(mov.monto)}</p>
+                            <p className="text-[11px] text-gray-500 capitalize">💳 {mov.metodo_pago}</p>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            {mov.recibo_url && (
+                              <>
+                                <button
+                                  onClick={() => descargarBoleta(mov.recibo_url, mov.id)}
+                                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 rounded hover:bg-indigo-50"
+                                  title="Descargar boleta"
+                                >
+                                  💾
+                                </button>
+                                <a
+                                  href={mov.recibo_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-2 rounded hover:bg-blue-50"
+                                  title="Ver boleta"
+                                >
+                                  👁️
+                                </a>
+                              </>
+                            )}
+                            <button
+                              onClick={() => {
+                                setMostrarModalHistorial(false);
+                                editarGasto(mov);
+                              }}
+                              className="text-sm text-orange-600 hover:text-orange-800 font-medium px-3 py-2 rounded hover:bg-orange-50"
+                              title="Editar gasto"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => eliminarGasto(mov.id)}
+                              className="text-sm text-red-600 hover:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50"
+                              title="Eliminar gasto"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                       </div>
                     </div>
                   ))

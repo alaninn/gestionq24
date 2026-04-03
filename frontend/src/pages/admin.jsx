@@ -14,6 +14,8 @@ import api from '../api/axios';
 import Usuarios from '../components/admin/Usuarios';
 import Soporte from '../components/admin/Soporte';
 import Proveedores from '../components/admin/Proveedores';
+import Stock from '../components/admin/Stock';
+import ResumenFiscal from '../components/admin/ResumenFiscal';
 
 function NombreNegocio() {
   const [nombre, setNombre] = useState(() => {
@@ -145,8 +147,14 @@ function Admin() {
           {tienePermiso('proveedores', 'ver') && (
             <NavLink to="/admin/proveedores" icon="📦" label="Proveedores" />
           )}
+          {tienePermiso('productos', 'ver') && (
+            <NavLink to="/admin/stock" icon="📉" label="Stock" />
+          )}
           {tienePermiso('gastos', 'ver') && (
             <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
+          )}
+          {(tienePermiso('ventas', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
+            <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
           )}
 
           {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
@@ -240,6 +248,7 @@ function Admin() {
             <Route path="/productos" element={<Productos />} />
             <Route path="/categorias" element={<Categorias />} />
             <Route path="/gastos" element={<Gastos />} />
+            <Route path="/stock" element={<Stock />} />
             <Route path="/reportes" element={<Reportes />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/cuentas-corrientes" element={<CuentasCorrientes />} />
@@ -247,6 +256,7 @@ function Admin() {
             <Route path="/proveedores" element={<Proveedores />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/soporte" element={<Soporte />} />
+            <Route path="/resumen-fiscal" element={<ResumenFiscal />} />
           </Routes>
         </main>
       </div>

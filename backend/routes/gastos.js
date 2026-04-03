@@ -61,7 +61,7 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             estado_pago
         } = req.body;
 
-        if (!monto || Number(monto) <= 0) return res.status(400).json({ error: 'El monto es obligatorio y debe ser mayor a 0' });
+        if (monto === undefined || monto === null || Number(monto) < 0) return res.status(400).json({ error: 'El monto es obligatorio y debe ser mayor o igual a 0' });
 
         // Validar que proveedor exista si se proporciona
         if (proveedor_id) {
@@ -84,9 +84,11 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             }
         }
 
+        const { registrar_nueva_factura, total_factura, pago_independiente } = req.body;
+
         const resultado = await db.query(`
-            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *
+            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago, registrar_nueva_factura, total_factura)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *
         `, [
             descripcion || '',
             monto,
@@ -107,16 +109,36 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             montoIva,
             productos_json ? JSON.stringify(productos_json) : null,
             tipo_pago_proveedor || null,
-            estado_pago || 'pagado'
+            estado_pago || 'pagado',
+            registrar_nueva_factura || false,
+            total_factura || null
         ]);
 
         // Si es pago a proveedor, actualizar saldo
         if (proveedor_id && tipoFinal === 'pago_proveedor') {
-            await db.query(`
-                UPDATE proveedores 
-                SET saldo_deuda = GREATEST(saldo_deuda - $1, 0)
-                WHERE id = $2 AND negocio_id = $3
-            `, [monto, proveedor_id, negocio_id]);
+            const { registrar_nueva_factura, total_factura, pago_independiente } = req.body;
+            
+            // Si es pago independiente no modificamos la deuda
+            if (!pago_independiente) {
+                
+                // Si se registra una nueva factura, sumamos lo que YO LE DEBO al proveedor
+                if (registrar_nueva_factura && total_factura && Number(total_factura) > 0) {
+                    await db.query(`
+                        UPDATE proveedores 
+                        SET saldo_a_favor = saldo_a_favor + $1
+                        WHERE id = $2 AND negocio_id = $3
+                    `, [Number(total_factura), proveedor_id, negocio_id]);
+                }
+                
+                // Luego restamos lo que le PAGUE al proveedor de la deuda (saldo_a_favor)
+                if (Number(monto) > 0) {
+                    await db.query(`
+                        UPDATE proveedores 
+                        SET saldo_a_favor = GREATEST(0, saldo_a_favor - $1)
+                        WHERE id = $2 AND negocio_id = $3
+                    `, [Number(monto), proveedor_id, negocio_id]);
+                }
+            }
         }
 
         // Si es compra con deuda, se suma a saldo de deuda del proveedor
