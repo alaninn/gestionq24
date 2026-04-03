@@ -25,7 +25,7 @@ services:
       node ./node_modules/vite/bin/vite.js build --outDir dist
       ls -la dist
       echo "✅ Build finalizado correctamente"
-    startCommand: cd backend && node server.js
+    startCommand: unset PORT && cd backend && node server.js
     envVars:
       - key: NODE_VERSION
         value: 20
