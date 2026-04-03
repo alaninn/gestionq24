@@ -1,6 +1,6 @@
 process.env.TZ = 'America/Argentina/Buenos_Aires';
 
-require('dotenv').config();
+require('dotenv').config({ override: process.env.RENDER ? true : false });
 
 const express = require('express');
 const cors = require('cors');
