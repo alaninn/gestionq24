@@ -99,9 +99,18 @@ app.use((req, res, next) => {
 });
 
 const PUERTO = process.env.PORT || 3001;
-app.listen(PUERTO, '0.0.0.0', () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${PUERTO}`);
-    console.log(`📦 API disponible en http://localhost:${PUERTO}/api`);
+
+// Ajuste solo para Render - NO AFECTA FUNCIONAMIENTO LOCAL
+const host = process.env.RENDER ? '0.0.0.0' : '0.0.0.0';
+
+app.listen(PUERTO, host, () => {
+    if(process.env.RENDER) {
+        console.log(`🚀 Servidor corriendo en Render en puerto ${PUERTO}`);
+        console.log(`📦 API lista para produccion`);
+    } else {
+        console.log(`🚀 Servidor corriendo en http://localhost:${PUERTO}`);
+        console.log(`📦 API disponible en http://localhost:${PUERTO}/api`);
+    }
 });
 
 // Pool ya disponible via require('./config/database')
