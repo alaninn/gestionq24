@@ -18,10 +18,11 @@ services:
     buildCommand: |
       echo "🔨 Iniciando build..."
       cd backend
-      npm ci
+      npm ci --no-fund --no-audit
       cd ../frontend
-      npm ci
-      npm run build
+      rm -rf node_modules package-lock.json
+      npm install --no-fund --no-audit
+      npx vite build
       echo "✅ Build finalizado correctamente"
     startCommand: cd backend && node server.js
     envVars:
