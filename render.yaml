@@ -20,6 +20,7 @@ services:
       npm ci --no-fund --no-audit
       cd ../frontend
       rm -rf node_modules package-lock.json .vite dist
+      npm install vite @vitejs/plugin-react --no-save
       npm install --no-fund --no-audit --no-bin-links --force
       node ./node_modules/vite/bin/vite.js build --outDir dist
       ls -la dist
