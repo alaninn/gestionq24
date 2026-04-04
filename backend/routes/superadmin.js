@@ -113,8 +113,8 @@ router.get('/stats', async (req, res) => {
 
         const topNegocios = await db.query(`
             SELECT 
-                n.nombre,
-                n.estado,
+                MAX(n.nombre) as nombre,
+                MAX(n.estado) as estado,
                 COUNT(v.id) AS total_ventas,
                 COALESCE(SUM(v.total), 0) AS total_facturado
             FROM negocios n
