@@ -61,7 +61,12 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             estado_pago
         } = req.body;
 
-        if (monto === undefined || monto === null || Number(monto) < 0) return res.status(400).json({ error: 'El monto es obligatorio y debe ser mayor o igual a 0' });
+        // ✅ FIX Error 22P02: Validar cadena vacia y asegurar que sea numero valido
+        if (monto === undefined || monto === null || monto === '' || isNaN(Number(monto)) || Number(monto) < 0) {
+            return res.status(400).json({ error: 'El monto es obligatorio y debe ser un numero valido mayor o igual a 0' });
+        }
+        // Convertir definitivamente a numero antes de enviar a PostgreSQL
+        const montoNumerico = Number(monto);
 
         // Validar que proveedor exista si se proporciona
         if (proveedor_id) {
@@ -91,7 +96,7 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *
         `, [
             descripcion || '',
-            monto,
+            montoNumerico,
             categoria || null,
             turno_id || null,
             tipoFinal,
@@ -147,7 +152,7 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
                 UPDATE proveedores
                 SET saldo_deuda = saldo_deuda + $1
                 WHERE id = $2 AND negocio_id = $3
-            `, [monto, proveedor_id, negocio_id]);
+            `, [montoNumerico, proveedor_id, negocio_id]);
         }
 
         res.status(201).json(resultado.rows[0]);
@@ -198,7 +203,12 @@ router.put('/:id', verificarPermiso('gastos', 'editar'), async (req, res) => {
             estado_pago
         } = req.body;
 
-        if (!monto || Number(monto) <= 0) return res.status(400).json({ error: 'El monto es obligatorio y debe ser mayor a 0' });
+        // ✅ FIX Error 22P02: Validar cadena vacia y asegurar que sea numero valido
+        if (monto === undefined || monto === null || monto === '' || isNaN(Number(monto)) || Number(monto) <= 0) {
+            return res.status(400).json({ error: 'El monto es obligatorio y debe ser un numero valido mayor a 0' });
+        }
+        // Convertir definitivamente a numero antes de enviar a PostgreSQL
+        const montoNumerico = Number(monto);
 
         if (proveedor_id) {
             const proveedor = await db.query('SELECT id FROM proveedores WHERE id = $1 AND negocio_id = $2',
@@ -229,7 +239,7 @@ router.put('/:id', verificarPermiso('gastos', 'editar'), async (req, res) => {
             RETURNING *
         `, [
             descripcion || '',
-            monto,
+            montoNumerico,
             categoria || null,
             turno_id || null,
             tipo || (es_compra ? 'compra' : 'variable'),

@@ -61,11 +61,25 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
     }
   }, [modoCompra]);
 
-  const proveedorSeleccionado = proveedores.find(p => p.id == formulario.proveedor_id);
+  const proveedorSeleccionado = proveedores.find(p => String(p.id) === String(formulario.proveedor_id));
+  
+  // Debug: mostrar datos del proveedor seleccionado
+  useEffect(() => {
+    if (proveedorSeleccionado) {
+      console.log('🔍 Proveedor seleccionado:', {
+        id: proveedorSeleccionado.id,
+        nombre: proveedorSeleccionado.nombre,
+        saldo_deuda: proveedorSeleccionado.saldo_deuda,
+        saldo_a_favor: proveedorSeleccionado.saldo_a_favor,
+        proveedor_id_formulario: formulario.proveedor_id
+      });
+    }
+  }, [proveedorSeleccionado, formulario.proveedor_id]);
   
   const cargarProveedores = async () => {
     try {
       const res = await api.get('/api/proveedores');
+      console.log('📥 Proveedores cargados:', res.data);
       setProveedores(res.data);
     } catch (err) {
       console.error('Error al cargar proveedores:', err);
@@ -171,6 +185,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
       }
 
       await api.post('/api/gastos', datosEnvio);
+      // Recargar proveedores para actualizar deudas
+      await cargarProveedores();
       if (onGuardado) onGuardado();
       onCerrar();
     } catch (err) {
@@ -347,24 +363,24 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
 
               {/* Estado de deuda del proveedor */}
               {proveedorSeleccionado && (
-                <div className={`p-3 rounded-lg border ${proveedorSeleccionado.saldo_deuda > 0 
+                <div className={`p-3 rounded-lg border ${Number(proveedorSeleccionado.saldo_a_favor) > 0
                   ? 'bg-yellow-50 border-yellow-300' 
                   : 'bg-green-50 border-green-300'}`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      {proveedorSeleccionado.saldo_deuda > 0 ? (
+                      {Number(proveedorSeleccionado.saldo_a_favor) > 0 ? (
                         <>
-                          <p className="text-sm font-medium text-yellow-800">Deuda: ${proveedorSeleccionado.saldo_deuda}</p>
-                          <p className="text-xs text-yellow-600">1 compra(s) pendiente(s)</p>
+                          <p className="text-sm font-medium text-yellow-800">Nosotros le debemos: ${proveedorSeleccionado.saldo_a_favor}</p>
+                          <p className="text-xs text-yellow-600">Compra(s) pendiente(s)</p>
                         </>
                       ) : (
                         <p className="text-sm font-medium text-green-800">✅ Sin deuda pendiente registrada</p>
                       )}
                     </div>
-                    {proveedorSeleccionado.saldo_deuda > 0 && (
+                    {Number(proveedorSeleccionado.saldo_a_favor) > 0 && (
                       <button
                         type="button"
-                        onClick={() => setFormulario(p => ({ ...p, monto: proveedorSeleccionado.saldo_deuda }))}
+                        onClick={() => setFormulario(p => ({ ...p, monto: Number(proveedorSeleccionado.saldo_a_favor)}))}
                         className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-medium"
                       >
                         Usar total →
@@ -773,6 +789,9 @@ function Gastos() {
       datos.registrar_nueva_factura = true;
       
       await api.post('/api/gastos', datos);
+      // Recargar proveedores para actualizar deudas
+      const resProv = await api.get('/api/proveedores');
+      setProveedores(resProv.data || []);
       setExito('Compra registrada correctamente');
 
       // Actualizar precios de productos si cambiaron
