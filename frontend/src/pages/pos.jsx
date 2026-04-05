@@ -1052,12 +1052,8 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
 
   const cargarResumen = async () => {
     try {
-      const fechaApertura = new Date(turno.fecha_apertura);
-      const offset = fechaApertura.getTimezoneOffset() * 60000;
-      const local = new Date(fechaApertura - offset);
-      const desde = local.toISOString().split('T')[0];
-      const hasta = desde;
-      const res = await api.get(`/api/reportes/historial?fecha_desde=${desde}&fecha_hasta=${hasta}`);
+      // ✅ AHORA TRAE SOLO LAS VENTAS DE ESTE TURNO EXACTO, NO TODO EL DIA
+      const res = await api.get(`/api/reportes/historial?turno_id=${turno.id}`);
       setResumen(res.data);
     } catch (err) { console.error('Error:', err); }
   };
@@ -1093,7 +1089,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     const mercadopago = parseFloat(datos.total_mercadopago || 0);
     const transferencias = parseFloat(datos.total_transferencias || 0);
     const totalDeclarado = efectivoDeclarado + tarjetas + mercadopago + transferencias;
-    const totalSistema = resumen?.totalVendido || 0;
+    const totalSistema = (resumen?.totalVendido || 0) + efectivoInicio;
     const diferencia = totalDeclarado - totalSistema;
 
     const nombreNegocio = config?.nombre_negocio || 'Mi Negocio';
@@ -1191,7 +1187,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
         const transfSistema = (resumen.porMetodo?.transferencia || 0);
 
         const totalDeclaro = efectivoDeclaro + tarjetasDeclaro + mpDeclaro + transfDeclaro;
-        const totalSistema = resumen.totalVendido || 0;
+        const totalSistema = (resumen.totalVendido || 0) + parseFloat(turno.inicio_caja || 0);
         const diferencia = totalDeclaro - totalSistema;
 
         setResultadoCierre({
@@ -2407,7 +2403,38 @@ const imprimirTicketDesdeModal = () => {
     return (
       <ModalSeleccionCaja cajasAbiertas={cajasAbiertas}
         onAbrir={async (nombre, inicioCaja) => {
-          try { const res = await api.post('/api/turnos/abrir', { nombre, inicio_caja: inicioCaja }); setTurno(res.data); }
+          try { 
+            const res = await api.post('/api/turnos/abrir', { nombre, inicio_caja: inicioCaja }); 
+            // ✅ RESET COMPLETO DEL ESTADO SOLO AL ABRIR NUEVA CAJA
+            setTurno(res.data);
+            setPestanas([{ id: 1, nombre: 'Venta 1', carrito: [] }]);
+            setPestanaActiva(1);
+            setContadorVentas(1);
+            setBuscar('');
+            setUltimaVenta(null);
+            setTotalUltimaVenta(0);
+            setMensajeScanner(null);
+            setMostrarModalGasto(false);
+            setMostrarModalFiados(false);
+            setMostrarModalVenta(false);
+            setMostrarModalCierre(false);
+            setMostrarModalRapida(false);
+            setMostrarModalHistorial(false);
+            setVentaExitosa(false);
+            setEditandoCantidad(null);
+            setFacturacionElectronica(false);
+            setTipoComprobante(0);
+            setTipoDocumento(99);
+            setNumeroDocumento('');
+            setDenominacionComprador('');
+            setTiposComprobante([]);
+            setUltimoComprobante(null);
+            setMostrarComprobanteElectronico(false);
+            // Limpiar localStorage
+            localStorage.removeItem('pos_pestanas');
+            localStorage.removeItem('pos_pestana_activa');
+            localStorage.removeItem('pos_contador_ventas');
+          }
           catch (err) { alert(err.response?.data?.error || 'Error al abrir caja'); }
         }}
         onUnirse={async (turnoId) => {
