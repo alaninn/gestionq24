@@ -365,4 +365,41 @@ router.get('/dashboard', async (req, res) => {
     }
 });
 
-module.exports = router;
+// ✅ ENDPOINT NUEVO: Facturado por Mes Histórico
+router.get('/facturado-mes', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        
+        // Query que devuelve facturado mes a mes completo historico
+        const resultado = await db.query(`
+            SELECT 
+                EXTRACT(YEAR FROM fecha) AS anio,
+                EXTRACT(MONTH FROM fecha) AS mes,
+                TO_CHAR(fecha, 'Month') AS nombre_mes,
+                COUNT(*) AS total_ventas,
+                ROUND(COALESCE(SUM(total), 0)::numeric, 2) AS facturado_mes,
+                ROUND(COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total ELSE 0 END), 0)::numeric, 2) AS efectivo,
+                ROUND(COALESCE(SUM(CASE WHEN metodo_pago != 'efectivo' THEN total ELSE 0 END), 0)::numeric, 2) AS otros_medios
+            FROM ventas
+            WHERE negocio_id = $1
+              AND anulada = FALSE
+            GROUP BY EXTRACT(YEAR FROM fecha), EXTRACT(MONTH FROM fecha), TO_CHAR(fecha, 'Month')
+            ORDER BY anio DESC, mes DESC
+        `, [negocio_id]);
+
+        // Total general acumulado
+        const totalGeneral = resultado.rows.reduce((acc, mes) => acc + parseFloat(mes.facturado_mes), 0);
+
+        res.json({
+            por_mes: resultado.rows,
+            total_general: Math.round(totalGeneral * 100) / 100
+        });
+
+    } catch (error) {
+        console.error('Error facturado mes:', error);
+        res.status(500).json({ error: 'Error al obtener facturado por mes' });
+    }
+});
+
+module.exports = router

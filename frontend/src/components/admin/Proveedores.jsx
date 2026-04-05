@@ -234,8 +234,8 @@ function Proveedores() {
         return;
       }
 
-      const tipoPago = tipoPagoContext === 'pago_a_cuenta' ? 'pago_deuda' : 'ajuste_credito';
-      const descripcionPago = formPago.descripcion || (tipoPago === 'pago_deuda' ? 'Pago a cuenta de deuda' : 'Pago nuevo / crédito');
+      const tipoPago = tipoPagoContext === 'pago_a_cuenta' ? 'pago_deuda' : tipoPagoContext === 'cobro_deuda' ? 'cobro_deuda' : 'ajuste_credito';
+      const descripcionPago = formPago.descripcion || (tipoPago === 'pago_deuda' ? 'Pago a cuenta de deuda' : tipoPago === 'cobro_deuda' ? 'Cobro de deuda' : 'Pago nuevo / crédito');
 
       await api.post(`/api/proveedores/${proveedorSeleccionado.id}/pago`, {
         monto: parseFloat(formPago.monto),
@@ -262,13 +262,41 @@ function Proveedores() {
     }
   };
 
-  // ---- ELIMINAR ----
-  const eliminarProveedor = async (id, nombre) => {
-    if (!window.confirm(`¿Eliminar "${nombre}"?`)) return;
-
+ // ---- ARCHIVAR ----
+  const archivarProveedor = async (id, nombre) => {
+    if (!window.confirm(`¿Archivar "${nombre}"? Podrás reactivarlo después desde la pestaña Archivados.`)) return;
     try {
       await api.delete(`/api/proveedores/${id}`);
-      setExito('Proveedor eliminado');
+      setExito('Proveedor archivado');
+      setMostrarDetalle(false);
+      cargarProveedores();
+      setTimeout(() => setExito(''), 2000);
+    } catch (err) {
+      setError('Error al archivar proveedor');
+    }
+  };
+
+  // ---- REACTIVAR ----
+  const reactivarProveedor = async (id, nombre) => {
+    if (!window.confirm(`¿Reactivar "${nombre}"?`)) return;
+    try {
+      await api.patch(`/api/proveedores/${id}/reactivar`);
+      setExito('Proveedor reactivado');
+      setMostrarDetalle(false);
+      cargarProveedores();
+      setTimeout(() => setExito(''), 2000);
+    } catch (err) {
+      setError('Error al reactivar proveedor');
+    }
+  };
+
+  // ---- ELIMINAR DEFINITIVO ----
+  const eliminarProveedor = async (id, nombre) => {
+    if (!window.confirm(`⚠️ ¿Eliminar DEFINITIVAMENTE "${nombre}"? Esta acción no se puede deshacer y borrará todos sus datos.`)) return;
+    if (!window.confirm(`Segunda confirmación: ¿Seguro que querés eliminar "${nombre}" para siempre?`)) return;
+    try {
+      await api.delete(`/api/proveedores/${id}/definitivo`);
+      setExito('Proveedor eliminado definitivamente');
       setMostrarDetalle(false);
       cargarProveedores();
       setTimeout(() => setExito(''), 2000);
@@ -280,6 +308,20 @@ function Proveedores() {
   const formatearPeso = (n) => new Intl.NumberFormat('es-AR', {
     style: 'currency', currency: 'ARS', minimumFractionDigits: 0
   }).format(n || 0);
+
+  // ---- ABRIR PAGO DESDE LISTADO (click en saldo) ----
+  const abrirPagoDesdeListado = async (prov, tipoPago) => {
+    try {
+      const res = await api.get(`/api/proveedores/${prov.id}`);
+      setProveedorSeleccionado(res.data);
+      setTipoPagoContext(tipoPago);
+      setMostrarModalPago(true);
+      setFormPago({ monto: '', metodo_pago: 'efectivo', tipo_pago: 'pago_deuda', descripcion: '', recibo_url: '' });
+      setBoletaPreview('');
+    } catch (err) {
+      setError('Error al cargar datos del proveedor');
+    }
+  };
 
   const calcularTotales = () => {
     const total = proveedores.length;
@@ -452,23 +494,35 @@ function Proveedores() {
                     {prov.updated_at && <span>Últ. mov: {formatearFecha(prov.updated_at)}</span>}
                   </div>
 
-                  <div className={`flex justify-between items-center px-3 py-2 rounded-lg ${
-                    prov.saldo_deuda > 0 ? 'bg-green-50' : 'bg-gray-50'
-                  }`}>
-                    <span className="text-sm text-gray-600">✅ Nos debe a nosotros:</span>
-                    <span className={`font-bold ${prov.saldo_deuda > 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                      {formatearPeso(prov.saldo_deuda)}
-                    </span>
-                  </div>
+                  {Number(prov.saldo_deuda) > 0 ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); verDetalle(prov).then(() => { setTipoPagoContext('cobro_deuda'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }); }}
+                      className="w-full flex justify-between items-center px-3 py-2 rounded-lg bg-green-50 hover:bg-green-100 border border-green-200 transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm text-gray-600">✅ Nos debe a nosotros</span>
+                      <span className="font-bold text-green-600 flex items-center gap-1">{formatearPeso(prov.saldo_deuda)} <span className="text-xs">→</span></span>
+                    </button>
+                  ) : (
+                    <div className="flex justify-between items-center px-3 py-2 rounded-lg bg-gray-50">
+                      <span className="text-sm text-gray-600">✅ Nos debe a nosotros:</span>
+                      <span className="font-bold text-gray-700">{formatearPeso(prov.saldo_deuda)}</span>
+                    </div>
+                  )}
 
-                  <div className={`flex justify-between items-center px-3 py-2 rounded-lg ${
-                    prov.saldo_a_favor > 0 ? 'bg-red-50' : 'bg-gray-50'
-                  }`}>
-                    <span className="text-sm text-gray-600">⚠️ Nosotros le debemos:</span>
-                    <span className={`font-bold ${prov.saldo_a_favor > 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                      {formatearPeso(prov.saldo_a_favor)}
-                    </span>
-                  </div>
+                  {Number(prov.saldo_a_favor) > 0 ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); verDetalle(prov).then(() => { setTipoPagoContext('pago_a_cuenta'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }); }}
+                      className="w-full flex justify-between items-center px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm text-gray-600">⚠️ Nosotros le debemos</span>
+                      <span className="font-bold text-red-600 flex items-center gap-1">{formatearPeso(prov.saldo_a_favor)} <span className="text-xs">→</span></span>
+                    </button>
+                  ) : (
+                    <div className="flex justify-between items-center px-3 py-2 rounded-lg bg-gray-50">
+                      <span className="text-sm text-gray-600">⚠️ Nosotros le debemos:</span>
+                      <span className="font-bold text-gray-700">{formatearPeso(prov.saldo_a_favor)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* BOTONES */}
@@ -595,7 +649,7 @@ function Proveedores() {
       {/* MODAL DETALLE */}
       {mostrarDetalle && proveedorSeleccionado && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
-          <div className="bg-white rounded-xl shadow-[0_15px_40px_rgba(30,41,59,0.35)] w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-xl shadow-[0_15px_40px_rgba(30,41,59,0.35)] w-full max-w-6xl max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div>
                 <h3 className="text-xl font-bold text-gray-900">📋 Detalle - {proveedorSeleccionado.nombre}</h3>
@@ -619,7 +673,7 @@ function Proveedores() {
               </div>
             </div>
 
-            <div className="p-4 space-y-4 flex flex-col overflow-hidden flex-1">
+            <div className="p-5 space-y-4 flex flex-col flex-1 overflow-y-auto">
               {/* Información del proveedor compacta (condicional) */}
               {mostrarInfoProveedor && (
                 <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm text-sm">
@@ -642,66 +696,54 @@ function Proveedores() {
                 </div>
               )}
 
-              {/* Estadísticas mejoradas */}
+            {/* Estadísticas mejoradas */}
               {proveedorSeleccionado.estadisticas && (
-                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-6 border border-blue-100">
-                  <h4 className="font-bold text-gray-800 mb-6 flex items-center gap-2 text-lg">
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-3 border border-blue-100">
+                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2 text-sm">
                     📊 Estadísticas de Gastos
                   </h4>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer text-center">
-                      <p className="text-xs text-blue-100 uppercase font-semibold mb-2">Cantidad de Pagos</p>
-                      <p className="text-3xl font-bold text-white">{proveedorSeleccionado.estadisticas.total_gastos}</p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3 shadow text-center">
+                      <p className="text-[10px] text-blue-100 uppercase font-semibold mb-1">Cant. Pagos</p>
+                      <p className="text-xl font-bold text-white">{proveedorSeleccionado.estadisticas.total_gastos}</p>
                     </div>
-                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer text-center">
-                      <p className="text-xs text-green-100 uppercase font-semibold mb-2">Monto Total</p>
-                      <p className="text-2xl font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.total_monto)}</p>
+                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3 shadow text-center">
+                      <p className="text-[10px] text-green-100 uppercase font-semibold mb-1">Monto Total</p>
+                      <p className="text-sm font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.total_monto)}</p>
                     </div>
-                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer text-center">
-                      <p className="text-xs text-purple-100 uppercase font-semibold mb-2">Promedio</p>
-                      <p className="text-2xl font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.promedio_gasto)}</p>
+                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3 shadow text-center">
+                      <p className="text-[10px] text-purple-100 uppercase font-semibold mb-1">Promedio</p>
+                      <p className="text-sm font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.promedio_gasto)}</p>
                     </div>
                     <div
                       onClick={() => setMostrarDetalleUltimoGasto(true)}
-                      className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer text-center"
+                      className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-3 shadow cursor-pointer text-center hover:brightness-110 transition-all"
                     >
-                      <p className="text-xs text-orange-100 uppercase font-semibold mb-2">Último Pago</p>
-                      <p className="text-sm font-bold text-white">{proveedorSeleccionado.movimientos?.[0] ? formatearFecha(proveedorSeleccionado.movimientos[0].fecha) : '-'}</p>
-                      <p className="text-xs text-white/90 mt-1">(clic para ver detalle)</p>
+                      <p className="text-[10px] text-orange-100 uppercase font-semibold mb-1">Último Pago</p>
+                      <p className="text-[11px] font-bold text-white">{proveedorSeleccionado.movimientos?.[0] ? formatearFecha(proveedorSeleccionado.movimientos[0].fecha) : '-'}</p>
+                      <p className="text-[10px] text-white/80 mt-0.5">ver detalle</p>
                     </div>
                   </div>
 
-                  {/* Estadísticas adicionales si hay datos por mes */}
+                  {/* Gastos por mes compacto */}
                   {proveedorSeleccionado.estadisticas_por_mes && proveedorSeleccionado.estadisticas_por_mes.length > 0 && (
-                    <div className="border-t border-blue-200 pt-4">
-                      <h5 className="font-semibold text-gray-700 mb-3">📈 Gastos por Mes (Últimos 12)</h5>
-
-                      <div className="h-36 mb-3 flex items-end gap-2 overflow-hidden">
+                    <div className="border-t border-blue-200 pt-2">
+                      <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">📈 Gastos por mes</h5>
+                      <div className="h-16 flex items-end gap-2 px-4">
                         {estadisticasMes.slice(0, 6).reverse().map((mes, index) => {
                           const totalMes = Number(mes.total) || 0;
                           const porcentaje = maxGastoMes > 0 ? (totalMes / maxGastoMes) * 100 : 0;
                           return (
-                            <div key={index} className="flex flex-col items-center justify-end h-full w-full">
-                              <div className="w-full bg-gray-200 rounded-t-lg overflow-hidden" style={{ height: `${Math.max(12, porcentaje)}%` }}>
-                                <div className="h-full bg-gradient-to-t from-blue-600 to-blue-300"></div>
+                            <div key={index} className="flex flex-col items-center justify-end h-full" style={{ width: '40px', minWidth: '40px' }} title={`${new Date(mes.mes).toLocaleDateString('es-ES', { month: 'short' })}: ${formatearPeso(mes.total)}`}>
+                              <div className="w-full bg-blue-200 rounded-t overflow-hidden" style={{ height: `${Math.max(10, porcentaje)}%` }}>
+                                <div className="h-full bg-gradient-to-t from-blue-600 to-blue-400"></div>
                               </div>
-                              <p className="text-[10px] text-gray-600 mt-1 whitespace-nowrap">
+                              <p className="text-[9px] text-gray-500 mt-0.5 whitespace-nowrap">
                                 {new Date(mes.mes).toLocaleDateString('es-ES', { month: 'short' })}
                               </p>
-                              <p className="text-xs font-semibold text-gray-700">{formatearPeso(mes.total)}</p>
                             </div>
                           );
                         })}
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {estadisticasMes.slice(0, 6).map((mes, index) => (
-                          <div key={index} className="bg-white/80 rounded-lg p-3 border border-blue-200">
-                            <p className="text-xs font-medium text-gray-700 uppercase">{new Date(mes.mes).toLocaleDateString('es-ES', { year: '2-digit', month: 'short' })}</p>
-                            <p className="text-base font-bold text-blue-600">{mes.cantidad} gastos</p>
-                            <p className="text-xs text-gray-600">{formatearPeso(mes.total)}</p>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
@@ -725,69 +767,88 @@ function Proveedores() {
                   <p className="text-sm"><strong>Método:</strong> {proveedorSeleccionado.movimientos[0].metodo_pago}</p>
                 </div>
               )}
-
-              <div className="border-t pt-4">
-                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
-                  💰 Saldos Actuales
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_deuda > 0 ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">✅ Nos debe a nosotros</p>
-                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_deuda > 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                      {formatearPeso(proveedorSeleccionado.saldo_deuda)}
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-lg border transition-all duration-200 ${proveedorSeleccionado.saldo_a_favor > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                    <p className="text-xs text-gray-600 uppercase font-semibold mb-1">⚠️ Nosotros le debemos</p>
-                    <p className={`text-xl font-bold ${proveedorSeleccionado.saldo_a_favor > 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                      {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+               
 
               {/* Botón dedicado para abrir modal de historial */}
-              <div className="border-t pt-4">
+              <div className="border-t pt-2">
                 <button
                   onClick={() => setMostrarModalHistorial(true)}
-                  className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
                 >
                   🧾 Abrir Historial de Gastos
                 </button>
               </div>
 
+              {/* Saldos Actuales */}
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2 text-sm">
+                  💰 Saldos Actuales
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTipoPagoContext('cobro_deuda'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: Number(proveedorSeleccionado.saldo_deuda) > 0 ? proveedorSeleccionado.saldo_deuda : '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
+                    className={`p-2 rounded-lg border transition-all duration-200 text-left ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'bg-green-50 border-green-300 hover:bg-green-100 cursor-pointer shadow-sm' : 'bg-gray-50 border-gray-200 cursor-default'}`}
+                  >
+                    <p className="text-[10px] text-gray-500 uppercase font-semibold mb-0.5">✅ Nos debe</p>
+                    <p className={`text-base font-bold ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                      {formatearPeso(proveedorSeleccionado.saldo_deuda)}
+                    </p>
+                    {Number(proveedorSeleccionado.saldo_deuda) > 0 && <p className="text-[10px] text-green-500 mt-0.5">→ Registrar cobro</p>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTipoPagoContext('pago_a_cuenta'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: Number(proveedorSeleccionado.saldo_a_favor) > 0 ? proveedorSeleccionado.saldo_a_favor : '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
+                    className={`p-2 rounded-lg border transition-all duration-200 text-left ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'bg-red-50 border-red-300 hover:bg-red-100 cursor-pointer shadow-sm' : 'bg-gray-50 border-gray-200 cursor-default'}`}
+                  >
+                    <p className="text-[10px] text-gray-500 uppercase font-semibold mb-0.5">⚠️ Les debemos</p>
+                    <p className={`text-base font-bold ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                      {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
+                    </p>
+                    {Number(proveedorSeleccionado.saldo_a_favor) > 0 && <p className="text-[10px] text-red-500 mt-0.5">→ Registrar pago</p>}
+                  </button>
+                </div>
+              </div>
+
               {/* Botones de acción */}
-              <div className="border-t pt-4 flex gap-2">
-                <button
-                  onClick={() => {
-                    setMostrarDetalle(false);
-                    abrirModalEditar(proveedorSeleccionado);
-                  }}
-                  className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  ✏️ Editar
-                </button>
-                <button
-                  onClick={() => {
-                    setMostrarModalPago(true);
-                    setTipoPagoContext('pago_a_cuenta');
-                    setBoletaPreview('');
-                    setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' }));
-                  }}
-                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  💳 Registrar Pago
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`¿Eliminar "${proveedorSeleccionado.nombre}"?`)) {
-                      eliminarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre);
-                    }
-                  }}
-                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  🗑️ Eliminar
-                </button>
+              <div className="border-t pt-2 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setMostrarDetalle(false); abrirModalEditar(proveedorSeleccionado); }}
+                    className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium text-sm transition-colors"
+                  >
+                    ✏️ Editar
+                  </button>
+                  <button
+                    onClick={() => { setMostrarModalPago(true); setTipoPagoContext('pago_a_cuenta'); setBoletaPreview(''); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); }}
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
+                  >
+                    💳 Registrar Pago
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  {proveedorSeleccionado.activo ? (
+                    <button
+                      onClick={() => archivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                      className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-sm transition-colors"
+                    >
+                      📦 Archivar
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => reactivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors"
+                    >
+                      ♻️ Reactivar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => eliminarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition-colors"
+                  >
+                    🗑️ Eliminar definitivo
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -976,8 +1037,18 @@ function Proveedores() {
       {mostrarModalPago && proveedorSeleccionado && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-5 border-b">
-              <h3 className="text-lg font-bold text-gray-800">💳 Registrar Pago</h3>
+            <div className={`flex items-center justify-between p-5 border-b ${tipoPagoContext === 'cobro_deuda' ? 'bg-green-50' : 'bg-red-50'}`}>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  {tipoPagoContext === 'cobro_deuda' ? '📥 Registrar Cobro' : '💳 Registrar Pago'}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {tipoPagoContext === 'cobro_deuda'
+                    ? `${proveedorSeleccionado?.nombre} nos debe ${formatearPeso(proveedorSeleccionado?.saldo_deuda)}`
+                    : `Le debemos ${formatearPeso(proveedorSeleccionado?.saldo_a_favor)} a ${proveedorSeleccionado?.nombre}`
+                  }
+                </p>
+              </div>
               <button
                 onClick={() => setMostrarModalPago(false)}
                 className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
@@ -1000,7 +1071,8 @@ function Proveedores() {
                   onChange={(e) => setTipoPagoContext(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
-                  <option value="pago_a_cuenta">Pago a cuenta (disminuye deuda)</option>
+                  <option value="pago_a_cuenta">Pago a cuenta (nosotros pagamos deuda)</option>
+                  <option value="cobro_deuda">Cobro de deuda (ellos nos pagaron)</option>
                   <option value="pago_nuevo">Pago nuevo / anticipo</option>
                 </select>
               </div>
@@ -1050,7 +1122,25 @@ function Proveedores() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Monto *</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormPago(p => ({ ...p, monto: tipoPagoContext === 'cobro_deuda' ? proveedorSeleccionado?.saldo_deuda : proveedorSeleccionado?.saldo_a_favor }))}
+                      className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded font-medium transition-colors"
+                    >
+                      💯 Pago total
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormPago(p => ({ ...p, monto: '' }))}
+                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded font-medium transition-colors"
+                    >
+                      ✏️ Parcial
+                    </button>
+                  </div>
+                </div>
                 <div className="relative">
                   <span className="absolute left-3 top-2 text-gray-500">$</span>
                   <input

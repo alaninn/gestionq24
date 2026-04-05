@@ -1,22 +1,9 @@
 process.env.TZ = 'America/Argentina/Buenos_Aires';
 
+require('dotenv').config();
+
 const express = require('express');
-
-// SI ESTAMOS EN RENDER: BORRAMOS TODAS LAS VARIABLES LOCALES DE BASE DE DATOS
-if(process.env.RENDER) {
-    delete process.env.DB_HOST;
-    delete process.env.DB_PORT;
-    delete process.env.DB_USER;
-    delete process.env.DB_PASSWORD;
-    delete process.env.DB_NAME;
-}
-
-require('dotenv').config({ override: true });
-
 const app = express();
-
-// Trust proxy para Render
-app.set('trust proxy', process.env.RENDER ? true : false);
 const cors = require('cors');
 const path = require('path');
 const schedule = require('node-schedule');

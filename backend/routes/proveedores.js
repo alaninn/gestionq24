@@ -238,7 +238,47 @@ router.put('/:id', verificarPermiso('proveedores', 'editar'), async (req, res) =
 });
 
 // =============================================
-// DELETE - Eliminar proveedor (soft delete)
+// PATCH - Reactivar proveedor archivado
+// =============================================
+router.patch('/:id/reactivar', verificarPermiso('proveedores', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        await db.query(
+            'UPDATE proveedores SET activo = TRUE WHERE id = $1 AND negocio_id = $2',
+            [parseInt(req.params.id), negocio_id]
+        );
+
+        res.json({ mensaje: 'Proveedor reactivado' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al reactivar proveedor' });
+    }
+});
+
+// =============================================
+// DELETE - Eliminar definitivo proveedor
+// =============================================
+router.delete('/:id/definitivo', verificarPermiso('proveedores', 'eliminar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        await db.query(
+            'DELETE FROM proveedores WHERE id = $1 AND negocio_id = $2',
+            [parseInt(req.params.id), negocio_id]
+        );
+
+        res.json({ mensaje: 'Proveedor eliminado definitivamente' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al eliminar proveedor' });
+    }
+});
+
+// =============================================
+// DELETE - Archivar proveedor (soft delete)
 // =============================================
 router.delete('/:id', verificarPermiso('proveedores', 'eliminar'), async (req, res) => {
     try {
@@ -304,7 +344,10 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
         let nuevoSaldoFavor = proveedorData.saldo_a_favor || 0;
 
         if (tipo_pago === 'pago_deuda') {
-            // Pago a cuenta de deuda
+            // Nosotros pagamos nuestra deuda al proveedor
+            nuevoSaldoFavor = Math.max(0, nuevoSaldoFavor - monto);
+        } else if (tipo_pago === 'cobro_deuda') {
+            // El proveedor nos pagó lo que nos debía
             nuevoSaldoDeuda = Math.max(0, nuevoSaldoDeuda - monto);
         } else {
             // Pago nuevo / anticipo - aumenta saldo a favor
