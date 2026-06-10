@@ -67,11 +67,24 @@ function NavLink({ to, icon, label, exact = false }) {
   );
 }
 
+// NavLink bloqueado para funciones exclusivas de Plan Premium
+function NavLinkPremium({ icon, label }) {
+  return (
+    <div title="Solo disponible en Plan Premium"
+      className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 cursor-not-allowed opacity-60 select-none">
+      <span className="text-lg">{icon}</span>
+      <span className="flex-1">{label}</span>
+      <span className="text-yellow-500 text-xs font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded">★ PRO</span>
+    </div>
+  );
+}
+
 function Admin() {
   const navigate = useNavigate();
   const { usuario, logout, tienePermiso } = useAuth();
   const { colorPrimario } = useTema();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
   
   // Detectar si superadmin está accediendo otro negocio
   const accesoSuperadminNegocio = localStorage.getItem('acceso_superadmin_negocio');
@@ -110,10 +123,19 @@ function Admin() {
               style={{ backgroundColor: 'var(--color-primario)' }}>
               {usuario?.nombre?.charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-white text-xs font-medium truncate">{usuario?.nombre}</p>
               <p className="text-gray-500 text-xs capitalize">{usuario?.rol}</p>
             </div>
+            {usuario?.plan && usuario?.rol !== 'superadmin' && (
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                esPremium
+                  ? 'bg-yellow-500/20 text-yellow-400'
+                  : 'bg-gray-600/50 text-gray-400'
+              }`}>
+                {esPremium ? '★ PRO' : 'STD'}
+              </span>
+            )}
           </div>
         </div>
 
@@ -154,7 +176,9 @@ function Admin() {
             <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
           )}
           {(tienePermiso('ventas', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
-            <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
+            esPremium
+              ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
+              : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
 
           {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (

@@ -1,5 +1,6 @@
 const express = require('express');
 const { verificarPermiso } = require('../middleware/auth');
+const { validarLimitePlan, LIMITES_PLANES } = require('../middleware/planLimites');
 const router = express.Router();
 const db = require('../config/database');
 
@@ -121,7 +122,7 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     }
 });
 
-router.post('/', verificarPermiso('productos', 'crear'), async (req, res) => {
+router.post('/', verificarPermiso('productos', 'crear'), validarLimitePlan, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -133,6 +134,23 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         if (!nombre || !precio_venta) {
             return res.status(400).json({ error: 'Nombre y precio de venta son obligatorios' });
+        }
+
+        // Verificar límite de productos según plan
+        const plan = req.usuario?.plan || 'estandar';
+        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+        const countRes = await db.query(
+            'SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE',
+            [negocio_id]
+        );
+        const totalActual = parseInt(countRes.rows[0].count);
+        if (totalActual >= limites.max_productos) {
+            return res.status(403).json({
+                error: `Límite de ${limites.max_productos} productos alcanzado para el plan ${plan.charAt(0).toUpperCase() + plan.slice(1)}. Para cargar más productos necesitás el Plan Premium.`,
+                limitePlan: true,
+                limite: limites.max_productos,
+                plan
+            });
         }
 
         let codigoFinal = codigo;
@@ -172,6 +190,168 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             return res.status(400).json({ error: 'Ya existe un producto con ese código' });
         }
         res.status(500).json({ error: 'Error al crear producto' });
+    }
+});
+
+// -----------------------------------------------
+// RUTA: POST /api/productos/importar
+// FUNCIÓN: Importación masiva con upsert (crea o actualiza por código)
+//          Crea categorías que no existan. Reactiva productos desactivados.
+// -----------------------------------------------
+router.post('/importar', verificarPermiso('productos', 'crear'), async (req, res) => {
+    const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+    if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+    const { productos } = req.body;
+    if (!Array.isArray(productos) || productos.length === 0) {
+        return res.status(400).json({ error: 'No se enviaron productos para importar' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Plan del negocio desde la BD (no del token, así funciona también para superadmin)
+        const negRes = await client.query('SELECT plan FROM negocios WHERE id = $1', [negocio_id]);
+        const plan = negRes.rows[0]?.plan || 'estandar';
+        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+
+        // Mapa de categorías existentes (nombre normalizado -> id)
+        const catRes = await client.query('SELECT id, nombre FROM categorias WHERE negocio_id = $1', [negocio_id]);
+        const catMap = new Map(catRes.rows.map(c => [c.nombre.trim().toLowerCase(), c.id]));
+
+        // Cantidad de productos activos actuales (para el límite del plan)
+        const countRes = await client.query('SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE', [negocio_id]);
+        let activosActuales = parseInt(countRes.rows[0].count);
+
+        let creados = 0, actualizados = 0;
+        const errores = [];
+
+        // Genera un código interno único dentro del negocio
+        const generarCodigoUnico = async () => {
+            for (let intento = 0; intento < 8; intento++) {
+                const cand = `INT-${Math.floor(Math.random() * 900000 + 100000)}`;
+                const ex = await client.query('SELECT 1 FROM productos WHERE codigo = $1 AND negocio_id = $2', [cand, negocio_id]);
+                if (ex.rows.length === 0) return cand;
+            }
+            return `INT-${Date.now()}`;
+        };
+
+        for (let i = 0; i < productos.length; i++) {
+            const p = productos[i] || {};
+            const nombre = (p.nombre ?? '').toString().trim();
+            const precio_venta = parseFloat(p.precio_venta);
+            if (!nombre || isNaN(precio_venta)) {
+                errores.push(`Fila ${i + 2}: falta nombre o precio de venta válido`);
+                continue;
+            }
+
+            // Resolver categoría (crear si no existe)
+            let categoria_id = null;
+            const catNombre = (p.categoria ?? '').toString().trim();
+            if (catNombre) {
+                const key = catNombre.toLowerCase();
+                if (catMap.has(key)) {
+                    categoria_id = catMap.get(key);
+                } else {
+                    const nuevaCat = await client.query(
+                        'INSERT INTO categorias (nombre, negocio_id) VALUES ($1, $2) RETURNING id',
+                        [catNombre, negocio_id]
+                    );
+                    categoria_id = nuevaCat.rows[0].id;
+                    catMap.set(key, categoria_id);
+                }
+            }
+
+            const codigo = (p.codigo ?? '').toString().trim();
+            const precio_costo = parseFloat(p.precio_costo) || 0;
+            const stock = parseInt(p.stock) || 0;
+            const stock_minimo = parseInt(p.stock_minimo) || 0;
+            const unidad = (p.unidad ?? 'Uni').toString().trim() || 'Uni';
+            const ivaParsed = parseFloat(p.alicuota_iva);
+            const alicuota_iva = isNaN(ivaParsed) ? 21 : ivaParsed;
+            const margen = parseFloat(p.margen_ganancia) || 0;
+
+            // ¿Ya existe un producto con ese código en este negocio?
+            let existente = null;
+            if (codigo) {
+                const ex = await client.query(
+                    'SELECT id FROM productos WHERE codigo = $1 AND negocio_id = $2',
+                    [codigo, negocio_id]
+                );
+                existente = ex.rows[0] || null;
+            }
+
+            if (existente) {
+                // Actualizar y reactivar el producto existente
+                await client.query(`
+                    UPDATE productos SET
+                        nombre = $1, categoria_id = $2, precio_costo = $3, precio_venta = $4,
+                        stock = $5, stock_minimo = $6, unidad = $7, alicuota_iva = $8,
+                        margen_ganancia = $9, activo = TRUE, updated_at = NOW()
+                    WHERE id = $10 AND negocio_id = $11
+                `, [nombre, categoria_id, precio_costo, precio_venta, stock, stock_minimo, unidad, alicuota_iva, margen, existente.id, negocio_id]);
+                actualizados++;
+            } else {
+                // Producto nuevo → validar límite del plan
+                if (activosActuales >= limites.max_productos) {
+                    errores.push(`Fila ${i + 2}: límite de ${limites.max_productos} productos del plan ${plan} alcanzado`);
+                    continue;
+                }
+                const codigoFinal = codigo || await generarCodigoUnico();
+                await client.query(`
+                    INSERT INTO productos (codigo, nombre, categoria_id, precio_costo, precio_venta, stock, stock_minimo, unidad, alicuota_iva, margen_ganancia, negocio_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                `, [codigoFinal, nombre, categoria_id, precio_costo, precio_venta, stock, stock_minimo, unidad, alicuota_iva, margen, negocio_id]);
+                creados++;
+                activosActuales++;
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ creados, actualizados, errores, total: productos.length });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error importando productos:', error);
+        res.status(500).json({ error: 'Error al importar productos' });
+    } finally {
+        client.release();
+    }
+});
+
+// -----------------------------------------------
+// RUTA: POST /api/productos/eliminar-masivo
+// FUNCIÓN: Desactiva varios productos a la vez (o todos)
+//          Soft delete para no romper el historial de ventas (venta_items)
+// -----------------------------------------------
+router.post('/eliminar-masivo', verificarPermiso('productos', 'eliminar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const { ids, todos } = req.body;
+
+        if (todos === true) {
+            const r = await db.query(
+                'UPDATE productos SET activo = FALSE WHERE negocio_id = $1 AND activo = TRUE',
+                [negocio_id]
+            );
+            return res.json({ eliminados: r.rowCount });
+        }
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'No se seleccionaron productos para eliminar' });
+        }
+
+        const idsNum = ids.map(x => parseInt(x)).filter(x => !isNaN(x));
+        const r = await db.query(
+            'UPDATE productos SET activo = FALSE WHERE negocio_id = $1 AND id = ANY($2::int[])',
+            [negocio_id, idsNum]
+        );
+        res.json({ eliminados: r.rowCount });
+    } catch (error) {
+        console.error('Error eliminación masiva:', error);
+        res.status(500).json({ error: 'Error al eliminar productos' });
     }
 });
 

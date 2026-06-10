@@ -6,6 +6,9 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { useAuth } from '../../context/AuthContext';
+
+const LIMITES_PLAN = { estandar: 500, premium: 3000 };
 
 const CeldaEditable = ({ producto, campo, formatear, alinear = 'right', celdaEditando, iniciarEdicion, guardarEdicionInline, cancelarEdicion, inputRef }) => {
   const estaEditando = celdaEditando?.id === producto.id && celdaEditando?.campo === campo;
@@ -42,7 +45,38 @@ const CeldaEditable = ({ producto, campo, formatear, alinear = 'right', celdaEdi
 
 const LIMITE = 50;
 
+// Orden canónico de columnas (usado por la plantilla y la exportación)
+const COLUMNAS_PLANTILLA = ['nombre', 'codigo', 'categoria', 'precio_costo', 'precio_venta', 'stock', 'stock_minimo', 'unidad', 'alicuota_iva', 'margen_ganancia'];
+
+// Normaliza un encabezado: saca acentos, mayúsculas, puntos, % y espacios → guion bajo
+const normalizarHeader = (s) => String(s ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().trim()
+  .replace(/[.%]/g, '')
+  .replace(/\s+/g, '_')
+  .replace(/_+/g, '_')
+  .replace(/^_|_$/g, '');
+
+// Sinónimos de encabezados → campo canónico. Permite importar la plantilla,
+// un archivo exportado, o variantes, sin que importe el orden de las columnas.
+const MAPA_COLUMNAS = {
+  nombre: 'nombre', producto: 'nombre', descripcion: 'nombre', detalle: 'nombre',
+  codigo: 'codigo', cod: 'codigo', codigo_de_barras: 'codigo', codigo_barras: 'codigo', barcode: 'codigo', ean: 'codigo',
+  categoria: 'categoria', rubro: 'categoria',
+  precio_costo: 'precio_costo', p_costo: 'precio_costo', costo: 'precio_costo', precio_de_costo: 'precio_costo',
+  precio_venta: 'precio_venta', p_venta: 'precio_venta', precio: 'precio_venta', venta: 'precio_venta', precio_de_venta: 'precio_venta', precio_final: 'precio_venta',
+  stock: 'stock', cantidad: 'stock', existencia: 'stock', existencias: 'stock',
+  stock_minimo: 'stock_minimo', stock_min: 'stock_minimo', minimo: 'stock_minimo', stock_minimo_alerta: 'stock_minimo',
+  unidad: 'unidad', um: 'unidad', medida: 'unidad', unidad_de_medida: 'unidad',
+  alicuota_iva: 'alicuota_iva', iva: 'alicuota_iva', alicuota: 'alicuota_iva', iva_porcentaje: 'alicuota_iva',
+  margen_ganancia: 'margen_ganancia', margen: 'margen_ganancia', ganancia: 'margen_ganancia', margen_porcentaje: 'margen_ganancia',
+};
+
 function Productos() {
+  const { usuario } = useAuth();
+  const planUsuario = usuario?.plan || 'estandar';
+  const limiteProductos = LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar;
+  const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
 
   const [productos, setProductos] = useState([]);
 const [categorias, setCategorias] = useState([]);
@@ -62,6 +96,10 @@ const [categorias, setCategorias] = useState([]);
   const [codigos, setCodigos] = useState([]);
   const [nuevoCodigo, setNuevoCodigo] = useState('');
   const [cargandoCodigos, setCargandoCodigos] = useState(false);
+
+  // Selección múltiple para eliminación masiva
+  const [seleccionados, setSeleccionados] = useState([]);
+  const [eliminandoMasivo, setEliminandoMasivo] = useState(false);
 
     // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
@@ -261,6 +299,60 @@ const cargarCategorias = async () => {
     } catch (err) { setError('Error al eliminar'); }
   };
 
+  // ---- SELECCIÓN MÚLTIPLE ----
+  const toggleSeleccion = (id) => {
+    setSeleccionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const idsPaginaActual = productosOrdenados.map(p => p.id);
+  const todosSeleccionadosEnPagina = idsPaginaActual.length > 0 && idsPaginaActual.every(id => seleccionados.includes(id));
+
+  const toggleSeleccionarTodosPagina = () => {
+    if (todosSeleccionadosEnPagina) {
+      setSeleccionados(prev => prev.filter(id => !idsPaginaActual.includes(id)));
+    } else {
+      setSeleccionados(prev => [...new Set([...prev, ...idsPaginaActual])]);
+    }
+  };
+
+  const limpiarSeleccion = () => setSeleccionados([]);
+
+  const eliminarSeleccionados = async () => {
+    if (seleccionados.length === 0) return;
+    if (!window.confirm(`¿Eliminar ${seleccionados.length} producto(s) seleccionado(s)?\n\nLos productos se desactivarán y dejarán de aparecer en el listado y en el punto de venta.`)) return;
+    try {
+      setEliminandoMasivo(true);
+      const res = await api.post('/api/productos/eliminar-masivo', { ids: seleccionados });
+      setExito(`✅ ${res.data.eliminados} producto(s) eliminado(s)`);
+      limpiarSeleccion();
+      await cargarProductos(paginaActual);
+      setTimeout(() => setExito(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al eliminar productos');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setEliminandoMasivo(false);
+    }
+  };
+
+  const eliminarTodos = async () => {
+    if (!window.confirm(`⚠️ ¿ELIMINAR TODOS los productos del negocio?\n\nSe desactivarán TODOS los productos (${totalProductos}). Esta acción afecta todo el inventario.`)) return;
+    if (!window.confirm(`⚠️ CONFIRMACIÓN FINAL\n\n¿Seguro que querés desactivar los ${totalProductos} productos?`)) return;
+    try {
+      setEliminandoMasivo(true);
+      const res = await api.post('/api/productos/eliminar-masivo', { todos: true });
+      setExito(`✅ ${res.data.eliminados} producto(s) eliminado(s)`);
+      limpiarSeleccion();
+      await cargarProductos(1);
+      setTimeout(() => setExito(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al eliminar todos los productos');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setEliminandoMasivo(false);
+    }
+  };
+
   const agregarCodigo = async () => {
     if (!nuevoCodigo.trim() || !productoEditando) return;
     try {
@@ -305,10 +397,12 @@ const exportarExcel = async () => {
       const res = await api.get(url);
       const todosLosProductos = res.data;
 
-      const columnas = ['Código', 'Nombre', 'Categoría', 'P. Costo', 'P. Venta', 'Stock', 'Stock Mín', 'Unidad', 'IVA %', 'Margen %'];
+      // Mismo orden que la plantilla/importación para que el archivo exportado
+      // se pueda volver a importar sin invertir columnas.
+      const columnas = ['nombre', 'codigo', 'categoria', 'precio_costo', 'precio_venta', 'stock', 'stock_minimo', 'unidad', 'alicuota_iva', 'margen_ganancia'];
       const filas = todosLosProductos.map(p => [
-        p.codigo || '',
         p.nombre,
+        p.codigo || '',
         p.categoria_nombre || '',
         p.precio_costo,
         p.precio_venta,
@@ -321,8 +415,8 @@ const exportarExcel = async () => {
 
       const ws = XLSX.utils.aoa_to_sheet([columnas, ...filas]);
       ws['!cols'] = [
-        { wch: 20 }, { wch: 35 }, { wch: 20 }, { wch: 12 },
-        { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 35 }, { wch: 20 }, { wch: 20 }, { wch: 12 },
+        { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 },
         { wch: 10 }, { wch: 12 }
       ];
       const wb = XLSX.utils.book_new();
@@ -343,33 +437,88 @@ const exportarExcel = async () => {
     const file = e.target.files[0];
     if (!file) return;
     try {
+      setExito('⏳ Procesando archivo...');
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const filas = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      const prods = filas.slice(1).filter(f => f.length > 0 && f[0]);
-      if (prods.length === 0) { setError('El archivo está vacío o no tiene el formato correcto'); return; }
 
-      let exitosos = 0, errores = 0;
-      for (const fila of prods) {
-        const [nombre, codigo, categoria_nombre, precio_costo, precio_venta, stock, stock_minimo, unidad, alicuota_iva, margen_ganancia] = fila;
-        if (!nombre || !precio_venta) continue;
-        const cat = categorias.find(c => c.nombre.toLowerCase() === String(categoria_nombre || '').toLowerCase());
-        try {
-          await api.post('/api/productos', {
-            nombre: String(nombre), codigo: codigo ? String(codigo) : '',
-            categoria_id: cat?.id || null, precio_costo: parseFloat(precio_costo) || 0,
-            precio_venta: parseFloat(precio_venta), stock: parseInt(stock) || 0,
-            stock_minimo: parseInt(stock_minimo) || 0, unidad: unidad || 'Uni',
-            alicuota_iva: parseFloat(alicuota_iva) || 21, margen_ganancia: parseFloat(margen_ganancia) || 0,
-          });
-          exitosos++;
-        } catch { errores++; }
+      // Leemos como objetos usando la primera fila como encabezados.
+      // defval: '' → las celdas vacías quedan en blanco (no como undefined).
+      const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (filas.length === 0) {
+        setExito('');
+        setError('El archivo está vacío o no tiene encabezados');
+        setTimeout(() => setError(''), 4000);
+        e.target.value = '';
+        return;
       }
-      setExito(`✅ ${exitosos} productos importados${errores > 0 ? `, ${errores} errores` : ''}`);
-      cargarProductos();
-      setTimeout(() => setExito(''), 5000);
-    } catch { setError('Error al leer el archivo.'); }
+
+      // Verificamos que los encabezados sean reconocibles (mapeamos por nombre, no por posición)
+      const headersDetectados = Object.keys(filas[0]).map(h => MAPA_COLUMNAS[normalizarHeader(h)]).filter(Boolean);
+      if (!headersDetectados.includes('nombre') || !headersDetectados.includes('precio_venta')) {
+        setExito('');
+        setError('No se reconocen las columnas. Descargá la plantilla y usá esos encabezados (mínimo: nombre y precio_venta).');
+        setTimeout(() => setError(''), 7000);
+        e.target.value = '';
+        return;
+      }
+
+      // Cada fila → objeto canónico mapeando encabezados a campos (independiente del orden de columnas)
+      const productosPayload = filas.map(fila => {
+        const prod = {};
+        for (const [header, valor] of Object.entries(fila)) {
+          const campo = MAPA_COLUMNAS[normalizarHeader(header)];
+          // Solo asignamos el primer encabezado que mapee a cada campo
+          if (campo && prod[campo] === undefined) {
+            const v = typeof valor === 'string' ? valor.trim() : valor;
+            prod[campo] = v;
+          }
+        }
+        return prod;
+      }).filter(p => String(p.nombre ?? '').trim() !== ''); // descartamos filas sin nombre
+
+      if (productosPayload.length === 0) {
+        setExito('');
+        setError('No se encontraron filas con datos válidos (falta el nombre)');
+        setTimeout(() => setError(''), 5000);
+        e.target.value = '';
+        return;
+      }
+
+      // Enviamos en lotes para no exceder el límite de tamaño y mostrar progreso
+      const TAM_LOTE = 300;
+      let creados = 0, actualizados = 0;
+      let errores = [];
+      const totalLotes = Math.ceil(productosPayload.length / TAM_LOTE);
+
+      for (let i = 0; i < productosPayload.length; i += TAM_LOTE) {
+        const lote = productosPayload.slice(i, i + TAM_LOTE);
+        const numLote = Math.floor(i / TAM_LOTE) + 1;
+        setExito(`⏳ Importando lote ${numLote} de ${totalLotes}...`);
+        const res = await api.post('/api/productos/importar', { productos: lote });
+        creados += res.data.creados || 0;
+        actualizados += res.data.actualizados || 0;
+        if (Array.isArray(res.data.errores)) errores = errores.concat(res.data.errores);
+      }
+
+      let msg = `✅ Importación completa: ${creados} creados`;
+      if (actualizados > 0) msg += `, ${actualizados} actualizados`;
+      if (errores.length > 0) msg += ` · ⚠️ ${errores.length} con problemas`;
+      setExito(msg);
+
+      if (errores.length > 0) {
+        setError(`Algunas filas no se importaron:\n${errores.slice(0, 5).join('\n')}${errores.length > 5 ? `\n…y ${errores.length - 5} más` : ''}`);
+        setTimeout(() => setError(''), 8000);
+      }
+
+      await cargarProductos();
+      await cargarCategorias();
+      setTimeout(() => setExito(''), 6000);
+    } catch (err) {
+      setExito('');
+      setError(err.response?.data?.error || 'Error al leer o importar el archivo.');
+      setTimeout(() => setError(''), 5000);
+    }
     e.target.value = '';
   };
 
@@ -397,15 +546,38 @@ const exportarExcel = async () => {
             className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
             📊 Exportar Excel
           </button>
-          <button onClick={abrirFormularioNuevo}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-            + Nuevo Producto
-          </button>
+          {!esPremium && totalProductos >= limiteProductos ? (
+            <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
+              ⭐ Límite de {limiteProductos} productos alcanzado. <span className="font-bold">Necesitás Plan Premium</span>
+            </div>
+          ) : (
+            <button onClick={abrirFormularioNuevo}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+              + Nuevo Producto
+            </button>
+          )}
         </div>
       </div>
 
       {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">{exito}</div>}
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
+
+      {/* Barra de uso del plan */}
+      {!esPremium && (
+        <div className="bg-white rounded-xl p-3 shadow border border-gray-100 flex items-center gap-3">
+          <span className="text-xs text-gray-500 whitespace-nowrap">Plan Estándar</span>
+          <div className="flex-1 bg-gray-200 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all ${totalProductos >= limiteProductos ? 'bg-red-500' : totalProductos >= limiteProductos * 0.8 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${Math.min(100, (totalProductos / limiteProductos) * 100)}%` }}
+            />
+          </div>
+          <span className="text-xs text-gray-500 whitespace-nowrap">{totalProductos} / {limiteProductos} productos</span>
+          {totalProductos >= limiteProductos * 0.8 && (
+            <span className="text-xs text-yellow-700 font-semibold bg-yellow-100 px-2 py-0.5 rounded">⭐ Actualizá al Plan Premium</span>
+          )}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="bg-white rounded-xl p-4 shadow flex gap-4 flex-wrap">
@@ -421,12 +593,52 @@ const exportarExcel = async () => {
 
       <p className="text-xs text-gray-400">💡 Hacé clic en el precio o stock para editarlo. Enter para guardar, Escape para cancelar.</p>
 
+      {/* Barra de acciones masivas (aparece al seleccionar) */}
+      {seleccionados.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex flex-col gap-3 sticky top-0 z-20">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <span className="text-sm font-medium text-red-800">
+              {seleccionados.length} producto(s) seleccionado(s)
+            </span>
+            <div className="flex gap-2">
+              <button onClick={limpiarSeleccion}
+                className="text-sm bg-white hover:bg-gray-100 text-gray-600 border border-gray-300 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                Cancelar selección
+              </button>
+              <button onClick={eliminarSeleccionados} disabled={eliminandoMasivo}
+                className="text-sm bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
+                {eliminandoMasivo ? 'Eliminando...' : `🗑️ Eliminar ${seleccionados.length} seleccionado(s)`}
+              </button>
+            </div>
+          </div>
+
+          {/* Opción de eliminar TODO el inventario, solo cuando se seleccionó toda la página y hay más productos en otras páginas */}
+          {todosSeleccionadosEnPagina && totalProductos > seleccionados.length && (
+            <div className="flex items-center justify-between flex-wrap gap-2 border-t border-red-200 pt-2">
+              <span className="text-xs text-red-700">
+                Seleccionaste toda esta página. Hay {totalProductos} productos en total en el inventario.
+              </span>
+              <button onClick={eliminarTodos} disabled={eliminandoMasivo}
+                className="text-xs bg-red-700 hover:bg-red-800 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
+                ⚠️ Eliminar TODO el inventario ({totalProductos})
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <input type="checkbox" checked={todosSeleccionadosEnPagina}
+                    onChange={toggleSeleccionarTodosPagina}
+                    title="Seleccionar todos en esta página"
+                    className="w-4 h-4 text-red-600 rounded cursor-pointer" />
+                </th>
                 <th onClick={() => ordenarPor('codigo')} className="text-left px-4 py-3 text-gray-600 font-medium cursor-pointer hover:bg-gray-100 select-none">Código {iconoOrden('codigo')}</th>
                 <th onClick={() => ordenarPor('nombre')} className="text-left px-4 py-3 text-gray-600 font-medium cursor-pointer hover:bg-gray-100 select-none">Nombre {iconoOrden('nombre')}</th>
                 <th onClick={() => ordenarPor('categoria_nombre')} className="text-left px-4 py-3 text-gray-600 font-medium cursor-pointer hover:bg-gray-100 select-none">Categoría {iconoOrden('categoria_nombre')}</th>
@@ -438,12 +650,17 @@ const exportarExcel = async () => {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {cargando ? (
-                <tr><td colSpan="7" className="text-center py-8 text-gray-400">Cargando...</td></tr>
+                <tr><td colSpan="8" className="text-center py-8 text-gray-400">Cargando...</td></tr>
               ) : productosOrdenados.length === 0 ? (
-                <tr><td colSpan="7" className="text-center py-8 text-gray-400">No se encontraron productos</td></tr>
+                <tr><td colSpan="8" className="text-center py-8 text-gray-400">No se encontraron productos</td></tr>
               ) : (
                 productosOrdenados.map(producto => (
-                  <tr key={producto.id} className="hover:bg-gray-50">
+                  <tr key={producto.id} className={`hover:bg-gray-50 ${seleccionados.includes(producto.id) ? 'bg-red-50' : ''}`}>
+                    <td className="px-4 py-2 text-center">
+                      <input type="checkbox" checked={seleccionados.includes(producto.id)}
+                        onChange={() => toggleSeleccion(producto.id)}
+                        className="w-4 h-4 text-red-600 rounded cursor-pointer" />
+                    </td>
                     <td className="px-4 py-2 text-gray-500 text-sm">{producto.codigo || '-'}</td>
                     <td className="px-4 py-2 font-medium text-gray-800">{producto.nombre}</td>
                     <td className="px-4 py-2 text-gray-500 text-sm">{producto.categoria_nombre || '-'}</td>
@@ -541,7 +758,7 @@ const exportarExcel = async () => {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
                       placeholder="Ej: Coca Cola 500ml" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Código de barras</label>
                       <input type="text" name="codigo" value={formulario.codigo} onChange={manejarCambio}
@@ -614,7 +831,7 @@ const exportarExcel = async () => {
               <div>
                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">💰 Precios y Rentabilidad</h4>
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Precio Costo</label>
                       <div className="relative">
@@ -632,7 +849,7 @@ const exportarExcel = async () => {
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Alícuota IVA %</label>
                       <div className="relative">
@@ -660,7 +877,7 @@ const exportarExcel = async () => {
               {/* Stock */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">📦 Stock</h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad actual</label>
                     <input type="number" name="stock" value={formulario.stock} onChange={manejarCambio}

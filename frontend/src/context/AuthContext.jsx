@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+  import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
 
 const AuthContext = createContext(null);
@@ -7,6 +7,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
+  const [planInfo, setPlanInfo] = useState(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -21,7 +22,38 @@ export function AuthProvider({ children }) {
         return;
       }
       const res = await api.get('/api/auth/me');
+      
+      // Verificar plan solo para usuarios de negocio (no superadmin)
+      if (res.data.rol !== 'superadmin') {
+        const validPlans = ['estandar', 'premium'];
+        if (!validPlans.includes(res.data.plan)) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('usuario');
+          setCargando(false);
+          return;
+        }
+
+        // Para plan premium, verificar que esté activo
+        if (res.data.plan === 'premium' && res.data.negocio_estado !== 'activo' && res.data.negocio_estado !== 'premium') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('usuario');
+          setCargando(false);
+          return;
+        }
+      }
+
       setUsuario(res.data);
+
+      // Cargar informacion del plan si no es superadmin
+      if (res.data.rol !== 'superadmin') {
+        try {
+          const planRes = await api.get('/api/usuarios/plan-info');
+          setPlanInfo(planRes.data);
+        } catch (planErr) {
+          console.error('Error cargando informacion del plan:', planErr);
+        }
+      }
+
     } catch (err) {
       console.error('Error verificando sesión:', err);
       if (err.response?.status === 401) {
@@ -79,9 +111,31 @@ const logout = () => {
     return permisos[modulo]?.includes(accion) || false;
   };
 
-return (
-    <AuthContext.Provider value={{ usuario, cargando, login, logout, tienePermiso, refrescarUsuario }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const esPremium = () => {
+    if (!usuario) return false;
+    if (usuario.rol === 'superadmin') return true;
+    return usuario.plan === 'premium';
+  };
+
+  const puedeUsarFuncion = (funcion) => {
+    if (!planInfo) return false;
+    if (usuario.rol === 'superadmin') return true;
+    return planInfo.caracteristicas[funcion] === true;
+  };
+
+ return (
+     <AuthContext.Provider value={{ 
+      usuario, 
+      cargando, 
+      login, 
+      logout, 
+      tienePermiso, 
+      refrescarUsuario,
+      planInfo,
+      esPremium,
+      puedeUsarFuncion
+    }}>
+       {children}
+     </AuthContext.Provider>
+   );
 }

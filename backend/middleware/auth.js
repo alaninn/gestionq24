@@ -9,7 +9,7 @@ const verificarToken = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.usuario = decoded;
-        
+
         // Si es superadmin accediendo a otro negocio, usar ese negocio_id
         const negocioIdHeader = req.headers['x-negocio-id'];
         if (decoded.rol === 'superadmin' && negocioIdHeader) {
@@ -17,7 +17,24 @@ const verificarToken = (req, res, next) => {
         } else {
             req.negocio_id = decoded.negocio_id;
         }
-        
+
+        // Verificar que el negocio tenga un plan válido (excepto superadmin)
+        if (decoded.rol !== 'superadmin') {
+            const validPlans = ['estandar', 'premium'];
+            if (!validPlans.includes(decoded.plan)) {
+                return res.status(403).json({ 
+                    error: 'El plan de tu negocio no es válido. Contactá al administrador.' 
+                });
+            }
+
+            // Para plan premium, verificar que esté activo
+            if (decoded.plan === 'premium' && decoded.estado !== 'activo') {
+                return res.status(403).json({ 
+                    error: 'Tu plan premium está inactivo. Contactá al administrador.' 
+                });
+            }
+        }
+
         next();
     } catch (error) {
         res.status(401).json({ error: 'Token inválido o expirado' });

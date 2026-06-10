@@ -45,7 +45,7 @@ router.post('/negocios', async (req, res) => {
             INSERT INTO negocios (nombre, email, telefono, direccion, plan, estado, fecha_vencimiento, dias_uso)
             VALUES ($1, $2, $3, $4, $5, 'activo', NOW() + ($6 * INTERVAL '1 day'), $6)
             RETURNING *
-        `, [nombre, email, telefono || null, direccion || null, plan || 'mensual', diasNum]);
+        `, [nombre, email, telefono || null, direccion || null, plan || 'estandar', diasNum]);
 
         await db.query(`
             INSERT INTO usuarios (negocio_id, nombre, username, email, password_hash, rol)
@@ -81,7 +81,7 @@ router.put('/negocios/:id', async (req, res) => {
                 direccion = COALESCE($3, direccion),
                 plan = COALESCE($4, plan),
                 estado = COALESCE($5, estado),
-                fecha_vencimiento = CASE 
+                fecha_vencimiento = CASE
                     WHEN $6::integer IS NOT NULL THEN NOW() + ($6::integer * INTERVAL '1 day')
                     ELSE fecha_vencimiento
                 END,
@@ -94,6 +94,45 @@ router.put('/negocios/:id', async (req, res) => {
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al actualizar negocio' });
+    }
+});
+
+// PUT /api/superadmin/negocios/:id/plan
+router.put('/negocios/:id/plan', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { plan } = req.body;
+
+        if (!plan || (plan !== 'estandar' && plan !== 'premium')) {
+            return res.status(400).json({ error: 'Plan debe ser "estandar" o "premium"' });
+        }
+
+        const resultado = await db.query(`
+            UPDATE negocios SET plan = $1 WHERE id = $2 RETURNING *
+        `, [plan, id]);
+
+        res.json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al cambiar el plan' });
+    }
+});
+
+// DELETE /api/superadmin/negocios/:id
+router.delete('/negocios/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Primero eliminar los usuarios del negocio
+        await db.query('DELETE FROM usuarios WHERE negocio_id = $1', [id]);
+
+        // Luego eliminar el negocio
+        await db.query('DELETE FROM negocios WHERE id = $1', [id]);
+
+        res.json({ mensaje: 'Negocio eliminado correctamente' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al eliminar negocio' });
     }
 });
 
@@ -146,13 +185,18 @@ router.post('/negocios/:id/renovar', async (req, res) => {
             UPDATE negocios SET
                 estado = 'activo',
                 fecha_vencimiento = CASE
-                    WHEN fecha_vencimiento > NOW() 
+                    WHEN fecha_vencimiento > NOW()
                     THEN fecha_vencimiento + ($1 * INTERVAL '1 day')
                     ELSE NOW() + ($1 * INTERVAL '1 day')
                 END
             WHERE id = $2
             RETURNING *
         `, [diasNum, id]);
+
+        // Validar que el negocio exista
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ error: 'El negocio no existe' });
+        }
 
          // Registrar en historial de pagos
         if (monto || metodo_pago) {
@@ -244,6 +288,10 @@ router.put('/negocios/:id/dias-uso', async (req, res) => {
             WHERE id = $2
             RETURNING *
         `, [diasNum, id]);
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ error: 'El negocio no existe' });
+        }
 
         res.json(resultado.rows[0]);
     } catch (error) {
@@ -465,7 +513,7 @@ router.post('/generar-alertas', async (req, res) => {
     try {
         // Alertas de vencimiento
         const vencimientos = await db.query(`
-            SELECT id, nombre FROM negocios 
+            SELECT id, nombre, fecha_vencimiento FROM negocios
             WHERE estado = 'activo'
             AND fecha_vencimiento < NOW() + INTERVAL '5 days'
             AND fecha_vencimiento > NOW()
@@ -628,7 +676,7 @@ router.get('/negocios/:id/admin', async (req, res) => {
     try {
         const { id } = req.params;
         const resultado = await db.query(`
-            SELECT id, nombre, email, rol FROM usuarios
+            SELECT id, nombre, email, username, rol FROM usuarios
             WHERE negocio_id = $1 AND rol = 'admin' AND activo = TRUE
             ORDER BY created_at ASC LIMIT 1
         `, [id]);
@@ -647,10 +695,10 @@ router.get('/negocios/:id/admin', async (req, res) => {
 router.put('/negocios/:id/admin', async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, email, password } = req.body;
+        const { nombre, username, password } = req.body;
 
-        if (!nombre || !email) {
-            return res.status(400).json({ error: 'Nombre y email son obligatorios' });
+        if (!nombre || !username) {
+            return res.status(400).json({ error: 'Nombre y usuario son obligatorios' });
         }
 
         const admin = await db.query(`
@@ -665,23 +713,32 @@ router.put('/negocios/:id/admin', async (req, res) => {
 
         const adminId = admin.rows[0].id;
 
+        // Verificar que el username no esté en uso por otro usuario del mismo negocio
+        const usernameExiste = await db.query(
+            'SELECT id FROM usuarios WHERE username = $1 AND negocio_id = $2 AND id != $3 AND activo = TRUE',
+            [username, id, adminId]
+        );
+        if (usernameExiste.rows.length > 0) {
+            return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
+        }
+
         if (password) {
             await db.query(`
-                UPDATE usuarios SET nombre = $1, email = $2,
+                UPDATE usuarios SET nombre = $1, username = $2,
                 password_hash = crypt($3, gen_salt('bf'))
                 WHERE id = $4
-            `, [nombre, email, password, adminId]);
+            `, [nombre, username, password, adminId]);
         } else {
             await db.query(`
-                UPDATE usuarios SET nombre = $1, email = $2
+                UPDATE usuarios SET nombre = $1, username = $2
                 WHERE id = $3
-            `, [nombre, email, adminId]);
+            `, [nombre, username, adminId]);
         }
 
         res.json({ mensaje: 'Administrador actualizado correctamente' });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ error: 'Ya existe un usuario con ese email' });
+            return res.status(400).json({ error: 'Ya existe un usuario con ese nombre de usuario' });
         }
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al actualizar administrador' });

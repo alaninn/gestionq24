@@ -25,6 +25,7 @@ const rutasArca = require('./routes/arca');
 const rutasProveedores = require('./routes/proveedores');
 
 const { verificarToken, verificarPermiso, soloSuperadmin } = require('./middleware/auth');
+const { validarLimitePlan, puedeUsarFuncion } = require('./middleware/planLimites');
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -41,38 +42,40 @@ app.use(rateLimit({
     max: 500,
     skip: (req) => !req.path.startsWith('/api')
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 
 // Rutas públicas
 app.use('/api/auth', rutasAuth);
 
 // Productos
-app.use('/api/productos', verificarToken, rutasProductos);
+app.use('/api/productos', verificarToken, validarLimitePlan, rutasProductos);
 
 // Categorias
-app.use('/api/categorias', verificarToken, rutasCategorias);
+app.use('/api/categorias', verificarToken, validarLimitePlan, rutasCategorias);
 
 // Ventas — cajero puede crear
-app.use('/api/ventas', verificarToken, rutasVentas);
+app.use('/api/ventas', verificarToken, validarLimitePlan, rutasVentas);
 
 // Gastos — cajero puede crear
-app.use('/api/gastos', verificarToken, rutasGastos);
+app.use('/api/gastos', verificarToken, validarLimitePlan, rutasGastos);
 
 // Turnos — todos pueden abrir/cerrar
-app.use('/api/turnos', verificarToken, rutasTurnos);
+app.use('/api/turnos', verificarToken, validarLimitePlan, rutasTurnos);
 
 // Clientes
-app.use('/api/clientes', verificarToken, rutasClientes);
+app.use('/api/clientes', verificarToken, validarLimitePlan, rutasClientes);
 
 // Proveedores
-app.use('/api/proveedores', verificarToken, rutasProveedores);
+app.use('/api/proveedores', verificarToken, validarLimitePlan, rutasProveedores);
 
-// Reportes — requiere permiso
-app.use('/api/reportes', verificarToken, verificarPermiso('reportes', 'ver'), rutasReportes);
+// Reportes — requiere permiso y plan premium para avanzados
+app.use('/api/reportes/avanzados', verificarToken, validarLimitePlan, verificarPermiso('reportes', 'ver'), puedeUsarFuncion('reportes_avanzados'));
+app.use('/api/reportes', verificarToken, validarLimitePlan, verificarPermiso('reportes', 'ver'), rutasReportes);
 
 // Configuracion — solo admin
-app.use('/api/configuracion', verificarToken, rutasConfiguracion);
+app.use('/api/configuracion', verificarToken, validarLimitePlan, rutasConfiguracion);
 
 // Salud del negocio
 app.use('/api/salud', rutasSalud);
@@ -80,11 +83,11 @@ app.use('/api/salud', rutasSalud);
 // Soporte técnico
 app.use('/api/soporte', rutasSoporte);
 
-// Facturación Electrónica ARCA
-app.use('/api/arca', verificarToken, rutasArca);
+// Facturación Electrónica ARCA — solo plan premium
+app.use('/api/arca', verificarToken, validarLimitePlan, puedeUsarFuncion('facturacion_electronica'), rutasArca);
 
 // Usuarios y superadmin
-app.use('/api/usuarios', verificarToken, rutasUsuarios);
+app.use('/api/usuarios', verificarToken, validarLimitePlan, rutasUsuarios);
 app.use('/api/superadmin', verificarToken, soloSuperadmin, rutasSuperadmin);
 
 // Servir el frontend
@@ -104,7 +107,7 @@ app.use((req, res, next) => {
 const PUERTO = process.env.PORT || 3001;
 
 // Ajuste solo para Render - NO AFECTA FUNCIONAMIENTO LOCAL
-const host = process.env.RENDER ? '0.0.0.0' : '0.0.0.0';
+const host = '0.0.0.0';
 
 app.listen(PUERTO, host, () => {
     if(process.env.RENDER) {
