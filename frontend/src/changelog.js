@@ -29,6 +29,7 @@ export const CHANGELOG = [
     ],
     cambios: [
       { t: 'Punto de Venta: rediseñado para usarse bien desde el celular (alternás entre productos y carrito).' },
+      { t: 'Punto de Venta: se quitó el botón "Salir" (riesgo de cerrar sesión sin querer) y se agregó "Cambiar usuario" 🔄 en la esquina, para el cambio de turno.' },
       { t: 'El cartel del plan ahora aparece solo una vez al entrar y se oculta solo (antes quedaba fijo).' },
       { t: 'Corregido: los negocios con plan Premium ahora pueden ingresar normalmente.' },
       { t: 'Mejor visualización en celular de Control de Caja y Cuentas Corrientes.' },
