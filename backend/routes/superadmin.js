@@ -119,20 +119,62 @@ router.put('/negocios/:id/plan', async (req, res) => {
 });
 
 // DELETE /api/superadmin/negocios/:id
+// Elimina el negocio y TODA su data dependiente en el orden correcto.
+// Muchas tablas tienen FK con NO ACTION (turnos, ventas, productos, etc.) que
+// bloquean el borrado si no se eliminan primero. Se hace en una transacción.
 router.delete('/negocios/:id', async (req, res) => {
+    const { id } = req.params;
+    const client = await db.pool.connect();
     try {
-        const { id } = req.params;
+        await client.query('BEGIN');
 
-        // Primero eliminar los usuarios del negocio
-        await db.query('DELETE FROM usuarios WHERE negocio_id = $1', [id]);
+        // Borra de una tabla; ignora si la tabla o la columna no existen en esta instalación
+        const borrar = async (sql) => {
+            await client.query('SAVEPOINT sp');
+            try {
+                await client.query(sql, [id]);
+                await client.query('RELEASE SAVEPOINT sp');
+            } catch (e) {
+                await client.query('ROLLBACK TO SAVEPOINT sp');
+                // 42P01 = tabla inexistente, 42703 = columna inexistente → se ignoran
+                if (e.code !== '42P01' && e.code !== '42703') throw e;
+            }
+        };
 
-        // Luego eliminar el negocio
-        await db.query('DELETE FROM negocios WHERE id = $1', [id]);
+        // Orden: hijos antes que padres para respetar las FK NO ACTION
+        await borrar('DELETE FROM venta_items WHERE negocio_id = $1');
+        await borrar('DELETE FROM comprobantes_electronicos WHERE negocio_id = $1');
+        await borrar('DELETE FROM pagos_deuda WHERE negocio_id = $1');
+        await borrar('DELETE FROM gastos WHERE negocio_id = $1');
+        await borrar('DELETE FROM ventas WHERE negocio_id = $1');
+        await borrar('DELETE FROM turno_usuarios WHERE negocio_id = $1');
+        await borrar('DELETE FROM turnos WHERE negocio_id = $1');
+        await borrar('DELETE FROM historial_stock WHERE negocio_id = $1');
+        await borrar('DELETE FROM producto_codigos WHERE negocio_id = $1');
+        await borrar('DELETE FROM productos WHERE negocio_id = $1');
+        await borrar('DELETE FROM categorias WHERE negocio_id = $1');
+        await borrar('DELETE FROM clientes WHERE negocio_id = $1');
+        await borrar('DELETE FROM proveedores WHERE negocio_id = $1');
+        await borrar('DELETE FROM configuracion WHERE negocio_id = $1');
+        await borrar('DELETE FROM alertas WHERE negocio_id = $1');
+        await borrar('DELETE FROM certificados_arca WHERE negocio_id = $1');
+        await borrar('DELETE FROM tickets_acceso_wsaa WHERE negocio_id = $1');
+        await borrar('DELETE FROM tickets_soporte WHERE negocio_id = $1');
+        await borrar('DELETE FROM salud_negocio WHERE negocio_id = $1');
+        await borrar('DELETE FROM pagos_historial WHERE negocio_id = $1');
+        await borrar('DELETE FROM usuarios WHERE negocio_id = $1');
 
+        // Finalmente, el negocio
+        await client.query('DELETE FROM negocios WHERE id = $1', [id]);
+
+        await client.query('COMMIT');
         res.json({ mensaje: 'Negocio eliminado correctamente' });
     } catch (error) {
-        console.error('Error:', error);
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar negocio:', error);
         res.status(500).json({ error: 'Error al eliminar negocio' });
+    } finally {
+        client.release();
     }
 });
 
