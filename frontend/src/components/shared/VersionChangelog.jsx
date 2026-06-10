@@ -17,16 +17,28 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
     const vista = localStorage.getItem(STORAGE_KEY);
     if (vista !== VERSION_ACTUAL) {
       setHayNovedades(true);
-      // Si la última versión trae cambios destacados, abrimos el modal una vez
-      if (CHANGELOG[0]?.destacados?.length) setAbierto(true);
+      // Auto-abrimos una vez solo si hay destacados visibles para este panel
+      const esSuper = variant === 'superadmin';
+      const destacadosVisibles = (CHANGELOG[0]?.destacados || []).filter(d => esSuper || !d.super);
+      if (destacadosVisibles.length > 0) setAbierto(true);
     }
-  }, []);
+  }, [variant]);
 
   const cerrar = () => {
     setAbierto(false);
     localStorage.setItem(STORAGE_KEY, VERSION_ACTUAL);
     setHayNovedades(false);
   };
+
+  // En el panel del usuario ocultamos los cambios marcados como super (solo SuperAdmin).
+  // En el panel SuperAdmin se muestra todo.
+  const esSuper = variant === 'superadmin';
+  const visibles = (arr) => (arr || []).filter(x => esSuper || !x.super);
+
+  // Solo mostramos versiones que tengan al menos un cambio o destacado visible
+  const entradasVisibles = CHANGELOG
+    .map(e => ({ ...e, destacados: visibles(e.destacados), cambios: visibles(e.cambios) }))
+    .filter(e => e.destacados.length > 0 || e.cambios.length > 0);
 
   // Estilo del botón según dónde se use
   const triggerClase = variant === 'superadmin'
@@ -67,7 +79,7 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
 
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {CHANGELOG.map((entrada, idx) => (
+              {entradasVisibles.map((entrada, idx) => (
                 <div key={entrada.version}>
                   <div className="flex items-center gap-2 mb-3">
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${idx === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -78,7 +90,7 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
                   </div>
 
                   {/* Destacados (cambios importantes con explicación) */}
-                  {entrada.destacados?.length > 0 && (
+                  {entrada.destacados.length > 0 && (
                     <div className="space-y-2 mb-3">
                       {entrada.destacados.map((d, i) => (
                         <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -94,12 +106,12 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
                     {entrada.cambios.map((c, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                         <span className="text-green-500 mt-0.5">✓</span>
-                        <span>{c}</span>
+                        <span>{c.t}</span>
                       </li>
                     ))}
                   </ul>
 
-                  {idx < CHANGELOG.length - 1 && <div className="border-t border-gray-100 mt-4" />}
+                  {idx < entradasVisibles.length - 1 && <div className="border-t border-gray-100 mt-4" />}
                 </div>
               ))}
             </div>
