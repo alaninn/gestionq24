@@ -90,14 +90,7 @@ router.post('/login', async (req, res) => {
                 });
             }
 
-            // Para plan premium, verificar que esté activo
-            if (usuario.plan === 'premium' && usuario.estado !== 'activo') {
-                return res.status(403).json({ 
-                    error: 'Tu plan premium está inactivo. Contactá al administrador.' 
-                });
-            }
-
-            // Verificar estado del negocio
+            // Verificar estado del negocio (aplica a todos los planes)
             if (usuario.negocio_estado === 'bloqueado') {
                 return res.status(403).json({ 
                     error: 'Tu cuenta está bloqueada. Contactá al administrador.' 

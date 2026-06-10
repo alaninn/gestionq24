@@ -27,12 +27,6 @@ const verificarToken = (req, res, next) => {
                 });
             }
 
-            // Para plan premium, verificar que esté activo
-            if (decoded.plan === 'premium' && decoded.estado !== 'activo') {
-                return res.status(403).json({ 
-                    error: 'Tu plan premium está inactivo. Contactá al administrador.' 
-                });
-            }
         }
 
         next();

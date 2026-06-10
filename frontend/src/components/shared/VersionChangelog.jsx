@@ -5,6 +5,7 @@
 // =============================================
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { VERSION_ACTUAL, CHANGELOG } from '../../changelog';
 
 const STORAGE_KEY = 'version_vista';
@@ -60,8 +61,8 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
         <span className="opacity-60">📋</span>
       </button>
 
-      {abierto && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4"
+      {abierto && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[100] p-4"
           onClick={cerrar}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}>
@@ -124,7 +125,8 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
