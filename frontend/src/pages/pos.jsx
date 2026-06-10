@@ -2484,10 +2484,19 @@ const imprimirTicketDesdeModal = () => {
       <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
 
         {/* Logo/Brand */}
-        <div className="flex items-center gap-2 mr-1 sm:mr-4 flex-shrink-0">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg flex-shrink-0"
-            style={{ backgroundColor: 'var(--color-primario)' }}>S</div>
-          <span className="text-sm font-semibold text-gray-300 hidden lg:block">POS</span>
+        <div className="flex items-center gap-2.5 mr-2 sm:mr-4 flex-shrink-0">
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-lg font-extrabold shadow-lg ring-1 ring-white/10"
+              style={{ background: 'linear-gradient(135deg, var(--color-primario) 0%, rgba(0,0,0,0.35) 130%)' }}>
+              {(config?.nombre_negocio || 'Q').charAt(0).toUpperCase()}
+            </div>
+            {/* Indicador de caja activa */}
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900 shadow"></span>
+          </div>
+          <div className="hidden sm:block leading-tight">
+            <p className="text-sm font-bold text-white truncate max-w-[160px]">{config?.nombre_negocio || 'Mi Negocio'}</p>
+            <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--color-primario)' }}>Punto de Venta</p>
+          </div>
         </div>
 
         <div className="w-px h-7 bg-gray-700 mr-1 sm:mr-2 hidden sm:block flex-shrink-0" />
