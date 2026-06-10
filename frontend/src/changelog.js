@@ -14,9 +14,26 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.1.0';
+export const VERSION_ACTUAL = '2.1.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.1.1',
+    fecha: '2026-06-10',
+    titulo: 'Punto de Venta en el celular y ajustes',
+    destacados: [
+      {
+        titulo: '📱 Punto de Venta optimizado para celular',
+        detalle: 'Desde el celular ahora podés vender cómodo: usá la barra de abajo para alternar entre "Productos" (buscar y agregar) y "Carrito" (cobrar). El carrito muestra el total y la cantidad en todo momento.',
+      },
+    ],
+    cambios: [
+      { t: 'Punto de Venta: rediseñado para usarse bien desde el celular (alternás entre productos y carrito).' },
+      { t: 'El cartel del plan ahora aparece solo una vez al entrar y se oculta solo (antes quedaba fijo).' },
+      { t: 'Corregido: los negocios con plan Premium ahora pueden ingresar normalmente.' },
+      { t: 'Mejor visualización en celular de Control de Caja y Cuentas Corrientes.' },
+    ],
+  },
   {
     version: '2.1.0',
     fecha: '2026-06-10',

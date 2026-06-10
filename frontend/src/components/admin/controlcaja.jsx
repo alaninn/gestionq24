@@ -120,7 +120,7 @@ function ModalDetalleCierre({ turno, onCerrar }) {
           {/* ---- PESTAÑA RESUMEN ---- */}
           {pestana === 'resumen' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                   <div className="flex items-center justify-between">
                     <div>
@@ -209,7 +209,7 @@ function ModalDetalleCierre({ turno, onCerrar }) {
               </div>
 
               {/* Flujo de efectivo */}
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
 
                 {/* Cálculo del sistema */}
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
@@ -466,7 +466,7 @@ function ControlCaja() {
       ) : datos && (
         <>
           {/* Tarjetas resumen */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-green-500 text-white rounded-xl p-5 shadow">
               <p className="text-green-100 text-sm">VENTAS DEL MES</p>
               <p className="text-3xl font-bold mt-1">{fmt(datos.totales.total_facturado)}</p>

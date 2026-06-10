@@ -1865,6 +1865,8 @@ function POS() {
   const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null);
   const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
   const [editandoCantidad, setEditandoCantidad] = useState(null);
+  // En celular se alterna entre el buscador de productos y el carrito
+  const [vistaMobil, setVistaMobil] = useState('productos');
 
   // Estados para facturación electrónica (se resetean por venta)
   const [facturacionElectronica, setFacturacionElectronica] = useState(false);
@@ -2478,62 +2480,62 @@ const imprimirTicketDesdeModal = () => {
       )}
 
       {/* ---- BARRA SUPERIOR MODERNA ---- */}
-      <div className="bg-gray-900 text-white flex-shrink-0 border-b border-gray-700 px-4 py-3">
-      <div className="max-w-7xl mx-auto flex items-center gap-2">
+      <div className="bg-gray-900 text-white flex-shrink-0 border-b border-gray-700 px-2 sm:px-4 py-2 sm:py-3">
+      <div className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
 
         {/* Logo/Brand */}
-        <div className="flex items-center gap-2 mr-4">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg"
+        <div className="flex items-center gap-2 mr-1 sm:mr-4 flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg flex-shrink-0"
             style={{ backgroundColor: 'var(--color-primario)' }}>S</div>
           <span className="text-sm font-semibold text-gray-300 hidden lg:block">POS</span>
         </div>
 
-        <div className="w-px h-7 bg-gray-700 mr-2" />
+        <div className="w-px h-7 bg-gray-700 mr-1 sm:mr-2 hidden sm:block flex-shrink-0" />
 
         {/* Botones principales */}
         <button onClick={() => setMostrarModalRapida(true)}
-          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          ⚡ Rápida
+          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          ⚡ <span className="hidden sm:inline">Rápida</span>
           <span className="text-purple-300 text-xs hidden lg:inline">[F1]</span>
         </button>
 
         <button onClick={() => setMostrarModalFiados(true)}
           style={{ backgroundColor: 'var(--color-primario)' }}
-          className="flex items-center gap-2 hover:opacity-80 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          👥 Fiados
+          className="flex items-center gap-2 hover:opacity-80 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          👥 <span className="hidden sm:inline">Fiados</span>
           <span className="text-white text-opacity-60 text-xs hidden lg:inline">[F3]</span>
         </button>
 
         <button onClick={() => setMostrarModalHistorial(true)}
-          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          📋 Historial
+          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          📋 <span className="hidden sm:inline">Historial</span>
           <span className="text-gray-400 text-xs hidden lg:inline">[F5]</span>
         </button>
 
         <button onClick={() => setMostrarModalGasto(true)}
-          className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          💸 Gastos
+          className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          💸 <span className="hidden sm:inline">Gastos</span>
           <span className="text-amber-200 text-xs hidden lg:inline">[F10]</span>
         </button>
 
         <button onClick={() => setMostrarModalCierre(true)}
-          className="flex items-center gap-2 bg-red-700 hover:bg-red-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          🔒 Cierre
+          className="flex items-center gap-2 bg-red-700 hover:bg-red-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          🔒 <span className="hidden sm:inline">Cierre</span>
           <span className="text-red-300 text-xs hidden lg:inline">[F4]</span>
         </button>
 
         <button onClick={() => navigate('/admin')}
-          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          ⚙️ Admin
+          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          ⚙️ <span className="hidden sm:inline">Admin</span>
         </button>
 
         <button onClick={logout}
-          className="flex items-center gap-2 bg-gray-800 hover:bg-red-800 border border-gray-600 hover:border-red-600 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-          🚪 Salir
+          className="flex items-center gap-2 bg-gray-800 hover:bg-red-800 border border-gray-600 hover:border-red-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          🚪 <span className="hidden sm:inline">Salir</span>
         </button>
 
         {/* Status derecha */}
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-3 flex-shrink-0">
           {mensajeScanner && (
             <span className={`text-xs font-semibold px-3 py-1.5 rounded-xl ${mensajeScanner.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>
               {mensajeScanner.texto}
@@ -2566,7 +2568,7 @@ const imprimirTicketDesdeModal = () => {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- PANEL IZQUIERDO: BÚSQUEDA ---- */}
-       <div className="w-80 lg:w-96 flex flex-col flex-shrink-0" style={estilos.panelBusqueda}>
+       <div className={`${vistaMobil === 'carrito' ? 'hidden' : 'flex'} lg:flex w-full lg:w-96 flex-col flex-shrink-0`} style={estilos.panelBusqueda}>
 
           {/* Buscador */}
           <div className="p-3" style={{ borderBottom: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #d1d5db' }}>
@@ -2689,7 +2691,7 @@ const imprimirTicketDesdeModal = () => {
         </div>
 
         {/* ---- PANEL DERECHO: CARRITO ---- */}
-       <div className="flex-1 flex flex-col overflow-hidden" style={{ background: estilos.fondoFooter }}>
+       <div className={`${vistaMobil === 'productos' ? 'hidden' : 'flex'} lg:flex flex-1 flex-col overflow-hidden`} style={{ background: estilos.fondoFooter }}>
 
           {/* Pestañas */}
           <div className="flex items-center overflow-x-auto flex-shrink-0" style={{ background: estilos.fondoPestanas, borderBottom: `0.5px solid ${estilos.borderFooter}` }}>
@@ -2835,6 +2837,28 @@ const imprimirTicketDesdeModal = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ---- BARRA INFERIOR MÓVIL (alternar productos / carrito) ---- */}
+      <div className="lg:hidden flex-shrink-0 flex border-t border-gray-700 bg-gray-900">
+        <button onClick={() => setVistaMobil('productos')}
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-semibold transition-colors ${vistaMobil === 'productos' ? 'text-white' : 'text-gray-400'}`}
+          style={vistaMobil === 'productos' ? { borderTop: '2px solid var(--color-primario)', background: 'rgba(255,255,255,0.05)' } : {}}>
+          <span className="text-lg">🔍</span>
+          <span>Productos</span>
+        </button>
+        <button onClick={() => setVistaMobil('carrito')}
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-semibold transition-colors relative ${vistaMobil === 'carrito' ? 'text-white' : 'text-gray-400'}`}
+          style={vistaMobil === 'carrito' ? { borderTop: '2px solid var(--color-primario)', background: 'rgba(255,255,255,0.05)' } : {}}>
+          <span className="text-lg">🛒</span>
+          <span>{carritoActivo.length > 0 ? `Carrito · ${fmt(total)}` : 'Carrito'}</span>
+          {carritoActivo.length > 0 && (
+            <span className="absolute top-1 right-1/4 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
+              style={{ backgroundColor: 'var(--color-primario)' }}>
+              {carritoActivo.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ---- MODALES ---- */}
