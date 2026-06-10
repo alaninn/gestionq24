@@ -1894,7 +1894,7 @@ useEffect(() => {
 
     const manejarTeclado = (e) => {
       // Teclas F - siempre activas aunque haya modal
-      if (e.key === 'F1') { e.preventDefault(); setMostrarModalRapida(true); return; }
+      if (e.key === 'F1') { e.preventDefault(); if (config?.permite_venta_rapida !== false) setMostrarModalRapida(true); return; }
       if (e.key === 'F2') { e.preventDefault(); inputBuscarRef.current?.focus(); return; }
       if (e.key === 'F3') { e.preventDefault(); setMostrarModalFiados(true); return; }
       if (e.key === 'F4') { e.preventDefault(); setMostrarModalCierre(true); return; }
@@ -1938,7 +1938,7 @@ useEffect(() => {
 
     window.addEventListener('keydown', manejarTeclado);
     return () => window.removeEventListener('keydown', manejarTeclado);
-  }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, pestanaActiva, pestanas, carritoActivo]);
+  }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, pestanaActiva, pestanas, carritoActivo, config]);
 
  const buscarPorCodigoScanner = async (codigo) => {
     try {
@@ -2014,40 +2014,49 @@ useEffect(() => {
    * Si el producto no es de unidad (Kg, Lt, Mt), abre el modal para vender por peso/cantidad
    * @param {Object} producto - Producto a agregar
    */
+  // Devuelve el precio unitario según la cantidad: aplica precio mayorista si está
+  // habilitado en Configuración y la cantidad alcanza el mínimo configurado.
+  const precioSegunCantidad = (precioBase, precioMayorista, cantidad) => {
+    const minimo = parseInt(config?.cantidad_minima_mayorista) || 5;
+    if (config?.permite_precio_mayorista && precioMayorista > 0 && cantidad >= minimo) {
+      return precioMayorista;
+    }
+    return precioBase;
+  };
+
   const agregarAlCarrito = useCallback((producto) => {
     // Verificar si el producto no es de unidad (es decir, tiene unidad kg, lt, mt)
     const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
     const esUnidadNoUnitaria = unidadesNoUnitarias.includes(producto.unidad.toLowerCase());
-    
+
     if (esUnidadNoUnitaria) {
       // Abrir el modal para vender por peso/cantidad
       setMostrarModalVentaProducto(producto);
       return;
     }
-    
+
     // Lógica normal para productos de unidad
     setPestanas(prev => prev.map(p => {
       if (p.id !== pestanaActiva) return p;
-      const precioUnitario = parseFloat(producto.precio_venta);
+      const precioBase = parseFloat(producto.precio_venta);
+      const precioMayorista = parseFloat(producto.precio_mayorista) || 0;
       const existe = p.carrito.find(item => item.producto_id === producto.id);
-      
+
       if (existe) {
-        // Incrementar cantidad del producto existente
+        // Incrementar cantidad del producto existente (recalculando precio por mayorista si aplica)
         return {
           ...p,
-          carrito: p.carrito.map(item =>
-            item.producto_id === producto.id
-              ? {
-                  ...item,
-                  cantidad: item.cantidad + 1,
-                  subtotal: (item.cantidad + 1) * precioUnitario
-                }
-              : item
-          )
+          carrito: p.carrito.map(item => {
+            if (item.producto_id !== producto.id) return item;
+            const nuevaCant = item.cantidad + 1;
+            const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? precioMayorista, nuevaCant);
+            return { ...item, cantidad: nuevaCant, precio_unitario: precio, subtotal: nuevaCant * precio };
+          })
         };
       }
-      
+
       // Agregar nuevo producto al carrito
+      const precioInicial = precioSegunCantidad(precioBase, precioMayorista, 1);
       return {
         ...p,
         carrito: [
@@ -2055,19 +2064,21 @@ useEffect(() => {
           {
             producto_id: producto.id,
             nombre_producto: producto.nombre,
-            precio_unitario: precioUnitario,
+            precio_base: precioBase,
+            precio_mayorista_prod: precioMayorista,
+            precio_unitario: precioInicial,
             cantidad: 1,
-            subtotal: precioUnitario
+            subtotal: precioInicial
           }
         ]
       };
     }));
-    
+
     // Limpiar búsqueda y enfocar input
     setBuscar('');
     setProductos([]);
     setTimeout(() => inputBuscarRef.current?.focus(), 50);
-  }, [pestanaActiva]);
+  }, [pestanaActiva, config]);
 
   const agregarVentaRapida = (item) => {
     setPestanas(prev => prev.map(p => p.id === pestanaActiva ? { ...p, carrito: [...p.carrito, item] } : p));
@@ -2086,16 +2097,12 @@ useEffect(() => {
       return;
     }
     
-    // Actualizar cantidad y subtotal del producto
-    actualizarCarritoPestana(carritoActivo.map(item =>
-      item.producto_id === productoId 
-        ? { 
-            ...item, 
-            cantidad: nuevaCantidad, 
-            subtotal: nuevaCantidad * item.precio_unitario 
-          } 
-        : item
-    ));
+    // Actualizar cantidad y subtotal del producto (recalculando precio mayorista si aplica)
+    actualizarCarritoPestana(carritoActivo.map(item => {
+      if (item.producto_id !== productoId) return item;
+      const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? 0, nuevaCantidad);
+      return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: nuevaCantidad * precio };
+    }));
   };
 
   /**
@@ -2226,6 +2233,16 @@ importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobant
         try {
           const ventaCompleta = await api.get(`/api/ventas/${resVenta.data.id}`);
           setUltimaVenta(ventaCompleta.data);
+          // Impresión automática: si está configurada, imprime sin que el usuario toque nada
+          // (las ventas con comprobante electrónico muestran su propio comprobante)
+          if (config?.impresion_tickets_automatica && !facturacionElectronica) {
+            imprimirTicket({
+              venta: ventaCompleta.data,
+              items: ventaCompleta.data.items || [],
+              config,
+              modo: 'automatico'
+            });
+          }
         } catch { setUltimaVenta(null); }
       }
 
@@ -2471,11 +2488,13 @@ const imprimirTicketDesdeModal = () => {
         <div className="w-px h-7 bg-gray-700 mr-1 sm:mr-2 hidden sm:block flex-shrink-0" />
 
         {/* Botones principales */}
-        <button onClick={() => setMostrarModalRapida(true)}
-          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
-          ⚡ <span className="hidden sm:inline">Rápida</span>
-          <span className="text-purple-300 text-xs hidden lg:inline">[F1]</span>
-        </button>
+        {config?.permite_venta_rapida !== false && (
+          <button onClick={() => setMostrarModalRapida(true)}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+            ⚡ <span className="hidden sm:inline">Rápida</span>
+            <span className="text-purple-300 text-xs hidden lg:inline">[F1]</span>
+          </button>
+        )}
 
         <button onClick={() => setMostrarModalFiados(true)}
           style={{ backgroundColor: 'var(--color-primario)' }}
@@ -2608,7 +2627,7 @@ const imprimirTicketDesdeModal = () => {
                 <div className="w-full space-y-1.5">
                   <p className="text-xs mb-2 uppercase tracking-widest" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>Atajos de teclado</p>
                   {[
-                    { key: 'F1', label: 'Venta Rápida', color: '#7c3aed', bg: 'rgba(124,58,237,0.15)' },
+                    ...(config?.permite_venta_rapida !== false ? [{ key: 'F1', label: 'Venta Rápida', color: '#7c3aed', bg: 'rgba(124,58,237,0.15)' }] : []),
                     { key: 'F3', label: 'Fiados', color: 'var(--color-primario)', bg: 'rgba(249,115,22,0.1)' },
                     { key: 'F8', label: 'Confirmar Venta', color: '#16a34a', bg: 'rgba(22,163,74,0.12)' },
                     { key: 'F9', label: 'Limpiar carrito', color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
@@ -2666,10 +2685,12 @@ const imprimirTicketDesdeModal = () => {
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                         <p className="font-bold text-sm" style={{ color: 'var(--color-primario)' }}>{fmt(producto.precio_venta)}</p>
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                          style={{ color: stockColor, background: stockBg }}>
-                          {sinStock ? 'Sin stock' : `${producto.stock} ${producto.unidad}`}
-                        </span>
+                        {config?.mostrar_stock_pos !== false && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ color: stockColor, background: stockBg }}>
+                            {sinStock ? 'Sin stock' : `${producto.stock} ${producto.unidad}`}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );

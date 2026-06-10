@@ -7,6 +7,8 @@ import { useState, useEffect } from 'react';
 import api from '../../api/axios';
 
 import { useTema } from '../../context/TemaContext';
+import { useAuth } from '../../context/AuthContext';
+import { VERSION_ACTUAL, CHANGELOG } from '../../changelog';
 import FacturacionElectronica from './FacturacionElectronica';
 
 // ---- COMPONENTE TOGGLE ----
@@ -53,6 +55,7 @@ function Configuracion() {
   const [pestanaActiva, setPestanaActiva] = useState('negocio');
   const [mostrarPin, setMostrarPin] = useState(false);
   const { cambiarColor } = useTema();
+  const { usuario } = useAuth();
 
   useEffect(() => {
     cargarConfig();
@@ -172,7 +175,7 @@ function Configuracion() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">CUIT</label>
                   <input
@@ -351,10 +354,10 @@ function Configuracion() {
                     <FilaToggle
                       titulo="Proteger información del cierre"
                       descripcion="Oculta los datos esperados hasta ingresar el PIN"
-                      valor={config?.pin_cierre !== ''}
+                      valor={!!config?.pin_cierre}
                       onChange={(v) => set('pin_cierre', v ? '0000' : '')}
                     />
-                    {config?.pin_cierre !== '' && (
+                    {!!config?.pin_cierre && (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           PIN de verificación
@@ -388,13 +391,6 @@ function Configuracion() {
                     🖨️ Hardware y Tickets
                   </h3>
                   <div className="space-y-2">
-                    <FilaToggle
-                      titulo="Escáner de Barras"
-                      descripcion="Optimizar interfaz para lector físico USB/Bluetooth"
-                      valor={config?.escaner_barras}
-                      onChange={(v) => set('escaner_barras', v)}
-                    />
-
                     {/* Modo de impresión - Selector de opciones */}
                     <div className="p-4 rounded-lg border bg-gray-50 border-gray-200">
                       <p className="font-medium text-gray-700 mb-1">🖨️ Modo de impresión de tickets</p>
@@ -817,19 +813,6 @@ function Configuracion() {
             </div>
           )}
 
-          {/* Botón guardar — Sistema */}
-          {pestanaActiva === 'sistema' && (
-            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
-              <button
-                onClick={guardar}
-                disabled={guardando}
-                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                {guardando ? 'Guardando...' : '💾 Guardar'}
-              </button>
-            </div>
-          )}
-
           {/* ==============================
               PESTAÑA: FACTURACIÓN ELECTRÓNICA
           ============================== */}
@@ -863,22 +846,6 @@ function Configuracion() {
           {pestanaActiva === 'sistema' && (
             <div className="p-6 space-y-6 max-w-2xl">
 
-              {/* Moneda */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  💱 Moneda
-                </h3>
-                <select
-                  value={config?.moneda || 'ARS'}
-                  onChange={(e) => set('moneda', e.target.value)}
-                  className="w-64 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="ARS">🇦🇷 Peso Argentino (ARS)</option>
-                  <option value="USD">🇺🇸 Dólar (USD)</option>
-                  <option value="UYU">🇺🇾 Peso Uruguayo (UYU)</option>
-                </select>
-              </div>
-
               {/* Info del sistema */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -887,21 +854,31 @@ function Configuracion() {
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between items-center py-2 border-b border-gray-200">
                     <span className="text-gray-600">Versión del sistema</span>
-                    <span className="font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded text-sm">v1.0.0</span>
+                    <span className="font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded text-sm">v{VERSION_ACTUAL}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-gray-600">Base de datos</span>
-                    <span className="font-medium text-green-600">✅ PostgreSQL conectada</span>
+                    <span className="text-gray-600">Última actualización</span>
+                    <span className="font-medium text-gray-800 text-sm text-right">
+                      {CHANGELOG[0]?.fecha}
+                      <span className="block text-xs text-gray-400 font-normal">{CHANGELOG[0]?.titulo}</span>
+                    </span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-gray-600">Servidor backend</span>
-                    <span className="font-medium text-green-600">✅ Activo (puerto 3001)</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
                     <span className="text-gray-600">Negocio configurado</span>
                     <span className="font-medium text-gray-800">{config?.nombre_negocio || '-'}</span>
                   </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-gray-600">Plan actual</span>
+                    <span className={`font-medium px-2 py-0.5 rounded text-sm ${
+                      usuario?.plan === 'premium' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {usuario?.rol === 'superadmin' ? '👑 SuperAdmin' : usuario?.plan === 'premium' ? '✨ Premium' : '📦 Estándar'}
+                    </span>
+                  </div>
                 </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  💡 Tocá la versión (v{VERSION_ACTUAL}) abajo del menú para ver el historial completo de novedades.
+                </p>
               </div>
 
               {/* Zona de peligro */}
@@ -913,6 +890,7 @@ function Configuracion() {
                   <p className="text-sm text-red-700 font-medium">Reiniciar configuración</p>
                   <p className="text-xs text-red-500 mt-1 mb-3">
                     Vuelve todos los ajustes a los valores por defecto. No borra productos ni ventas.
+                    Después tenés que tocar 💾 Guardar para aplicarlos.
                   </p>
                   <button
                     type="button"
@@ -920,11 +898,12 @@ function Configuracion() {
                       if (window.confirm('¿Estás seguro? Se perderán todos los ajustes actuales.')) {
                         set('recargo_tarjeta', 10);
                         set('descuento_maximo', 10);
+                        set('recargo_general', 0);
+                        set('redondeo_precios', 0);
                         set('permite_stock_negativo', true);
                         set('recargo_modo', 'fijo');
                         set('descuento_modo', 'editable');
                         set('pin_cierre', '');
-                        set('escaner_barras', true);
                         set('impresion_tickets', true);
                         set('impresion_tickets_automatica', true);
                       }
@@ -960,10 +939,23 @@ function Configuracion() {
                     </p>
                   </div>
 
-               
+
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* Botón guardar — Sistema */}
+          {pestanaActiva === 'sistema' && (
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end">
+              <button
+                onClick={guardar}
+                disabled={guardando}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {guardando ? 'Guardando...' : '💾 Guardar'}
+              </button>
             </div>
           )}
            
