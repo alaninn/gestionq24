@@ -14,9 +14,26 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.1.1';
+export const VERSION_ACTUAL = '2.2.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.2.0',
+    fecha: '2026-06-10',
+    titulo: 'Descuento, recargo y redondeo desde el carrito',
+    destacados: [
+      {
+        titulo: '🏷️ Ajustá el precio antes de cobrar',
+        detalle: 'En el carrito del Punto de Venta ahora tenés botones de Descuento, Recargo y Redondeo (↓ Bajar / ↑ Subir). Al tocarlos, el total se actualiza al instante, así le confirmás el precio final al cliente antes de abrir el modal de cobro. Los porcentajes se configuran en Admin → Configuración.',
+      },
+    ],
+    cambios: [
+      { t: 'Punto de Venta: botones de descuento, recargo y redondeo movidos al carrito (se ve el precio final antes de confirmar).' },
+      { t: 'Nuevo: recargo general configurable (Admin → Configuración) para cobrar un extra desde el carrito.' },
+      { t: 'Corregido: ya no te desloguea al actualizar el navegador (F5 / Ctrl+Shift+R).' },
+      { t: 'Punto de Venta: la barra de botones se acomoda en varias líneas en pantallas chicas (sin barra de scroll).' },
+    ],
+  },
   {
     version: '2.1.1',
     fecha: '2026-06-10',
