@@ -2529,11 +2529,6 @@ const imprimirTicketDesdeModal = () => {
           ⚙️ <span className="hidden sm:inline">Admin</span>
         </button>
 
-        <button onClick={logout}
-          className="flex items-center gap-2 bg-gray-800 hover:bg-red-800 border border-gray-600 hover:border-red-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
-          🚪 <span className="hidden sm:inline">Salir</span>
-        </button>
-
         {/* Status derecha */}
         <div className="ml-auto flex items-center gap-3 flex-shrink-0">
           {mensajeScanner && (
@@ -2561,6 +2556,14 @@ const imprimirTicketDesdeModal = () => {
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
             <span className="text-sm font-medium text-gray-300">{turno?.nombre || 'Caja'}</span>
           </div>
+
+          {/* Cambiar usuario (cambio de turno) — discreto, en la esquina */}
+          <button
+            onClick={() => { if (window.confirm('¿Cambiar de usuario?\n\nSe cerrará la sesión actual para que ingrese otro usuario (cambio de turno).')) logout(); }}
+            title="Cambiar usuario (cambio de turno)"
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white transition-all flex-shrink-0">
+            🔄
+          </button>
         </div>
       </div>
       </div>
