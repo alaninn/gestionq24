@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import VersionChangelog from '../components/shared/VersionChangelog';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
@@ -363,6 +364,9 @@ function Superadmin() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="hidden sm:block mr-1">
+            <VersionChangelog variant="superadmin" />
+          </div>
           <button onClick={() => {
             setFormMiCuenta({ nombre: usuario?.nombre || '', email: usuario?.email || '', password: '' });
             setMostrarModalMiCuenta(true);
