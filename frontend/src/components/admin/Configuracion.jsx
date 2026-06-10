@@ -623,6 +623,40 @@ function Configuracion() {
                   </div>
                 </div>
 
+                {/* Recargo general (botón manual en el carrito del POS) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    ➕ Recargo general
+                  </h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Porcentaje de recargo</label>
+                      <div className="relative w-32">
+                        <input
+                          type="number"
+                          value={config?.recargo_general || 0}
+                          onChange={(e) => set('recargo_general', e.target.value)}
+                          min="0" max="100" step="0.5"
+                          className="w-full border border-gray-300 rounded-lg px-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                        />
+                        <span className="absolute right-3 top-2 text-gray-500">%</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Se aplica con el botón "Recargo" desde el carrito del Punto de Venta
+                      </p>
+                    </div>
+
+                    {/* Preview */}
+                    <div className="bg-white rounded-lg p-3 border border-gray-200 text-sm">
+                      <p className="text-gray-500">Ejemplo: venta $10.000</p>
+                      <p className="font-bold text-gray-800 text-lg">
+                        ${(10000 * (1 + (config?.recargo_general || 0) / 100)).toLocaleString('es-AR')}
+                      </p>
+                      <p className="text-gray-400 text-xs">con {config?.recargo_general || 0}% de recargo</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Descuentos */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">

@@ -24,17 +24,10 @@ export function AuthProvider({ children }) {
       const res = await api.get('/api/auth/me');
       
       // Verificar plan solo para usuarios de negocio (no superadmin)
+      // El backend (/api/auth/me) ya bloquea negocios bloqueados/vencidos con 403.
       if (res.data.rol !== 'superadmin') {
         const validPlans = ['estandar', 'premium'];
         if (!validPlans.includes(res.data.plan)) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('usuario');
-          setCargando(false);
-          return;
-        }
-
-        // Para plan premium, verificar que esté activo
-        if (res.data.plan === 'premium' && res.data.negocio_estado !== 'activo' && res.data.negocio_estado !== 'premium') {
           localStorage.removeItem('token');
           localStorage.removeItem('usuario');
           setCargando(false);

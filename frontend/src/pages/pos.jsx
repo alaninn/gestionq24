@@ -427,11 +427,13 @@ const reimprimirTicket = async (venta) => {
 // =============================================
 // MODAL: CONFIRMAR VENTA
 // =============================================
-const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({ 
-  carrito, 
-  total, 
-  config, 
-  turno, 
+const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
+  carrito,
+  total,
+  descuentoCarrito = 0,
+  recargoCarrito = 0,
+  config,
+  turno,
   facturacionElectronica,
   setFacturacionElectronica,
   tipoComprobante,
@@ -448,8 +450,6 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
   onCerrar 
 }, ref) {
   const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [recargo, setRecargo] = useState('');
-  const [redondeo, setRedondeo] = useState(0);
   const [efectivoEntregado, setEfectivoEntregado] = useState('');
   const [cargando, setCargando] = useState(false);
   const [buscarCliente, setBuscarCliente] = useState('');
@@ -476,14 +476,8 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
     }
   }, [config?.facturacion_electronica_activa, config?.regimen_fiscal]);
 
-  // Descuento fijo: empieza DESACTIVADO, el cajero lo activa si quiere
-  const tieneDescuentoFijo = config?.descuento_modo === 'fijo' && config?.descuento_maximo > 0;
-  const [descuentoActivo, setDescuentoActivo] = useState(false);
-  const montoDescuento = descuentoActivo ? Math.round(total * config.descuento_maximo / 100) : 0;
-
-  // Redondeo
-  const multiplo = parseInt(config?.redondeo_precios) || 0;
-
+  // El descuento, recargo general y redondeo ahora se aplican desde el carrito
+  // y llegan ya calculados en `total`, `descuentoCarrito` y `recargoCarrito`.
   const metodosActivos = typeof config?.metodos_pago_activos === 'string'
     ? JSON.parse(config.metodos_pago_activos)
     : (config?.metodos_pago_activos || ['efectivo']);
@@ -497,15 +491,6 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
   ].filter(m => m.id === 'cuenta_corriente' || metodosActivos.includes(m.id));
 
   useEffect(() => {
-    if (metodoPago === 'tarjeta' && config?.recargo_tarjeta > 0) {
-      setRecargo((total * config.recargo_tarjeta / 100).toFixed(0));
-    } else {
-      setRecargo('');
-    }
-    setRedondeo(0);
-  }, [metodoPago]);
-
-  useEffect(() => {
     if (buscarCliente.trim().length > 1) {
       api.get(`/api/clientes?buscar=${buscarCliente}`).then(res => setClientes(res.data)).catch(() => {});
     } else {
@@ -513,17 +498,11 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
     }
   }, [buscarCliente]);
 
-  const totalSinRedondeo = total - montoDescuento + (parseFloat(recargo) || 0);
-  const totalFinal = totalSinRedondeo + redondeo;
+  // Recargo por pago con tarjeta (se aplica sobre el total ya ajustado del carrito)
+  const recargoTarjeta = (metodoPago === 'tarjeta' && config?.recargo_tarjeta > 0)
+    ? Math.round(total * config.recargo_tarjeta / 100) : 0;
+  const totalFinal = total + recargoTarjeta;
   const vuelto = metodoPago === 'efectivo' ? (parseFloat(efectivoEntregado) || 0) - totalFinal : 0;
-
-  const aplicarRedondeo = (direccion) => {
-    if (!multiplo) return;
-    const ajuste = direccion === 'arriba'
-      ? Math.ceil(totalSinRedondeo / multiplo) * multiplo - totalSinRedondeo
-      : Math.floor(totalSinRedondeo / multiplo) * multiplo - totalSinRedondeo;
-    setRedondeo(ajuste);
-  };
 
   const confirmar = async () => {
     if (metodoPago === 'cuenta_corriente' && !clienteSeleccionado) {
@@ -542,8 +521,8 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
     try {
       await onConfirmar({
         metodoPago,
-        descuento: montoDescuento,
-        recargo: (parseFloat(recargo) || 0) + redondeo,
+        descuento: descuentoCarrito,
+        recargo: recargoCarrito + recargoTarjeta,
         totalFinal,
         clienteId: clienteSeleccionado?.id || null,
         esFiado: metodoPago === 'cuenta_corriente',
@@ -583,64 +562,13 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
           </div>
       
 
-         {/* Descuento + Redondeo en una sola línea */}
-          {(tieneDescuentoFijo || multiplo > 0) && (
-            <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
-
-              {/* Botón descuento */}
-              {tieneDescuentoFijo && (
-                <button type="button"
-                  onClick={() => { setDescuentoActivo(!descuentoActivo); setRedondeo(0); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${descuentoActivo ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'}`}>
-                  Descuento % {config.descuento_maximo}
-                  {descuentoActivo && <span className="text-green-100 text-xs">− {fmt(montoDescuento)}</span>}
-                </button>
-              )}
-
-              {/* Separador */}
-              {tieneDescuentoFijo && multiplo > 0 && <div className="w-px h-6 bg-gray-300" />}
-
-              {/* Botones redondeo */}
-              {multiplo > 0 && (
-                <>
-                  <button type="button" onClick={() => aplicarRedondeo('abajo')}
-                    className="px-3 py-2 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-sm font-medium text-gray-700 transition-all">
-                    ↓ Bajar
-                  </button>
-                  <button type="button" onClick={() => aplicarRedondeo('arriba')}
-                    className="px-3 py-2 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-sm font-medium text-gray-700 transition-all">
-                    ↑ Subir
-                  </button>
-                  {redondeo !== 0 && (
-                    <button type="button" onClick={() => setRedondeo(0)}
-                      className="text-gray-400 hover:text-red-500 text-xl leading-none transition-colors">×</button>
-                  )}
-                  {redondeo !== 0 && (
-                    <span className={`text-sm font-semibold ml-1 ${redondeo > 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                      {redondeo > 0 ? '+' : ''}{fmt(redondeo)}
-                    </span>
-                  )}
-                </>
-              )}
-
+          {/* Recargo por tarjeta (automático según método de pago) */}
+          {recargoTarjeta > 0 && (
+            <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-200 text-sm">
+              <span className="text-gray-500">Recargo tarjeta ({config.recargo_tarjeta}%)</span>
+              <span className="font-semibold text-gray-800">+ {fmt(recargoTarjeta)}</span>
             </div>
           )}
-
-          {/* Recargo manual (solo si no es tarjeta con recargo automático) */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
-              <p className="text-xs text-gray-400 mb-0.5">Subtotal productos</p>
-              <p className="text-lg font-bold text-gray-800">{fmt(total)}</p>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Recargo $</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                <input type="number" value={recargo} onChange={(e) => setRecargo(e.target.value)} min="0"
-                  className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" />
-              </div>
-            </div>
-          </div>
 
           {metodoPago === 'cuenta_corriente' && (
             <div className="space-y-4">
@@ -1872,6 +1800,10 @@ function POS() {
     const v = localStorage.getItem('pos_modo_oscuro');
     return v === null ? null : v === 'true';
   });
+  // Ajustes de precio del carrito (descuento, recargo, redondeo) — se ven antes de confirmar
+  const [descuentoActivo, setDescuentoActivo] = useState(false);
+  const [recargoActivo, setRecargoActivo] = useState(false);
+  const [redondeoVenta, setRedondeoVenta] = useState(0);
 
   // Estados para facturación electrónica (se resetean por venta)
   const [facturacionElectronica, setFacturacionElectronica] = useState(false);
@@ -2177,15 +2109,37 @@ useEffect(() => {
   /**
    * Limpia completamente el carrito de la pestaña activa
    */
-  const limpiarCarrito = () => {
-    actualizarCarritoPestana([]);
+  // Resetea los ajustes de precio (al limpiar, confirmar o vaciar el carrito)
+  const resetearAjustes = () => {
+    setDescuentoActivo(false);
+    setRecargoActivo(false);
+    setRedondeoVenta(0);
   };
 
-  /**
-   * Calcula el total del carrito activo
-   * @returns {number} Total del carrito
-   */
-  const total = carritoActivo.reduce((acc, item) => acc + item.subtotal, 0);
+  const limpiarCarrito = () => {
+    actualizarCarritoPestana([]);
+    resetearAjustes();
+  };
+
+  // ---- CÁLCULO DEL TOTAL CON AJUSTES (descuento / recargo / redondeo) ----
+  const totalBruto = carritoActivo.reduce((acc, item) => acc + item.subtotal, 0);
+  const pctDescuento = parseFloat(config?.descuento_maximo) || 0;
+  const pctRecargo = parseFloat(config?.recargo_general) || 0;
+  const multiploRedondeo = parseInt(config?.redondeo_precios) || 0;
+
+  const montoDescuento = descuentoActivo ? Math.round(totalBruto * pctDescuento / 100) : 0;
+  const montoRecargo = recargoActivo ? Math.round(totalBruto * pctRecargo / 100) : 0;
+  const totalSinRedondeo = totalBruto - montoDescuento + montoRecargo;
+  const total = totalSinRedondeo + redondeoVenta;
+
+  const aplicarRedondeoVenta = (direccion) => {
+    if (!multiploRedondeo) return;
+    const base = totalSinRedondeo;
+    const ajuste = direccion === 'arriba'
+      ? Math.ceil(base / multiploRedondeo) * multiploRedondeo - base
+      : Math.floor(base / multiploRedondeo) * multiploRedondeo - base;
+    setRedondeoVenta(ajuste);
+  };
 
   const confirmarVenta = async ({ metodoPago, descuento, recargo, totalFinal, clienteId, esFiado }) => {
     // Crear una sola venta unificada con todos los items (rápidos + stock)
@@ -2225,6 +2179,7 @@ useEffect(() => {
       setTotalUltimaVenta(totalFinal);
       setUltimaVenta(null); // No hay ID real todavía, el ticket no se puede reimprimir
       setVentaExitosa(true);
+      resetearAjustes();
       inputBuscarRef.current?.focus();
       return;
     }
@@ -2282,6 +2237,7 @@ importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobant
       setMostrarModalVenta(false);
       setTotalUltimaVenta(totalFinal);
       setVentaExitosa(true);
+      resetearAjustes();
       resetearFacturacion(true); // mantener comprobante para mostrarlo
       cargarProductos();
       inputBuscarRef.current?.focus();
@@ -2298,6 +2254,7 @@ importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobant
         setTotalUltimaVenta(totalFinal);
         setUltimaVenta(null);
         setVentaExitosa(true);
+      resetearAjustes();
         inputBuscarRef.current?.focus();
       } else {
         alert(err.response?.data?.error || 'Error al registrar la venta');
@@ -2493,7 +2450,7 @@ const imprimirTicketDesdeModal = () => {
 
       {/* ---- BARRA SUPERIOR MODERNA ---- */}
       <div className="bg-gray-900 text-white flex-shrink-0 border-b border-gray-700 px-2 sm:px-4 py-2 sm:py-3">
-      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
 
         {/* Logo/Brand */}
         <div className="flex items-center gap-2.5 mr-2 sm:mr-4 flex-shrink-0">
@@ -2851,6 +2808,51 @@ const imprimirTicketDesdeModal = () => {
                 )}
               </div>
 
+              {/* Ajustes de precio: descuento / recargo / redondeo (se configuran en Admin → Configuración) */}
+              {carritoActivo.length > 0 && (pctDescuento > 0 || pctRecargo > 0 || multiploRedondeo > 0) && (() => {
+                const estiloInactivo = {
+                  background: oscuro ? 'rgba(255,255,255,0.06)' : '#ffffff',
+                  border: `1px solid ${oscuro ? 'rgba(255,255,255,0.15)' : '#e2e8f0'}`,
+                  color: oscuro ? 'rgba(255,255,255,0.75)' : '#475569',
+                };
+                return (
+                  <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                    {pctDescuento > 0 && (
+                      <button onClick={() => { setDescuentoActivo(v => !v); setRedondeoVenta(0); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={descuentoActivo ? { background: '#22c55e', border: '1px solid #22c55e', color: '#fff' } : estiloInactivo}>
+                        − Desc {pctDescuento}%
+                        {descuentoActivo && <span className="opacity-90">({fmt(montoDescuento)})</span>}
+                      </button>
+                    )}
+                    {pctRecargo > 0 && (
+                      <button onClick={() => { setRecargoActivo(v => !v); setRedondeoVenta(0); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={recargoActivo ? { background: '#3b82f6', border: '1px solid #3b82f6', color: '#fff' } : estiloInactivo}>
+                        + Rec {pctRecargo}%
+                        {recargoActivo && <span className="opacity-90">({fmt(montoRecargo)})</span>}
+                      </button>
+                    )}
+                    {multiploRedondeo > 0 && (
+                      <>
+                        <button onClick={() => aplicarRedondeoVenta('abajo')}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all" style={estiloInactivo}>↓ Bajar</button>
+                        <button onClick={() => aplicarRedondeoVenta('arriba')}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all" style={estiloInactivo}>↑ Subir</button>
+                        {redondeoVenta !== 0 && (
+                          <button onClick={() => setRedondeoVenta(0)}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold"
+                            style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}
+                            title="Quitar redondeo">
+                            {redondeoVenta > 0 ? '+' : ''}{fmt(redondeoVenta)} ✕
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Total con animación visual */}
               <div className="flex justify-between items-end mb-3">
                 <span className="text-sm font-medium" style={{ color: estilos.textoTotal }}>Total a cobrar</span>
@@ -2899,11 +2901,13 @@ const imprimirTicketDesdeModal = () => {
           onGuardado={() => setMostrarModalGasto(false)} />
       )}
       {mostrarModalVenta && (
-        <ModalConfirmarVenta 
+        <ModalConfirmarVenta
           ref={modalVentaRef}
-          carrito={carritoActivo} 
-          total={total} 
-          config={config} 
+          carrito={carritoActivo}
+          total={total}
+          descuentoCarrito={montoDescuento}
+          recargoCarrito={montoRecargo + redondeoVenta}
+          config={config}
           turno={turno}
           facturacionElectronica={facturacionElectronica}
           setFacturacionElectronica={setFacturacionElectronica}

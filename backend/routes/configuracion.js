@@ -34,7 +34,8 @@ router.put('/', soloAdmin, async (req, res) => {
             tamanio_ticket, tamanio_ticket_personalizado,
             facturacion_electronica_activa, regimen_fiscal, punto_venta_arca,
             tipo_comprobante_default, entorno_arca,
-            ingresos_brutos, inicio_actividades, condicion_iva
+            ingresos_brutos, inicio_actividades, condicion_iva,
+            recargo_general
         } = req.body;
 
         const resultado = await db.query(`
@@ -51,11 +52,13 @@ router.put('/', soloAdmin, async (req, res) => {
                 facturacion_electronica_activa, regimen_fiscal, punto_venta_arca,
                 tipo_comprobante_default, entorno_arca,
                 ingresos_brutos, inicio_actividades, condicion_iva,
+                recargo_general,
                 updated_at
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
                 $30, $31, $32, $33, $34,
                 $35, $36, $37,
+                $38,
                 NOW()
             )
             ON CONFLICT (negocio_id) DO UPDATE SET
@@ -76,6 +79,7 @@ router.put('/', soloAdmin, async (req, res) => {
                 ingresos_brutos=EXCLUDED.ingresos_brutos,
                 inicio_actividades=EXCLUDED.inicio_actividades,
                 condicion_iva=EXCLUDED.condicion_iva,
+                recargo_general=EXCLUDED.recargo_general,
                 updated_at=NOW()
             RETURNING *
         `, [
@@ -96,7 +100,8 @@ router.put('/', soloAdmin, async (req, res) => {
             entorno_arca || 'homologacion',
             ingresos_brutos || null,
             inicio_actividades || null,
-            condicion_iva || null
+            condicion_iva || null,
+            recargo_general || 0
         ]);
 
         if (color_primario) {
