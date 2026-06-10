@@ -80,8 +80,24 @@ router.post('/login', async (req, res) => {
 
         const usuario = resultado.rows[0];
 
-        // Si no es superadmin, verificamos que el negocio esté activo
+// Si no es superadmin, verificamos que el negocio esté activo y tenga plan válido
         if (usuario.rol !== 'superadmin') {
+            // Validar tipo de plan
+            const validPlans = ['estandar', 'premium'];
+            if (!validPlans.includes(usuario.plan)) {
+                return res.status(403).json({ 
+                    error: 'El plan de tu negocio no es válido. Contactá al administrador.' 
+                });
+            }
+
+            // Para plan premium, verificar que esté activo
+            if (usuario.plan === 'premium' && usuario.estado !== 'activo') {
+                return res.status(403).json({ 
+                    error: 'Tu plan premium está inactivo. Contactá al administrador.' 
+                });
+            }
+
+            // Verificar estado del negocio
             if (usuario.negocio_estado === 'bloqueado') {
                 return res.status(403).json({ 
                     error: 'Tu cuenta está bloqueada. Contactá al administrador.' 
@@ -112,6 +128,8 @@ router.post('/login', async (req, res) => {
                 negocio_id: usuario.negocio_id,
                 negocio_nombre: usuario.negocio_nombre,
                 permisos: usuario.permisos,
+                plan: usuario.plan || null,
+                estado: usuario.negocio_estado || null,
             },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
@@ -131,6 +149,8 @@ router.post('/login', async (req, res) => {
                 negocio_id: usuario.negocio_id,
                 negocio_nombre: usuario.negocio_nombre,
                 permisos: usuario.permisos,
+                plan: usuario.plan || null,
+                negocio_estado: usuario.negocio_estado || null,
             }
         });
 

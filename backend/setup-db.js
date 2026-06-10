@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS producto_codigos (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos(codigo, negocio_id);
 
+-- El código de producto debe ser único POR NEGOCIO, no global (multi-tenant).
+-- Quitamos el constraint global viejo y creamos un índice único por (negocio_id, codigo).
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_codigo_key;
+CREATE UNIQUE INDEX IF NOT EXISTS productos_codigo_negocio_uniq
+ON productos (negocio_id, codigo)
+WHERE codigo IS NOT NULL;
+
 -- Agregar columna username a usuarios si no existe
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS username VARCHAR(50);
 

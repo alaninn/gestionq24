@@ -14,6 +14,9 @@ npm run build
 echo "📦 Instalando dependencias del backend..."
 cd ../backend && npm install
 
+echo "🗄️  Aplicando migraciones de base de datos..."
+node setup-db.js
+
 echo "🔄 Reiniciando servidor..."
 pm2 restart gestionq24
 

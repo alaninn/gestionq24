@@ -23,3 +23,4 @@ function query(text, params) {
 }
 
 exports.query = query;
+exports.pool = pool;

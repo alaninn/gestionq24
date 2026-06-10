@@ -56,8 +56,14 @@ const PERMISOS_DEFAULT = {
   },
 };
 
+const LIMITES_PLAN = { estandar: 3, premium: 99999 };
+
 function Usuarios() {
   const { usuario: usuarioActual } = useAuth();
+  const planUsuario = usuarioActual?.plan || 'estandar';
+  const limiteUsuarios = LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar;
+  const esPremium = usuarioActual?.plan === 'premium' || usuarioActual?.rol === 'superadmin';
+
   const [usuarios, setUsuarios] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -140,7 +146,7 @@ function Usuarios() {
   };
 
   const desactivar = async (id, nombre) => {
-    if (!window.confirm(`¿Desactivar al usuario "${nombre}"?`)) return;
+    if (!window.confirm(`¿Desactivar al usuario "${nombre}"?\n\nEl usuario no podrá iniciar sesión pero sus datos se conservarán.`)) return;
     try {
       await api.delete(`/api/usuarios/${id}`);
       setExito('Usuario desactivado');
@@ -148,6 +154,22 @@ function Usuarios() {
       setTimeout(() => setExito(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al desactivar usuario');
+    }
+  };
+
+  const eliminarPermanente = async (id, nombre) => {
+    if (!window.confirm(`⚠️ ¿ELIMINAR PERMANENTEMENTE al usuario "${nombre}"?\n\n⚠️ ADVERTENCIA: Esta acción NO se puede deshacer.\nTodos los datos del usuario serán eliminados.\n\n¿Estás seguro?`)) return;
+
+    // Doble confirmación
+    if (!window.confirm(`⚠️ CONFIRMACIÓN FINAL\n\n¿Realmente querés eliminar permanentemente a "${nombre}"?`)) return;
+
+    try {
+      await api.delete(`/api/usuarios/${id}/permanente`);
+      setExito('Usuario eliminado permanentemente');
+      cargarUsuarios();
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al eliminar usuario');
     }
   };
 
@@ -180,22 +202,28 @@ function Usuarios() {
     <div className="space-y-4">
 
       {/* Título */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
-          <p className="text-gray-500">Administrá los accesos de tu equipo</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
+          <p className="text-sm text-gray-500">Administrá los accesos de tu equipo</p>
         </div>
-        <button onClick={abrirNuevo}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-          + Nuevo Usuario
-        </button>
+        {!esPremium && usuarios.length >= limiteUsuarios ? (
+          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
+            ⭐ Límite de {limiteUsuarios} usuarios (Plan Estándar). <span className="font-bold ml-1">Necesitás Plan Premium</span>
+          </div>
+        ) : (
+          <button onClick={abrirNuevo}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+            + Nuevo Usuario
+          </button>
+        )}
       </div>
 
       {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">✅ {exito}</div>}
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
 
       {/* Tarjetas de roles */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {ROLES.map(rol => {
           const cant = usuarios.filter(u => u.rol === rol.id).length;
           return (
@@ -212,7 +240,8 @@ function Usuarios() {
 
       {/* Tabla */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Usuario</th>
@@ -263,14 +292,23 @@ function Usuarios() {
                     <td className="px-4 py-3 text-center">
                       <div className="flex justify-center gap-2">
                         <button onClick={() => abrirEditar(u)}
-                          className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors">
-                          Editar
+                          className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors"
+                          title="Editar usuario">
+                          ✏️ Editar
                         </button>
                         {u.id !== usuarioActual?.id && (
-                          <button onClick={() => desactivar(u.id, u.nombre)}
-                            className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors">
-                            Desactivar
-                          </button>
+                          <>
+                            <button onClick={() => desactivar(u.id, u.nombre)}
+                              className="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1 rounded text-sm transition-colors"
+                              title="Desactivar usuario (reversible)">
+                              🔒 Desactivar
+                            </button>
+                            <button onClick={() => eliminarPermanente(u.id, u.nombre)}
+                              className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors"
+                              title="Eliminar permanentemente (NO reversible)">
+                              🗑️ Eliminar
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -280,6 +318,7 @@ function Usuarios() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal */}

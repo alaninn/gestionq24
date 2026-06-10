@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import POS from './pages/pos';
 import Admin from './pages/admin';
 import Superadmin from './pages/Superadmin';
+import Landing from './pages/Landing';
 import { TemaProvider } from './context/TemaContext';
 import { ConectividadProvider } from './context/ConectividadContext';
 
@@ -53,6 +54,8 @@ function RutaProtegida({ children, soloSuperadmin = false, requiereAdmin = false
   return children;
 }
 
+import PlanBadge from './components/shared/PlanBadge';
+
 function AppRoutes() {
   const { usuario, cargando } = useAuth();
 
@@ -65,7 +68,9 @@ function AppRoutes() {
   }
 
   return (
-    <Routes>
+    <>
+      <PlanBadge />
+      <Routes>
       <Route path="/login" element={
         usuario
           ? <Navigate to={redireccionInicio(usuario)} replace />
@@ -75,7 +80,7 @@ function AppRoutes() {
       <Route path="/" element={
         usuario
           ? <Navigate to={redireccionInicio(usuario)} replace />
-          : <Navigate to="/login" replace />
+          : <Landing />
       } />
 
       <Route path="/superadmin" element={
@@ -95,7 +100,8 @@ function AppRoutes() {
           <Admin />
         </RutaProtegida>
       } />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 
