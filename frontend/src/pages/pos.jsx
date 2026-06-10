@@ -1867,6 +1867,11 @@ function POS() {
   const [editandoCantidad, setEditandoCantidad] = useState(null);
   // En celular se alterna entre el buscador de productos y el carrito
   const [vistaMobil, setVistaMobil] = useState('productos');
+  // Preferencia local de modo oscuro/claro para el POS (por dispositivo, no pisa la config del negocio)
+  const [modoOscuroLocal, setModoOscuroLocal] = useState(() => {
+    const v = localStorage.getItem('pos_modo_oscuro');
+    return v === null ? null : v === 'true';
+  });
 
   // Estados para facturación electrónica (se resetean por venta)
   const [facturacionElectronica, setFacturacionElectronica] = useState(false);
@@ -2335,7 +2340,14 @@ const imprimirTicketDesdeModal = () => {
     }
   };
 
-  const oscuro = config?.modo_oscuro !== false;
+  // Si hay preferencia local la usamos; si no, la del negocio
+  const oscuro = modoOscuroLocal !== null ? modoOscuroLocal : (config?.modo_oscuro !== false);
+
+  const toggleModoOscuro = () => {
+    const nuevo = !oscuro;
+    setModoOscuroLocal(nuevo);
+    localStorage.setItem('pos_modo_oscuro', String(nuevo));
+  };
 
   const estilos = {
     panelBusqueda: oscuro 
@@ -2565,6 +2577,14 @@ const imprimirTicketDesdeModal = () => {
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
             <span className="text-sm font-medium text-gray-300">{turno?.nombre || 'Caja'}</span>
           </div>
+
+          {/* Modo claro/oscuro rápido — preferencia local */}
+          <button
+            onClick={toggleModoOscuro}
+            title={oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white transition-all flex-shrink-0">
+            {oscuro ? '☀️' : '🌙'}
+          </button>
 
           {/* Cambiar usuario (cambio de turno) — discreto, en la esquina */}
           <button
