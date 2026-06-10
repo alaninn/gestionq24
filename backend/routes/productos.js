@@ -268,8 +268,10 @@ router.post('/importar', verificarPermiso('productos', 'crear'), async (req, res
             const stock = parseInt(p.stock) || 0;
             const stock_minimo = parseInt(p.stock_minimo) || 0;
             const unidad = (p.unidad ?? 'Uni').toString().trim() || 'Uni';
+            // Si el archivo no trae IVA, queda en 0 para NO alterar el precio de venta final
+            // (el precio del archivo es el que vale; el usuario carga el IVA después si lo necesita)
             const ivaParsed = parseFloat(p.alicuota_iva);
-            const alicuota_iva = isNaN(ivaParsed) ? 21 : ivaParsed;
+            const alicuota_iva = isNaN(ivaParsed) ? 0 : ivaParsed;
             const margen = parseFloat(p.margen_ganancia) || 0;
 
             // ¿Ya existe un producto con ese código en este negocio?
@@ -352,6 +354,97 @@ router.post('/eliminar-masivo', verificarPermiso('productos', 'eliminar'), async
     } catch (error) {
         console.error('Error eliminación masiva:', error);
         res.status(500).json({ error: 'Error al eliminar productos' });
+    }
+});
+
+// -----------------------------------------------
+// RUTA: POST /api/productos/precios-masivo
+// FUNCIÓN: Actualización masiva de precios.
+//   alcance: 'todos' | 'categoria' (requiere categoria_id) | 'seleccion' (requiere ids)
+//   campo:   'precio_venta' | 'precio_costo' | 'ambos'
+//   operacion: 'porcentaje' (valor +/- %) | 'monto' (suma/resta $) | 'fijar' (setea precio exacto)
+// -----------------------------------------------
+router.post('/precios-masivo', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const { alcance, categoria_id, ids, campo, operacion, valor } = req.body;
+
+        const valorNum = parseFloat(valor);
+        if (isNaN(valorNum)) return res.status(400).json({ error: 'Valor inválido' });
+
+        const camposValidos = ['precio_venta', 'precio_costo', 'ambos'];
+        if (!camposValidos.includes(campo)) return res.status(400).json({ error: 'Campo inválido' });
+        if (!['porcentaje', 'monto', 'fijar'].includes(operacion)) return res.status(400).json({ error: 'Operación inválida' });
+        if (operacion === 'fijar' && campo === 'ambos') {
+            return res.status(400).json({ error: 'Para fijar un precio exacto elegí venta o costo, no ambos' });
+        }
+        if (operacion === 'fijar' && valorNum < 0) return res.status(400).json({ error: 'El precio no puede ser negativo' });
+
+        // Expresión SQL para el nuevo valor de un campo
+        const expr = (col) => {
+            if (operacion === 'porcentaje') return `GREATEST(0, ROUND(${col} * (1 + ${valorNum} / 100.0)))`;
+            if (operacion === 'monto') return `GREATEST(0, ROUND(${col} + ${valorNum}))`;
+            return `${valorNum}`; // fijar
+        };
+
+        const sets = campo === 'ambos'
+            ? `precio_venta = ${expr('precio_venta')}, precio_costo = ${expr('precio_costo')}`
+            : `${campo} = ${expr(campo)}`;
+
+        // Alcance
+        let where = 'negocio_id = $1 AND activo = TRUE';
+        const params = [negocio_id];
+        if (alcance === 'categoria') {
+            const catId = parseInt(categoria_id);
+            if (isNaN(catId)) return res.status(400).json({ error: 'Categoría inválida' });
+            params.push(catId);
+            where += ` AND categoria_id = $${params.length}`;
+        } else if (alcance === 'seleccion') {
+            const idsNum = (ids || []).map(x => parseInt(x)).filter(x => !isNaN(x));
+            if (idsNum.length === 0) return res.status(400).json({ error: 'No se seleccionaron productos' });
+            params.push(idsNum);
+            where += ` AND id = ANY($${params.length}::int[])`;
+        } else if (alcance !== 'todos') {
+            return res.status(400).json({ error: 'Alcance inválido' });
+        }
+
+        const r = await db.query(`UPDATE productos SET ${sets}, updated_at = NOW() WHERE ${where}`, params);
+        res.json({ actualizados: r.rowCount });
+    } catch (error) {
+        console.error('Error actualización masiva de precios:', error);
+        res.status(500).json({ error: 'Error al actualizar precios' });
+    }
+});
+
+// -----------------------------------------------
+// RUTA: POST /api/productos/categoria-masivo
+// FUNCIÓN: Asigna una categoría a varios productos a la vez
+// -----------------------------------------------
+router.post('/categoria-masivo', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const { ids, categoria_id } = req.body;
+        const idsNum = (ids || []).map(x => parseInt(x)).filter(x => !isNaN(x));
+        const catId = parseInt(categoria_id);
+        if (idsNum.length === 0) return res.status(400).json({ error: 'No se seleccionaron productos' });
+        if (isNaN(catId)) return res.status(400).json({ error: 'Categoría inválida' });
+
+        // Verificar que la categoría sea del negocio
+        const cat = await db.query('SELECT id FROM categorias WHERE id = $1 AND negocio_id = $2', [catId, negocio_id]);
+        if (cat.rows.length === 0) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+        const r = await db.query(
+            'UPDATE productos SET categoria_id = $1, updated_at = NOW() WHERE negocio_id = $2 AND id = ANY($3::int[])',
+            [catId, negocio_id, idsNum]
+        );
+        res.json({ actualizados: r.rowCount });
+    } catch (error) {
+        console.error('Error cambio masivo de categoría:', error);
+        res.status(500).json({ error: 'Error al cambiar categoría' });
     }
 });
 

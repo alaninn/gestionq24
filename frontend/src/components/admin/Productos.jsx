@@ -101,6 +101,17 @@ const [categorias, setCategorias] = useState([]);
   const [seleccionados, setSeleccionados] = useState([]);
   const [eliminandoMasivo, setEliminandoMasivo] = useState(false);
 
+  // Actualización masiva de precios
+  const [mostrarModalPrecios, setMostrarModalPrecios] = useState(false);
+  const [aplicandoPrecios, setAplicandoPrecios] = useState(false);
+  const [formPrecios, setFormPrecios] = useState({
+    alcance: 'todos', categoria_id: '', campo: 'precio_venta',
+    operacion: 'porcentaje', direccion: 'aumentar', valor: '',
+  });
+
+  // Cambio masivo de categoría (desde la barra de selección)
+  const [categoriaMasiva, setCategoriaMasiva] = useState('');
+
     // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalProductos, setTotalProductos] = useState(0);
@@ -127,25 +138,9 @@ const [categorias, setCategorias] = useState([]);
     }
   }, [celdaEditando]);
 
-  useEffect(() => {
-    const costo = parseFloat(formulario.precio_costo) || 0;
-    const margen = parseFloat(formulario.margen_ganancia) || 0;
-    const iva = parseFloat(formulario.alicuota_iva) || 0;
-    if (costo > 0) {
-      const precio = costo * (1 + margen / 100) * (1 + iva / 100);
-      setFormulario(prev => ({ ...prev, precio_venta: Math.round(precio).toString() }));
-    }
-  }, [formulario.precio_costo, formulario.margen_ganancia, formulario.alicuota_iva]);
-
-  useEffect(() => {
-    const costo = parseFloat(formulario.precio_costo) || 0;
-    const margen = parseFloat(formulario.margen_mayorista) || 0;
-    const iva = parseFloat(formulario.alicuota_iva) || 0;
-    if (costo > 0 && margen > 0) {
-      const precio = costo * (1 + margen / 100) * (1 + iva / 100);
-      setFormulario(prev => ({ ...prev, precio_mayorista: Math.round(precio).toString() }));
-    }
-  }, [formulario.precio_costo, formulario.margen_mayorista, formulario.alicuota_iva]);
+  // NOTA: el recálculo de precios se hace en manejarCambio (solo cuando el usuario
+  // modifica costo/margen/IVA). Antes era un useEffect que se disparaba al abrir el
+  // modal de edición y pisaba el precio de venta real del producto.
 
   const cargarProductos = async (pagina = 1) => {
     try {
@@ -228,7 +223,35 @@ const cargarCategorias = async () => {
 
   const manejarCambio = (e) => {
     const { name, value } = e.target;
-    setFormulario(prev => ({ ...prev, [name]: value }));
+    setFormulario(prev => {
+      const next = { ...prev, [name]: value };
+
+      // Recalcular precio de venta SOLO cuando el usuario toca costo, margen o IVA
+      if (['precio_costo', 'margen_ganancia', 'alicuota_iva'].includes(name)) {
+        const costo = parseFloat(next.precio_costo) || 0;
+        const margen = parseFloat(next.margen_ganancia) || 0;
+        const iva = parseFloat(next.alicuota_iva) || 0;
+        if (costo > 0) {
+          next.precio_venta = Math.round(costo * (1 + margen / 100) * (1 + iva / 100)).toString();
+        }
+        const margenMayorista = parseFloat(next.margen_mayorista) || 0;
+        if (costo > 0 && margenMayorista > 0) {
+          next.precio_mayorista = Math.round(costo * (1 + margenMayorista / 100) * (1 + iva / 100)).toString();
+        }
+      }
+
+      // Recalcular precio mayorista cuando el usuario toca su margen
+      if (name === 'margen_mayorista') {
+        const costo = parseFloat(next.precio_costo) || 0;
+        const margenMayorista = parseFloat(value) || 0;
+        const iva = parseFloat(next.alicuota_iva) || 0;
+        if (costo > 0 && margenMayorista > 0) {
+          next.precio_mayorista = Math.round(costo * (1 + margenMayorista / 100) * (1 + iva / 100)).toString();
+        }
+      }
+
+      return next;
+    });
   };
 
   const abrirFormularioNuevo = () => {
@@ -332,6 +355,85 @@ const cargarCategorias = async () => {
       setTimeout(() => setError(''), 4000);
     } finally {
       setEliminandoMasivo(false);
+    }
+  };
+
+  // ---- ACTUALIZACIÓN MASIVA DE PRECIOS ----
+  const abrirModalPrecios = () => {
+    setFormPrecios({
+      alcance: seleccionados.length > 0 ? 'seleccion' : 'todos',
+      categoria_id: categoriaFiltro || '',
+      campo: 'precio_venta', operacion: 'porcentaje', direccion: 'aumentar', valor: '',
+    });
+    setMostrarModalPrecios(true);
+  };
+
+  const aplicarPreciosMasivo = async (e) => {
+    e.preventDefault();
+    const valorNum = parseFloat(formPrecios.valor);
+    if (isNaN(valorNum) || valorNum <= 0) {
+      setError('Ingresá un valor mayor a 0');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+    if (formPrecios.alcance === 'categoria' && !formPrecios.categoria_id) {
+      setError('Seleccioná una categoría');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
+    // El signo lo define la dirección (fijar no tiene dirección)
+    const valorFinal = formPrecios.operacion === 'fijar'
+      ? valorNum
+      : (formPrecios.direccion === 'disminuir' ? -valorNum : valorNum);
+
+    const alcanceTexto = formPrecios.alcance === 'todos' ? `TODOS los productos (${totalProductos})`
+      : formPrecios.alcance === 'categoria' ? `la categoría "${categorias.find(c => String(c.id) === String(formPrecios.categoria_id))?.nombre || ''}"`
+      : `${seleccionados.length} producto(s) seleccionado(s)`;
+    const opTexto = formPrecios.operacion === 'fijar' ? `fijar en ${formatearPeso(valorNum)}`
+      : `${formPrecios.direccion} ${formPrecios.operacion === 'porcentaje' ? valorNum + '%' : formatearPeso(valorNum)}`;
+    const campoTexto = formPrecios.campo === 'ambos' ? 'venta y costo' : formPrecios.campo === 'precio_venta' ? 'precio de venta' : 'precio de costo';
+
+    if (!window.confirm(`¿Aplicar a ${alcanceTexto}?\n\nAcción: ${opTexto} el ${campoTexto}.\n\nEsta acción modifica los precios de forma permanente.`)) return;
+
+    try {
+      setAplicandoPrecios(true);
+      const res = await api.post('/api/productos/precios-masivo', {
+        alcance: formPrecios.alcance,
+        categoria_id: formPrecios.categoria_id || null,
+        ids: formPrecios.alcance === 'seleccion' ? seleccionados : null,
+        campo: formPrecios.campo,
+        operacion: formPrecios.operacion,
+        valor: valorFinal,
+      });
+      setExito(`✅ Precios actualizados en ${res.data.actualizados} producto(s)`);
+      setMostrarModalPrecios(false);
+      limpiarSeleccion();
+      await cargarProductos(paginaActual);
+      setTimeout(() => setExito(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al actualizar precios');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setAplicandoPrecios(false);
+    }
+  };
+
+  // ---- CAMBIO MASIVO DE CATEGORÍA ----
+  const aplicarCategoriaMasiva = async () => {
+    if (!categoriaMasiva || seleccionados.length === 0) return;
+    const cat = categorias.find(c => String(c.id) === String(categoriaMasiva));
+    if (!window.confirm(`¿Mover ${seleccionados.length} producto(s) a la categoría "${cat?.nombre}"?`)) return;
+    try {
+      const res = await api.post('/api/productos/categoria-masivo', { ids: seleccionados, categoria_id: categoriaMasiva });
+      setExito(`✅ ${res.data.actualizados} producto(s) movidos a "${cat?.nombre}"`);
+      setCategoriaMasiva('');
+      limpiarSeleccion();
+      await cargarProductos(paginaActual);
+      setTimeout(() => setExito(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al cambiar categoría');
+      setTimeout(() => setError(''), 4000);
     }
   };
 
@@ -546,6 +648,10 @@ const exportarExcel = async () => {
             className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
             📊 Exportar Excel
           </button>
+          <button onClick={abrirModalPrecios}
+            className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+            💲 Actualizar Precios
+          </button>
           {!esPremium && totalProductos >= limiteProductos ? (
             <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
               ⭐ Límite de {limiteProductos} productos alcanzado. <span className="font-bold">Necesitás Plan Premium</span>
@@ -600,16 +706,34 @@ const exportarExcel = async () => {
             <span className="text-sm font-medium text-red-800">
               {seleccionados.length} producto(s) seleccionado(s)
             </span>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button onClick={limpiarSeleccion}
                 className="text-sm bg-white hover:bg-gray-100 text-gray-600 border border-gray-300 px-3 py-1.5 rounded-lg font-medium transition-colors">
                 Cancelar selección
+              </button>
+              <button onClick={abrirModalPrecios}
+                className="text-sm bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                💲 Actualizar precios
               </button>
               <button onClick={eliminarSeleccionados} disabled={eliminandoMasivo}
                 className="text-sm bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
                 {eliminandoMasivo ? 'Eliminando...' : `🗑️ Eliminar ${seleccionados.length} seleccionado(s)`}
               </button>
             </div>
+          </div>
+
+          {/* Cambio masivo de categoría */}
+          <div className="flex items-center gap-2 flex-wrap border-t border-red-200 pt-2">
+            <span className="text-xs text-gray-600">🏷️ Mover a categoría:</span>
+            <select value={categoriaMasiva} onChange={(e) => setCategoriaMasiva(e.target.value)}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+              <option value="">Elegir categoría...</option>
+              {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
+            </select>
+            <button onClick={aplicarCategoriaMasiva} disabled={!categoriaMasiva}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
+              Aplicar
+            </button>
           </div>
 
           {/* Opción de eliminar TODO el inventario, solo cuando se seleccionó toda la página y hay más productos en otras páginas */}
@@ -942,6 +1066,152 @@ const exportarExcel = async () => {
                 </button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Actualización Masiva de Precios */}
+      {mostrarModalPrecios && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">💲 Actualización Masiva de Precios</h3>
+                <p className="text-xs text-gray-500">Modificá los precios de muchos productos a la vez</p>
+              </div>
+              <button onClick={() => setMostrarModalPrecios(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+
+            <form onSubmit={aplicarPreciosMasivo} className="p-5 space-y-5">
+
+              {/* Alcance */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">¿A qué productos se aplica?</label>
+                <div className="space-y-2">
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${formPrecios.alcance === 'todos' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input type="radio" name="alcance" checked={formPrecios.alcance === 'todos'}
+                      onChange={() => setFormPrecios(p => ({ ...p, alcance: 'todos' }))} className="w-4 h-4 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">Todos los productos</p>
+                      <p className="text-xs text-gray-500">{totalProductos} productos activos del negocio</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${formPrecios.alcance === 'categoria' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input type="radio" name="alcance" checked={formPrecios.alcance === 'categoria'}
+                      onChange={() => setFormPrecios(p => ({ ...p, alcance: 'categoria' }))} className="w-4 h-4 text-amber-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">Una categoría</p>
+                      {formPrecios.alcance === 'categoria' && (
+                        <select value={formPrecios.categoria_id}
+                          onChange={(e) => setFormPrecios(p => ({ ...p, categoria_id: e.target.value }))}
+                          className="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
+                          <option value="">Seleccionar categoría...</option>
+                          {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  </label>
+                  {seleccionados.length > 0 && (
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${formPrecios.alcance === 'seleccion' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <input type="radio" name="alcance" checked={formPrecios.alcance === 'seleccion'}
+                        onChange={() => setFormPrecios(p => ({ ...p, alcance: 'seleccion' }))} className="w-4 h-4 text-amber-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">Solo los seleccionados</p>
+                        <p className="text-xs text-gray-500">{seleccionados.length} producto(s) tildados en la tabla</p>
+                      </div>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Campo a modificar */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">¿Qué precio se modifica?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'precio_venta', label: 'Venta' },
+                    { id: 'precio_costo', label: 'Costo' },
+                    { id: 'ambos', label: 'Ambos' },
+                  ].map(c => (
+                    <button key={c.id} type="button"
+                      onClick={() => setFormPrecios(p => ({ ...p, campo: c.id, ...(c.id === 'ambos' && p.operacion === 'fijar' ? { operacion: 'porcentaje' } : {}) }))}
+                      className={`py-2 rounded-xl text-sm font-medium border-2 transition-all ${formPrecios.campo === c.id ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Operación */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de ajuste</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'porcentaje', label: 'Porcentaje %' },
+                    { id: 'monto', label: 'Monto fijo $' },
+                    ...(formPrecios.campo !== 'ambos' ? [{ id: 'fijar', label: 'Precio exacto' }] : []),
+                  ].map(o => (
+                    <button key={o.id} type="button"
+                      onClick={() => setFormPrecios(p => ({ ...p, operacion: o.id }))}
+                      className={`py-2 rounded-xl text-sm font-medium border-2 transition-all ${formPrecios.operacion === o.id ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dirección + Valor */}
+              <div className="flex gap-3">
+                {formPrecios.operacion !== 'fijar' && (
+                  <div className="flex rounded-xl border-2 border-gray-200 overflow-hidden">
+                    <button type="button" onClick={() => setFormPrecios(p => ({ ...p, direccion: 'aumentar' }))}
+                      className={`px-4 py-2 text-sm font-semibold transition-colors ${formPrecios.direccion === 'aumentar' ? 'bg-green-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      ↑ Aumentar
+                    </button>
+                    <button type="button" onClick={() => setFormPrecios(p => ({ ...p, direccion: 'disminuir' }))}
+                      className={`px-4 py-2 text-sm font-semibold transition-colors ${formPrecios.direccion === 'disminuir' ? 'bg-red-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      ↓ Bajar
+                    </button>
+                  </div>
+                )}
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-2.5 text-gray-400">{formPrecios.operacion === 'porcentaje' ? '%' : '$'}</span>
+                  <input type="number" value={formPrecios.valor} min="0" step="0.01" required autoFocus
+                    onChange={(e) => setFormPrecios(p => ({ ...p, valor: e.target.value }))}
+                    className="w-full border-2 border-gray-200 rounded-xl pl-8 pr-3 py-2 text-lg font-semibold focus:outline-none focus:border-amber-400"
+                    placeholder={formPrecios.operacion === 'porcentaje' ? 'Ej: 10' : 'Ej: 500'} />
+                </div>
+              </div>
+
+              {/* Resumen */}
+              {parseFloat(formPrecios.valor) > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
+                  {formPrecios.operacion === 'fijar'
+                    ? <>Se va a <strong>fijar el {formPrecios.campo === 'precio_venta' ? 'precio de venta' : 'precio de costo'} en {formatearPeso(parseFloat(formPrecios.valor))}</strong></>
+                    : <>Se va a <strong>{formPrecios.direccion} {formPrecios.operacion === 'porcentaje' ? `${formPrecios.valor}%` : formatearPeso(parseFloat(formPrecios.valor))}</strong> el {formPrecios.campo === 'ambos' ? 'precio de venta y de costo' : formPrecios.campo === 'precio_venta' ? 'precio de venta' : 'precio de costo'}</>
+                  }
+                  {' '}de {formPrecios.alcance === 'todos' ? `los ${totalProductos} productos` : formPrecios.alcance === 'categoria' ? 'la categoría elegida' : `${seleccionados.length} producto(s) seleccionados`}.
+                  <p className="text-xs text-blue-600 mt-1">Ejemplo: un producto de {formatearPeso(1000)} pasa a {formatearPeso(
+                    formPrecios.operacion === 'fijar' ? parseFloat(formPrecios.valor)
+                    : formPrecios.operacion === 'porcentaje'
+                      ? Math.max(0, Math.round(1000 * (1 + (formPrecios.direccion === 'disminuir' ? -1 : 1) * parseFloat(formPrecios.valor) / 100)))
+                      : Math.max(0, 1000 + (formPrecios.direccion === 'disminuir' ? -1 : 1) * parseFloat(formPrecios.valor))
+                  )}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalPrecios(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={aplicandoPrecios}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold transition-colors disabled:opacity-50">
+                  {aplicandoPrecios ? 'Aplicando...' : '💲 Aplicar cambios'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

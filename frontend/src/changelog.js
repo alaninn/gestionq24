@@ -14,9 +14,42 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.2.0';
+export const VERSION_ACTUAL = '2.2.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.2.1',
+    fecha: '2026-06-11',
+    titulo: 'Configuración revisada: todas las opciones ahora funcionan',
+    destacados: [
+      {
+        titulo: '💲 Actualización masiva de precios',
+        detalle: 'En Productos, el botón "Actualizar Precios" te deja subir o bajar precios por porcentaje o monto fijo (o fijar un precio exacto), aplicado a todo el inventario, a una categoría o solo a los productos que tildaste. Ideal para aumentos de proveedores o ajustes por inflación.',
+      },
+      {
+        titulo: '🏷️ Mover productos de categoría en masa',
+        detalle: 'Tildá varios productos y usá "Mover a categoría" en la barra de selección. Útil para ordenar el inventario después de una importación.',
+      },
+      {
+        titulo: '💲 Precio mayorista automático',
+        detalle: 'Si activás "Precio Mayorista" en Configuración y el producto tiene precio mayorista cargado, el POS lo aplica solo cuando la cantidad llega al mínimo configurado (y vuelve al precio normal si baja).',
+      },
+    ],
+    cambios: [
+      { t: 'Productos: actualización masiva de precios (% o monto, por total/categoría/selección).' },
+      { t: 'Productos: cambio masivo de categoría para productos seleccionados.' },
+      { t: 'Configuración: el toggle "Venta Rápida" ahora funciona de verdad (oculta el botón ⚡ y el atajo F1 del POS).' },
+      { t: 'Configuración: "Mostrar stock en POS" ahora funciona (oculta la cantidad disponible en la lista de productos).' },
+      { t: 'Precio mayorista automático en el carrito según cantidad mínima.' },
+      { t: 'Impresión: el modo "Imprimir automáticamente" ahora imprime el ticket solo al confirmar la venta (antes había que tocar Imprimir).' },
+      { t: 'Corregido: al editar un producto ya no se recalcula (ni cambia) el precio de venta solo — solo se recalcula si modificás costo, margen o IVA.' },
+      { t: 'Importación de productos: si el archivo no trae IVA, queda en 0% para respetar el precio de venta del archivo.' },
+      { t: 'Sistema: la versión que se muestra ahora es la real del programa, con fecha de última actualización y plan actual.' },
+      { t: 'Sistema: se quitó información técnica sin utilidad (base de datos, servidor) y opciones que no hacían nada (moneda, escáner).' },
+      { t: 'Corregido: el botón Guardar de la pestaña Sistema aparecía arriba del contenido.' },
+      { t: 'Corregido: el toggle del PIN de cierre aparecía activado aunque no hubiera PIN configurado.' },
+    ],
+  },
   {
     version: '2.2.0',
     fecha: '2026-06-10',
