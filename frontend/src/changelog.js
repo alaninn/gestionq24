@@ -14,9 +14,27 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.2.1';
+export const VERSION_ACTUAL = '2.3.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.3.0',
+    fecha: '2026-06-11',
+    titulo: 'Facturación electrónica más fácil',
+    destacados: [
+      {
+        titulo: '🚀 Conexión rápida con ARCA (sin certificados)',
+        detalle: 'Nueva forma de conectarte para facturar: en vez de tramitar certificados, autorizás el servicio a gestionq24 desde tu clave fiscal (un trámite de 3 minutos en ARCA, guiado paso a paso) y quedás facturando con tu propio CUIT. La opción de certificado propio sigue disponible para quien la prefiera.',
+      },
+    ],
+    cambios: [
+      { t: 'Facturación: nueva "Conexión rápida" con ARCA por delegación de servicio (sin manejar certificados).' },
+      { t: 'Facturación: tutorial de certificado propio renovado con los 7 pasos completos, incluidos los 2 que suelen olvidarse (autorizar el web service y crear el punto de venta de Web Services) y links directos.' },
+      { t: 'Facturación: al subir el certificado, el sistema valida que sea el archivo correcto, que no esté vencido y que corresponda a tu solicitud, con mensajes claros de qué salió mal.' },
+      { t: 'Corregido: al cargar un certificado nuevo se limpia la conexión anterior (evita el error de ARCA "No apareció CUIT en lista de relaciones").' },
+      { t: 'Corregido: la venta de productos por peso (Kg/Lt/Mt) ahora respeta la configuración "Stock Negativo" — antes bloqueaba siempre, y con stock ya negativo no dejaba vender nunca.' },
+    ],
+  },
   {
     version: '2.2.1',
     fecha: '2026-06-11',

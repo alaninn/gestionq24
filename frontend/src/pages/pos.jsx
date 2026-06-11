@@ -2999,6 +2999,7 @@ const imprimirTicketDesdeModal = () => {
       {mostrarModalVentaProducto && (
         <VentaProductoModal
           producto={mostrarModalVentaProducto}
+          permiteStockNegativo={config?.permite_stock_negativo === true}
           onClose={() => setMostrarModalVentaProducto(null)}
           onAgregar={(item) => {
             // Agregar el item al carrito de la pestaña activa
