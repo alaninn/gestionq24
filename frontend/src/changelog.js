@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.5.0';
+export const VERSION_ACTUAL = '2.5.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.5.1',
+    fecha: '2026-06-11',
+    titulo: 'Stock: vuelven los botones de siempre + filtro por categoría',
+    cambios: [
+      { t: 'Stock: cada producto vuelve a tener sus botones Ajustar, Historial (🕒), Modificar (✏️) y Eliminar (🗑️).' },
+      { t: 'Stock: "Ajustar" abre el teclado numérico con la cantidad seleccionada para tipear directo el conteo (también tiene + y −).' },
+      { t: 'Stock: filtro por categoría real de productos, ideal para encontrar y reorganizar productos por góndola.' },
+      { t: 'Stock: con un filtro de categoría activo, las secciones sin coincidencias se ocultan para menos ruido.' },
+    ],
+  },
   {
     version: '2.5.0',
     fecha: '2026-06-11',
