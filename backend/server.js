@@ -59,6 +59,9 @@ app.use('/api/productos', verificarToken, validarLimitePlan, rutasProductos);
 // Categorias
 app.use('/api/categorias', verificarToken, validarLimitePlan, rutasCategorias);
 
+// Secciones de la pantalla de Stock (orden físico del local)
+app.use('/api/stock-categorias', verificarToken, validarLimitePlan, require('./routes/stockCategorias'));
+
 // Ventas — cajero puede crear
 app.use('/api/ventas', verificarToken, validarLimitePlan, rutasVentas);
 

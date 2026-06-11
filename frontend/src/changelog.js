@@ -14,9 +14,27 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.4.0';
+export const VERSION_ACTUAL = '2.5.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.5.0',
+    fecha: '2026-06-11',
+    titulo: 'Stock renovado: organizá el inventario como tu local',
+    destacados: [
+      {
+        titulo: '📦 Nueva pantalla de Stock para hacer inventario con el celular',
+        detalle: 'Creá secciones propias (Góndola 1, Heladera, Depósito...) y arrastrá los productos para dejarlos en el mismo orden que tus estanterías. Después hacés el stock caminando por el local: la pantalla sigue el recorrido y actualizás cantidades con los botones + y − sin buscar nada. Tocá "✋ Organizar" para armar tus secciones la primera vez.',
+      },
+    ],
+    cambios: [
+      { t: 'Stock: secciones personalizadas independientes de las categorías de productos (reflejan el orden físico del local).' },
+      { t: 'Stock: productos arrastrables (☰) para ordenarlos igual que en la góndola; las secciones también se reordenan.' },
+      { t: 'Stock: botones grandes + / − y edición directa de cantidad, con guardado automático (pensado para el celular).' },
+      { t: 'Stock: buscador rápido, indicador de stock bajo por sección e historial de movimientos con un toque en el producto.' },
+      { t: 'SuperAdmin: las alertas ahora solo muestran las importantes (alta/crítica) y dejaron de consultarse cada 30 segundos.', super: true },
+    ],
+  },
   {
     version: '2.4.0',
     fecha: '2026-06-11',
