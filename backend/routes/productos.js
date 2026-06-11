@@ -163,8 +163,9 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             return res.status(400).json({ error: 'Nombre y precio de venta son obligatorios' });
         }
 
-        // Verificar límite de productos según plan
-        const plan = req.usuario?.plan || 'estandar';
+        // Verificar límite de productos según plan (req.planUsuario lo resuelve el
+        // middleware: para superadmin usa el plan REAL del negocio que opera)
+        const plan = req.planUsuario || req.usuario?.plan || 'estandar';
         const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
         const countRes = await db.query(
             'SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE',

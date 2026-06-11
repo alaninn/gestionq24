@@ -78,8 +78,9 @@ router.post('/', soloAdmin, validarLimitePlan, async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        // Verificar límite de usuarios según plan
-        const plan = req.usuario?.plan || 'estandar';
+        // Verificar límite de usuarios según plan (req.planUsuario lo resuelve el
+        // middleware: para superadmin usa el plan REAL del negocio que opera)
+        const plan = req.planUsuario || req.usuario?.plan || 'estandar';
         const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
         const countRes = await db.query(
             'SELECT COUNT(*) FROM usuarios WHERE negocio_id = $1 AND activo = TRUE',
