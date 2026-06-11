@@ -88,7 +88,7 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
   // ---- MODO NORMAL: stock visible + botones de acción ----
   return (
     <div ref={setNodeRef} style={style}
-      className={`rounded-xl border px-3 py-2 ${stockBajo ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+      className={`rounded-xl border px-3 py-2 shadow-sm ${stockBajo ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
 
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
@@ -487,7 +487,9 @@ function Stock() {
     if (categoriaFiltro && lista.length === 0) return null;
 
     return (
-      <div key={clave} className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+      <div key={clave}
+        className={`rounded-2xl border overflow-hidden transition-shadow ${abierta ? 'bg-gray-50 border-gray-200 shadow-sm' : 'bg-white border-gray-200'}`}
+        style={abierta ? { borderLeft: '3px solid var(--color-primario)' } : {}}>
         <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-b border-gray-100">
           <button onClick={() => setAbiertas(prev => ({ ...prev, [clave]: !abierta }))}
             className="flex-1 flex items-center gap-2 text-left min-w-0">
@@ -510,14 +512,15 @@ function Stock() {
           {!organizar && lista.length > 0 && (
             <button onClick={() => iniciarConteo(sec, lista)}
               title="Contar esta sección producto por producto"
-              className="flex-shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
+              style={{ backgroundColor: 'var(--color-primario)' }}
+              className="flex-shrink-0 flex items-center gap-1 hover:opacity-90 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
               ▶ Contar
             </button>
           )}
         </div>
 
         {abierta && (
-          <div className="p-2 space-y-1.5">
+          <div className="p-2 space-y-1.5 animate-aparecer">
             {lista.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-3">
                 {organizar ? 'Mové productos acá usando el selector 📦 de cada producto' : 'Sin productos en esta sección'}
@@ -571,8 +574,8 @@ function Stock() {
         </div>
       )}
 
-      {/* Buscador + filtros — fijos arriba al hacer scroll, siempre a mano */}
-      <div className="sticky top-0 z-20 bg-gray-50 -mx-4 px-4 lg:-mx-6 lg:px-6 py-2 space-y-2 border-b border-gray-200/70">
+      {/* Buscador + filtros — fijos arriba al hacer scroll, con efecto vidrio */}
+      <div className="sticky top-0 z-20 bg-gray-50/85 backdrop-blur-md -mx-4 px-4 lg:-mx-6 lg:px-6 py-2 space-y-2 border-b border-gray-200/70">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
@@ -646,10 +649,10 @@ function Stock() {
            Compacto y SIEMPRE pegado encima del teclado del celular:
            se ve el producto, el número y los botones sin cerrar el teclado. */}
       {mostrarAjustar && (
-        <div className="fixed inset-0 bg-black/50 z-50" onClick={cerrarAjustar}>
+        <div className="fixed inset-0 bg-black/50 z-50 animate-velo" onClick={cerrarAjustar}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-0 right-0 mx-auto w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-b-2xl shadow-2xl transition-[bottom] duration-150"
+            className="fixed left-0 right-0 mx-auto w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-b-2xl shadow-2xl transition-[bottom] duration-150 animate-subir-panel"
             style={{ bottom: alturaTeclado }}>
 
             {/* Encabezado compacto: 1 línea + progreso */}

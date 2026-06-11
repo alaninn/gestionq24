@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import VersionChangelog from '../components/shared/VersionChangelog';
+import useCerrarConAtras from '../hooks/useCerrarConAtras';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
@@ -72,6 +73,18 @@ function Superadmin() {
     // consumir recursos). Solo llegan las de severidad alta o crítica.
     cargarAlertas();
   }, []);
+
+  // El botón "atrás" del celular cierra el modal abierto en vez de salir del panel
+  useCerrarConAtras(!!mostrarModalDetalleNegocio, () => setMostrarModalDetalleNegocio(null));
+  useCerrarConAtras(mostrarModalNuevo, () => setMostrarModalNuevo(false));
+  useCerrarConAtras(!!mostrarModalRenovar, () => setMostrarModalRenovar(null));
+  useCerrarConAtras(!!mostrarModalDias, () => setMostrarModalDias(null));
+  useCerrarConAtras(!!mostrarModalHistorial, () => setMostrarModalHistorial(null));
+  useCerrarConAtras(!!mostrarModalSalud, () => { setMostrarModalSalud(null); setSaludNegocio(null); });
+  useCerrarConAtras(!!mostrarModalGestionTickets, () => setMostrarModalGestionTickets(null));
+  useCerrarConAtras(!!mostrarModalAdminNegocio, () => setMostrarModalAdminNegocio(null));
+  useCerrarConAtras(mostrarModalMiCuenta, () => setMostrarModalMiCuenta(false));
+  useCerrarConAtras(mostrarModalLogs, () => cerrarModalLogs());
 
   const cargarDatos = async () => {
     try {

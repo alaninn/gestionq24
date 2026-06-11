@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
@@ -126,6 +127,10 @@ const [categorias, setCategorias] = useState([]);
   });
 
   useEffect(() => { cargarProductos(); cargarCategorias(); }, []);
+
+  // El botón "atrás" del celular cierra el modal abierto
+  useCerrarConAtras(mostrarFormulario, () => setMostrarFormulario(false));
+  useCerrarConAtras(mostrarModalPrecios, () => setMostrarModalPrecios(false));
 
   useEffect(() => {
     const timer = setTimeout(() => cargarProductos(), 400);

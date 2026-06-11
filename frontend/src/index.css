@@ -1,3 +1,84 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =============================================
+   Base visual del sistema — utilitario refinado
+   Tipografía con carácter, táctil pulido y
+   micro-animaciones funcionales (no decorativas)
+   ============================================= */
+
+@layer base {
+  html {
+    font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    /* Sin flash azul al tocar en celulares */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Números alineados en precios, stock y tablas */
+  input[type='number'],
+  table td,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Quitar flechitas de los inputs numéricos (molestan en táctil) */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* Scrollbar discreta en desktop */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(0 0 0 / 0.18);
+    border-radius: 99px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(0 0 0 / 0.3);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* Entrada suave de tarjetas/listas (usar: animate-aparecer) */
+  @keyframes aparecer {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-aparecer {
+    animation: aparecer 0.22s ease-out both;
+  }
+
+  /* Panel que sube desde abajo (modales móviles) */
+  @keyframes subir-panel {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-subir-panel {
+    animation: subir-panel 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  }
+
+  /* Aparición del fondo oscuro de los modales */
+  @keyframes velo {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .animate-velo {
+    animation: velo 0.18s ease-out both;
+  }
+}
