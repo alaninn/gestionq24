@@ -62,8 +62,16 @@ const LIMITES_PLAN = { estandar: 3, premium: 99999 };
 function Usuarios() {
   const { usuario: usuarioActual } = useAuth();
   const planUsuario = usuarioActual?.plan || 'estandar';
-  const limiteUsuarios = LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar;
   const esPremium = usuarioActual?.plan === 'premium' || usuarioActual?.rol === 'superadmin';
+
+  // Límite real del plan: se lee del servidor (configurable por el superadmin).
+  // Mientras carga, se usa el valor por defecto hardcodeado.
+  const [limiteUsuarios, setLimiteUsuarios] = useState(LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar);
+  useEffect(() => {
+    api.get('/api/usuarios/plan-info')
+      .then(res => { if (res.data?.limites?.max_usuarios) setLimiteUsuarios(res.data.limites.max_usuarios); })
+      .catch(() => {});
+  }, []);
 
   const [usuarios, setUsuarios] = useState([]);
   const [cargando, setCargando] = useState(true);

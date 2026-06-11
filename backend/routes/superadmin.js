@@ -900,4 +900,57 @@ router.get('/errores-frontend', async (req, res) => {
     }
 });
 
+// =============================================
+// CONFIGURACIÓN DE PLANES (límites y funciones editables)
+// =============================================
+const { invalidarCachePlanes } = require('../middleware/planLimites');
+
+// GET /api/superadmin/planes — configuración actual de cada plan
+router.get('/planes', async (req, res) => {
+    try {
+        const r = await db.query('SELECT * FROM planes_config ORDER BY max_productos ASC');
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error obteniendo planes:', error);
+        res.status(500).json({ error: 'Error al obtener configuración de planes' });
+    }
+});
+
+// PUT /api/superadmin/planes/:plan — editar límites y funciones de un plan
+router.put('/planes/:plan', async (req, res) => {
+    try {
+        const { plan } = req.params;
+        const { max_productos, max_usuarios, facturacion_electronica, reportes_avanzados } = req.body;
+
+        const maxProd = parseInt(max_productos);
+        const maxUsu = parseInt(max_usuarios);
+        if (isNaN(maxProd) || maxProd < 1 || isNaN(maxUsu) || maxUsu < 1) {
+            return res.status(400).json({ error: 'Los límites deben ser números mayores a 0' });
+        }
+
+        const r = await db.query(`
+            UPDATE planes_config SET
+                max_productos = $1,
+                max_usuarios = $2,
+                facturacion_electronica = $3,
+                reportes_avanzados = $4,
+                updated_at = NOW()
+            WHERE plan = $5
+            RETURNING *
+        `, [maxProd, maxUsu, !!facturacion_electronica, !!reportes_avanzados, plan]);
+
+        if (r.rows.length === 0) {
+            return res.status(404).json({ error: 'Plan no encontrado' });
+        }
+
+        // Que el cambio aplique de inmediato en todo el sistema
+        invalidarCachePlanes();
+
+        res.json({ mensaje: 'Plan actualizado', plan: r.rows[0] });
+    } catch (error) {
+        console.error('Error actualizando plan:', error);
+        res.status(500).json({ error: 'Error al actualizar el plan' });
+    }
+});
+
 module.exports = router;

@@ -78,22 +78,24 @@ router.post('/', soloAdmin, validarLimitePlan, async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        // Verificar límite de usuarios según plan (req.planUsuario lo resuelve el
-        // middleware: para superadmin usa el plan REAL del negocio que opera)
-        const plan = req.planUsuario || req.usuario?.plan || 'estandar';
-        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
-        const countRes = await db.query(
-            'SELECT COUNT(*) FROM usuarios WHERE negocio_id = $1 AND activo = TRUE',
-            [negocio_id]
-        );
-        const totalActual = parseInt(countRes.rows[0].count);
-        if (totalActual >= limites.max_usuarios) {
-            return res.status(403).json({
-                error: `Límite de ${limites.max_usuarios} usuarios alcanzado para el plan ${plan.charAt(0).toUpperCase() + plan.slice(1)}. Para agregar más usuarios necesitás el Plan Premium.`,
-                limitePlan: true,
-                limite: limites.max_usuarios,
-                plan
-            });
+        // Verificar límite de usuarios según plan. El superadmin tiene poder
+        // total: puede crear usuarios extra en cualquier negocio sin límite.
+        if (req.usuario?.rol !== 'superadmin') {
+            const plan = req.planUsuario || req.usuario?.plan || 'estandar';
+            const limites = req.limitesPlan || LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+            const countRes = await db.query(
+                'SELECT COUNT(*) FROM usuarios WHERE negocio_id = $1 AND activo = TRUE',
+                [negocio_id]
+            );
+            const totalActual = parseInt(countRes.rows[0].count);
+            if (totalActual >= limites.max_usuarios) {
+                return res.status(403).json({
+                    error: `Límite de ${limites.max_usuarios} usuarios alcanzado para el plan ${plan.charAt(0).toUpperCase() + plan.slice(1)}. Para agregar más usuarios necesitás el Plan Premium.`,
+                    limitePlan: true,
+                    limite: limites.max_usuarios,
+                    plan
+                });
+            }
         }
 
         // Verificar que el username no esté en uso en el mismo negocio
@@ -322,8 +324,8 @@ router.get('/plan-info', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         
-        const plan = req.usuario?.plan || 'estandar';
-        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+        const plan = req.planUsuario || req.usuario?.plan || 'estandar';
+        const limites = req.limitesPlan || LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
 
         // Contar uso actual
         const countUsuarios = await db.query('SELECT COUNT(*) FROM usuarios WHERE negocio_id = $1 AND activo = TRUE', [negocio_id]);

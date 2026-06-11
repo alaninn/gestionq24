@@ -76,8 +76,16 @@ const MAPA_COLUMNAS = {
 function Productos() {
   const { usuario } = useAuth();
   const planUsuario = usuario?.plan || 'estandar';
-  const limiteProductos = LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar;
   const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
+
+  // Límite real del plan: se lee del servidor (configurable por el superadmin).
+  // Mientras carga, se usa el valor por defecto hardcodeado.
+  const [limiteProductos, setLimiteProductos] = useState(LIMITES_PLAN[planUsuario] ?? LIMITES_PLAN.estandar);
+  useEffect(() => {
+    api.get('/api/usuarios/plan-info')
+      .then(res => { if (res.data?.limites?.max_productos) setLimiteProductos(res.data.limites.max_productos); })
+      .catch(() => {});
+  }, []);
 
   const [productos, setProductos] = useState([]);
 const [categorias, setCategorias] = useState([]);

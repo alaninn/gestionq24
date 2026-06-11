@@ -154,6 +154,25 @@ ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_orden INTEGER DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_productos_stock_cat ON productos(negocio_id, stock_categoria_id, stock_orden);
 
 -- =============================================
+-- TABLA: planes_config
+-- Límites y funciones de cada plan, editables desde el panel de superadmin.
+-- Si está vacía, el middleware usa los valores por defecto hardcodeados.
+-- =============================================
+CREATE TABLE IF NOT EXISTS planes_config (
+    plan VARCHAR(20) PRIMARY KEY,
+    max_productos INTEGER NOT NULL DEFAULT 500,
+    max_usuarios INTEGER NOT NULL DEFAULT 3,
+    facturacion_electronica BOOLEAN DEFAULT FALSE,
+    reportes_avanzados BOOLEAN DEFAULT FALSE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO planes_config (plan, max_productos, max_usuarios, facturacion_electronica, reportes_avanzados)
+VALUES
+    ('estandar', 500, 3, FALSE, FALSE),
+    ('premium', 3000, 99999, TRUE, TRUE)
+ON CONFLICT (plan) DO NOTHING;
+
+-- =============================================
 -- TABLA: errores_frontend
 -- Errores de pantalla reportados automáticamente por la app (ErrorBoundary)
 -- =============================================
