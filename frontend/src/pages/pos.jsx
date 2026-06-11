@@ -470,7 +470,13 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
       api.get(`/api/arca/tipos-comprobante/${config.regimen_fiscal}`)
         .then(res => {
           setTiposComprobante(res.data);
-          if (res.data.length > 0) setTipoComprobante(res.data[0].codigo);
+          if (res.data.length > 0) {
+            // Por defecto SIEMPRE Factura B (código 6, consumidor final) si existe.
+            // La Factura A es solo para ventas a otros Responsables Inscriptos
+            // y requiere CUIT del comprador: el cajero la elige a mano.
+            const porDefecto = res.data.find(t => t.codigo === 6) || res.data[0];
+            setTipoComprobante(porDefecto.codigo);
+          }
         })
         .catch(() => {});
     }
@@ -1663,7 +1669,7 @@ function ModalFiados({ onCerrar }) {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
                             style={{ backgroundColor: 'var(--color-primario)' }}>
-                            {c.nombre.charAt(0).toUpperCase()}
+                            {(c.nombre || '?').charAt(0).toUpperCase()}
                           </div>
                           <div>
                             <p className="font-medium text-gray-800">{c.nombre}</p>
@@ -1686,7 +1692,7 @@ function ModalFiados({ onCerrar }) {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
                     style={{ backgroundColor: 'var(--color-primario)' }}>
-                    {clienteSeleccionado.nombre.charAt(0).toUpperCase()}
+                    {(clienteSeleccionado.nombre || '?').charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <p className="font-medium text-gray-800">{clienteSeleccionado.nombre}</p>
@@ -1816,8 +1822,35 @@ function POS() {
   const [mostrarComprobanteElectronico, setMostrarComprobanteElectronico] = useState(false);
 
   const [pestanas, setPestanas] = useState(() => {
-    try { const g = localStorage.getItem('pos_pestanas'); return g ? JSON.parse(g) : [{ id: 1, nombre: 'Venta 1', carrito: [] }]; }
-    catch { return [{ id: 1, nombre: 'Venta 1', carrito: [] }]; }
+    // Carga las pestañas guardadas VALIDANDO su estructura. Datos viejos o
+    // corruptos en localStorage eran causa de pantalla en blanco en el POS.
+    const porDefecto = [{ id: 1, nombre: 'Venta 1', carrito: [] }];
+    try {
+      const g = localStorage.getItem('pos_pestanas');
+      if (!g) return porDefecto;
+      const parseado = JSON.parse(g);
+      if (!Array.isArray(parseado) || parseado.length === 0) return porDefecto;
+
+      const sanas = parseado
+        .filter(p => p && typeof p === 'object' && p.id != null)
+        .map(p => ({
+          id: p.id,
+          nombre: typeof p.nombre === 'string' ? p.nombre : 'Venta',
+          carrito: Array.isArray(p.carrito)
+            ? p.carrito.filter(item =>
+                item && typeof item === 'object' &&
+                typeof item.nombre_producto === 'string' &&
+                !isNaN(parseFloat(item.precio_unitario)) &&
+                !isNaN(parseFloat(item.cantidad)) &&
+                !isNaN(parseFloat(item.subtotal))
+              )
+            : [],
+        }));
+
+      return sanas.length > 0 ? sanas : porDefecto;
+    } catch {
+      return porDefecto;
+    }
   });
   const [pestanaActiva, setPestanaActiva] = useState(() => {
     try { const a = localStorage.getItem('pos_pestana_activa'); return a ? parseInt(a) : 1; }
@@ -2027,7 +2060,7 @@ useEffect(() => {
   const agregarAlCarrito = useCallback((producto) => {
     // Verificar si el producto no es de unidad (es decir, tiene unidad kg, lt, mt)
     const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
-    const esUnidadNoUnitaria = unidadesNoUnitarias.includes(producto.unidad.toLowerCase());
+    const esUnidadNoUnitaria = unidadesNoUnitarias.includes((producto.unidad || '').toLowerCase());
 
     if (esUnidadNoUnitaria) {
       // Abrir el modal para vender por peso/cantidad
@@ -2675,7 +2708,7 @@ const imprimirTicketDesdeModal = () => {
                       }}>
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 text-white"
                         style={{ backgroundColor: 'var(--color-primario)' }}>
-                        {producto.nombre.charAt(0).toUpperCase()}
+                        {(producto.nombre || '?').charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate leading-tight" style={{ color: oscuro ? 'rgba(255,255,255,0.9)' : '#111827' }}>
@@ -2752,7 +2785,7 @@ const imprimirTicketDesdeModal = () => {
                   style={{ ...estilos.itemCarrito, animationDelay: `${idx * 30}ms` }}>
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${item.esRapida ? 'bg-purple-500 bg-opacity-20 text-purple-300' : 'text-white'}`}
                       style={!item.esRapida ? { backgroundColor: 'var(--color-primario)' } : {}}>
-                      {item.esRapida ? '⚡' : item.nombre_producto.charAt(0).toUpperCase()}
+                      {item.esRapida ? '⚡' : (item.nombre_producto || '?').charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate text-sm leading-tight" style={estilos.textoItemCarrito}>{item.nombre_producto}</p>

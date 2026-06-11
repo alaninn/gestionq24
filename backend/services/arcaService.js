@@ -144,13 +144,15 @@ function verificarCertificado(certPath) {
  */
 function obtenerTiposComprobante(regimenFiscal) {
     const tipos = {
+        // Factura B primero: es la habitual (consumidor final). La A es solo
+        // para ventas a otros Responsables Inscriptos y se elige a mano.
         responsable_inscripto: [
-            { codigo: 1, nombre: 'Factura A', descripcion: 'Para Responsables Inscriptos', emoji: '📄' },
             { codigo: 6, nombre: 'Factura B', descripcion: 'Para consumidores finales', emoji: '📄' },
-            { codigo: 3, nombre: 'Nota de Crédito A', descripcion: 'Devolución Factura A', emoji: '📝' },
+            { codigo: 1, nombre: 'Factura A', descripcion: 'Para Responsables Inscriptos', emoji: '📄' },
             { codigo: 8, nombre: 'Nota de Crédito B', descripcion: 'Devolución Factura B', emoji: '📝' },
-            { codigo: 2, nombre: 'Nota de Débito A', descripcion: 'Ajuste Factura A', emoji: '📋' },
+            { codigo: 3, nombre: 'Nota de Crédito A', descripcion: 'Devolución Factura A', emoji: '📝' },
             { codigo: 7, nombre: 'Nota de Débito B', descripcion: 'Ajuste Factura B', emoji: '📋' },
+            { codigo: 2, nombre: 'Nota de Débito A', descripcion: 'Ajuste Factura A', emoji: '📋' },
         ],
         monotributista: [
             { codigo: 11, nombre: 'Factura C', descripcion: 'Para Monotributistas', emoji: '📄' },

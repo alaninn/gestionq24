@@ -55,6 +55,7 @@ function RutaProtegida({ children, soloSuperadmin = false, requiereAdmin = false
 }
 
 import PlanBadge from './components/shared/PlanBadge';
+import ErrorBoundary from './components/shared/ErrorBoundary';
 
 function AppRoutes() {
   const { usuario, cargando } = useAuth();
@@ -107,15 +108,17 @@ function AppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <TemaProvider>
-          <ConectividadProvider>
-            <AppRoutes />
-          </ConectividadProvider>
-        </TemaProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <TemaProvider>
+            <ConectividadProvider>
+              <AppRoutes />
+            </ConectividadProvider>
+          </TemaProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
