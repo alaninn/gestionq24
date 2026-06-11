@@ -38,6 +38,12 @@ router.get('/historial', async (req, res) => {
         }, {});
         const ticketPromedio = totalVentas > 0 ? totalVendido / totalVentas : 0;
 
+        // Cuántas ventas se facturaron electrónicamente (con CAE)
+        const facturadas = ventas.rows.filter(v => v.tipo_facturacion === 'electronica').length;
+        const facturadoElectronico = ventas.rows
+            .filter(v => v.tipo_facturacion === 'electronica')
+            .reduce((acc, v) => acc + parseFloat(v.total), 0);
+
         // Gastos del turno: los pagados con dinero de la CAJA descuentan del
         // efectivo esperado en el cierre. Los de 'local'/'otro' no afectan.
         let gastosCaja = 0, gastosTotal = 0, gastosCantidad = 0;
@@ -55,7 +61,7 @@ router.get('/historial', async (req, res) => {
             gastosCantidad = parseInt(g.rows[0].cantidad) || 0;
         }
 
-        res.json({ ventas: ventas.rows, totalVendido, totalVentas, ticketPromedio, porMetodo, porDia, gastosCaja, gastosTotal, gastosCantidad });
+        res.json({ ventas: ventas.rows, totalVendido, totalVentas, ticketPromedio, porMetodo, porDia, gastosCaja, gastosTotal, gastosCantidad, facturadas, facturadoElectronico });
     } catch (error) {
         console.error('Error en historial:', error);
         res.status(500).json({ error: 'Error al generar historial' });
@@ -368,12 +374,80 @@ router.get('/dashboard', async (req, res) => {
               AND fecha::date >= CURRENT_DATE - 1
         `, [negocio_id]);
 
+        // Detalle del DÍA (hoy por defecto, o ?fecha=YYYY-MM-DD para otro día):
+        // desglose por método de pago, facturación electrónica, gastos por origen,
+        // ventas por hora y productos más vendidos del día.
+        const fechaDia = req.query.fecha || null;
+
+        const diaDetalle = await db.query(`
+            SELECT
+                COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total END), 0) AS efectivo,
+                COUNT(CASE WHEN metodo_pago = 'efectivo' THEN 1 END) AS efectivo_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'transferencia' THEN total END), 0) AS transferencia,
+                COUNT(CASE WHEN metodo_pago = 'transferencia' THEN 1 END) AS transferencia_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'tarjeta' THEN total END), 0) AS tarjeta,
+                COUNT(CASE WHEN metodo_pago = 'tarjeta' THEN 1 END) AS tarjeta_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'mercadopago' THEN total END), 0) AS mercadopago,
+                COUNT(CASE WHEN metodo_pago = 'mercadopago' THEN 1 END) AS mercadopago_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago NOT IN ('efectivo','transferencia','tarjeta','mercadopago') THEN total END), 0) AS otros,
+                COUNT(CASE WHEN tipo_facturacion = 'electronica' THEN 1 END) AS facturadas,
+                COALESCE(SUM(CASE WHEN tipo_facturacion = 'electronica' THEN total END), 0) AS facturado_electronico,
+                COUNT(*) AS total_ventas,
+                COALESCE(SUM(total), 0) AS total_vendido
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date = COALESCE($2::date, CURRENT_DATE)
+        `, [negocio_id, fechaDia]);
+
+        const gastosDia = await db.query(`
+            SELECT COALESCE(origen_dinero, 'caja') AS origen,
+                   COUNT(*) AS cantidad, COALESCE(SUM(monto), 0) AS total
+            FROM gastos
+            WHERE negocio_id = $1 AND fecha::date = COALESCE($2::date, CURRENT_DATE)
+            GROUP BY COALESCE(origen_dinero, 'caja')
+        `, [negocio_id, fechaDia]);
+
+        const ventasPorHora = await db.query(`
+            SELECT EXTRACT(HOUR FROM fecha)::int AS hora,
+                   COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date = COALESCE($2::date, CURRENT_DATE)
+            GROUP BY EXTRACT(HOUR FROM fecha)
+            ORDER BY hora ASC
+        `, [negocio_id, fechaDia]);
+
+        const topDia = await db.query(`
+            SELECT vi.nombre_producto,
+                   SUM(vi.cantidad) AS cantidad_vendida,
+                   SUM(vi.subtotal) AS total_facturado
+            FROM venta_items vi
+            JOIN ventas v ON vi.venta_id = v.id
+            WHERE v.negocio_id = $1 AND v.fecha::date = COALESCE($2::date, CURRENT_DATE)
+            GROUP BY vi.nombre_producto
+            ORDER BY cantidad_vendida DESC
+            LIMIT 5
+        `, [negocio_id, fechaDia]);
+
+        const gastos = { caja: 0, local: 0, otro: 0, total: 0, cantidad: 0 };
+        for (const g of gastosDia.rows) {
+            const monto = parseFloat(g.total) || 0;
+            gastos[g.origen] = (gastos[g.origen] || 0) + monto;
+            gastos.total += monto;
+            gastos.cantidad += parseInt(g.cantidad) || 0;
+        }
+
         res.json({
             stats: stats.rows[0],
             ventasPorDia: ventasPorDia.rows,
             ventasPorMetodo: ventasPorMetodo.rows,
             topProductos: topProductos.rows,
             comparacion: comparacion.rows[0],
+            dia: {
+                fecha: fechaDia,
+                detalle: diaDetalle.rows[0],
+                gastos,
+                porHora: ventasPorHora.rows,
+                topProductos: topDia.rows,
+            },
         });
 
     } catch (error) {

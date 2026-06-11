@@ -14,9 +14,31 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.6.1';
+export const VERSION_ACTUAL = '2.7.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.7.0',
+    fecha: '2026-06-11',
+    titulo: 'Dashboard del día y planes configurables',
+    destacados: [
+      {
+        titulo: '📍 Tu día en el local',
+        detalle: 'El Dashboard ahora arranca con un panel completo del día: cuánto vendiste en efectivo, transferencias, tarjetas y Mercado Pago (con cantidad de ventas y porcentaje de cada uno), cuántas ventas se facturaron electrónicamente por ARCA, los gastos del día separados por origen, las ventas hora por hora y lo más vendido. Con el filtro de fecha podés ver el mismo detalle de cualquier día anterior.',
+      },
+      {
+        titulo: '📐 Planes configurables',
+        detalle: 'Nuevo apartado "Planes" en el panel SuperAdmin: ahora los límites de usuarios y productos de cada plan se editan desde ahí (por ejemplo subir el límite de usuarios del plan Estándar), y se pueden activar o desactivar funciones como facturación electrónica y reportes avanzados por plan. Los cambios aplican al instante.',
+        super: true,
+      },
+    ],
+    cambios: [
+      { t: 'Reportes → Historial: ahora muestra el desglose por método de pago (efectivo, transferencias, tarjetas, Mercado Pago) y cuántas ventas se facturaron electrónicamente.' },
+      { t: 'Las tarjetas del resumen del día son interactivas: al tocarlas se abre el detalle de esas ventas (hora, ítems, monto y si se facturó por ARCA).' },
+      { t: 'El SuperAdmin ya no tiene límites de plan: puede crear usuarios o productos extra en cualquier negocio, aunque el plan esté al tope.', super: true },
+      { t: 'Los límites que se muestran en las pantallas de Usuarios y Productos ahora se leen del servidor, así reflejan los cambios hechos desde el panel SuperAdmin.' },
+    ],
+  },
   {
     version: '2.6.1',
     fecha: '2026-06-11',

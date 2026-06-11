@@ -3,9 +3,10 @@
 // Dashboard Interactivo y Moderno
 // =============================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
 import SaludNegocio from './SaludNegocio';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -42,11 +43,41 @@ function Dashboard() {
   const [productosStockBajo, setProductosStockBajo] = useState([]);
   const [cargandoStock, setCargandoStock] = useState(false);
   const [datosFiltrados, setDatosFiltrados] = useState(null);
+  const [fechaDia, setFechaDia] = useState(''); // '' = hoy
+  const fechaDiaRef = useRef('');
+  const [cargandoDia, setCargandoDia] = useState(false);
+
+  // Detalle interactivo de las tarjetas del día (click → lista de ventas)
+  const [detalleCard, setDetalleCard] = useState(null);
+  const [ventasDiaLista, setVentasDiaLista] = useState(null);
+  const [ventasDiaFecha, setVentasDiaFecha] = useState(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+
+  // El botón "atrás" del celular cierra los modales en vez de salir
+  useCerrarConAtras(!!detalleCard, () => setDetalleCard(null));
+  useCerrarConAtras(mostrarStockBajo, () => setMostrarStockBajo(false));
+
+  const abrirDetalle = async (card) => {
+    setDetalleCard(card);
+    const f = fechaDiaRef.current || new Date().toISOString().split('T')[0];
+    if (ventasDiaLista && ventasDiaFecha === f) return; // ya está cacheado para este día
+    try {
+      setCargandoDetalle(true);
+      const res = await api.get(`/api/reportes/historial?fecha_desde=${f}&fecha_hasta=${f}`);
+      setVentasDiaLista(res.data.ventas || []);
+      setVentasDiaFecha(f);
+    } catch (err) {
+      console.error('Error:', err);
+      setVentasDiaLista([]);
+    } finally {
+      setCargandoDetalle(false);
+    }
+  };
 
   useEffect(() => {
     cargarDatos();
     // Auto-actualizar cada 5 minutos
-    const intervalo = setInterval(cargarDatos, 5 * 60 * 1000);
+    const intervalo = setInterval(() => cargarDatos(), 5 * 60 * 1000);
     return () => clearInterval(intervalo);
   }, []);
 
@@ -56,19 +87,30 @@ function Dashboard() {
     }
   }, [periodo, datos]);
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (fecha) => {
+    // Ref para que el auto-refresh de 5 min respete el día que está mirando el usuario
+    const f = fecha !== undefined ? fecha : fechaDiaRef.current;
     try {
-      setCargando(true);
+      // Si ya hay datos cargados, solo mostramos un spinner chico en la sección del día
+      if (datos) setCargandoDia(true); else setCargando(true);
       setError(false);
-      const res = await api.get('/api/reportes/dashboard');
+      const res = await api.get('/api/reportes/dashboard' + (f ? `?fecha=${f}` : ''));
       setDatos(res.data);
       setUltimaActualizacion(new Date());
     } catch (err) {
       console.error('Error:', err);
-      setError(true);
+      if (!datos) setError(true);
     } finally {
       setCargando(false);
+      setCargandoDia(false);
     }
+  };
+
+  const cambiarFechaDia = (f) => {
+    setFechaDia(f);
+    fechaDiaRef.current = f;
+    setVentasDiaLista(null); // invalidar cache del detalle al cambiar de día
+    cargarDatos(f);
   };
 
   const filtrarDatosPorPeriodo = () => {
@@ -132,7 +174,30 @@ if (error) return (
 
   if (!datos) return null;
 
-  const { stats, ventasPorDia, ventasPorMetodo, topProductos, comparacion } = datos;
+  const { stats, ventasPorDia, ventasPorMetodo, topProductos, comparacion, dia } = datos;
+  const det = dia?.detalle || {};
+  const gastosDia = dia?.gastos || { caja: 0, local: 0, otro: 0, total: 0, cantidad: 0 };
+  const esHoy = !fechaDia;
+  const totalDia = parseFloat(det.total_vendido) || 0;
+  const ventasDia = parseInt(det.total_ventas) || 0;
+  const ticketDia = ventasDia > 0 ? totalDia / ventasDia : 0;
+  const pctDia = (monto) => totalDia > 0 ? Math.round((parseFloat(monto) || 0) / totalDia * 100) : 0;
+  const fechaDiaLabel = esHoy
+    ? new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : new Date(fechaDia + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const datosHora = (dia?.porHora || []).map(h => ({
+    hora: `${h.hora}h`,
+    total: parseFloat(h.total),
+    ventas: parseInt(h.cantidad),
+  }));
+
+  const metodosDia = [
+    { clave: 'efectivo', label: 'Efectivo', icono: '💵', color: '#10b981', bg: 'bg-emerald-500' },
+    { clave: 'transferencia', label: 'Transferencias', icono: '🏦', color: '#0ea5e9', bg: 'bg-sky-500' },
+    { clave: 'tarjeta', label: 'Tarjetas déb./créd.', icono: '💳', color: '#6366f1', bg: 'bg-indigo-500' },
+    { clave: 'mercadopago', label: 'Mercado Pago', icono: '📱', color: '#06b6d4', bg: 'bg-cyan-500' },
+  ];
 
   // Formateamos fechas para el gráfico
   const datosGrafico = ventasPorDia.map(d => ({
@@ -179,10 +244,162 @@ if (error) return (
         </div>
       </div>
 
+      {/* ══════════ TU DÍA EN EL LOCAL ══════════ */}
+      {dia && (
+        <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 shadow-2xl transition-opacity duration-300 ${cargandoDia ? 'opacity-60' : ''}`}>
+          {/* decoración de fondo */}
+          <div className="absolute -top-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-32 -left-16 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="relative p-5 lg:p-7 space-y-5">
+            {/* Encabezado + filtro de fecha */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-emerald-300/80 text-[11px] uppercase tracking-widest font-semibold">Resumen del día</p>
+                <h3 className="text-xl lg:text-2xl font-bold text-white capitalize mt-0.5">{fechaDiaLabel}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {!esHoy && (
+                  <button onClick={() => cambiarFechaDia('')}
+                    className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors">
+                    ⚡ Hoy
+                  </button>
+                )}
+                <input type="date" value={fechaDia} max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => cambiarFechaDia(e.target.value)}
+                  className="bg-white/10 border border-white/20 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 [color-scheme:dark]" />
+              </div>
+            </div>
+
+            {/* Hero: total del día */}
+            <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+              <div>
+                <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold">Total vendido</p>
+                <p className="text-4xl lg:text-5xl font-bold text-white tabular-nums mt-1 drop-shadow">{fmt(totalDia)}</p>
+              </div>
+              <div className="flex gap-6 pb-1">
+                <div>
+                  <p className="text-slate-400 text-xs">Ventas</p>
+                  <p className="text-xl font-bold text-emerald-300 tabular-nums">{ventasDia}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs">Ticket promedio</p>
+                  <p className="text-xl font-bold text-emerald-300 tabular-nums">{fmt(ticketDia)}</p>
+                </div>
+                {esHoy && comparacion.ayer > 0 && (
+                  <div>
+                    <p className="text-slate-400 text-xs">vs ayer</p>
+                    <p className={`text-xl font-bold tabular-nums ${parseFloat(varPct) >= 0 ? 'text-emerald-300' : 'text-red-400'}`}>
+                      {parseFloat(varPct) >= 0 ? '↑' : '↓'} {Math.abs(varPct)}%
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Métodos de pago del día */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {metodosDia.map(m => (
+                <div key={m.clave} onClick={() => abrirDetalle({ tipo: 'metodo', ...m })}
+                  title="Click para ver el detalle de estas ventas"
+                  className="bg-white/[0.07] backdrop-blur border border-white/10 rounded-2xl p-4 hover:bg-white/[0.14] hover:border-white/25 hover:scale-[1.02] active:scale-[0.99] transition-all cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center text-base shadow-lg`}>{m.icono}</span>
+                    <p className="text-slate-300 text-xs font-medium leading-tight">{m.label}</p>
+                  </div>
+                  <p className="text-2xl font-bold text-white tabular-nums mt-2">{fmt(det[m.clave])}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-[11px] text-slate-400">{det[`${m.clave}_cant`] || 0} venta(s)</span>
+                    <span className="text-[11px] font-semibold text-slate-300">{pctDia(det[m.clave])}%</span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-1 mt-1.5 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pctDia(det[m.clave])}%`, backgroundColor: m.color }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Facturación electrónica + Gastos del día */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div onClick={() => abrirDetalle({ tipo: 'facturadas', label: 'Facturación electrónica', icono: '🧾' })}
+                title="Click para ver el detalle de las ventas facturadas"
+                className="bg-amber-400/10 border border-amber-400/25 rounded-2xl p-4 flex items-center justify-between hover:bg-amber-400/[0.18] hover:border-amber-400/40 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <div>
+                  <p className="text-amber-300 text-xs font-semibold uppercase tracking-wide">🧾 Facturación electrónica (ARCA)</p>
+                  <p className="text-2xl font-bold text-white tabular-nums mt-1">
+                    {det.facturadas || 0} <span className="text-sm font-medium text-amber-200/70">de {ventasDia} ventas</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] text-amber-200/70">Monto facturado</p>
+                  <p className="text-lg font-bold text-amber-300 tabular-nums">{fmt(det.facturado_electronico)}</p>
+                </div>
+              </div>
+              <div className="bg-red-400/10 border border-red-400/25 rounded-2xl p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-red-300 text-xs font-semibold uppercase tracking-wide">💸 Gastos del día</p>
+                  <p className="text-lg font-bold text-red-300 tabular-nums">{fmt(gastosDia.total)}</p>
+                </div>
+                {gastosDia.cantidad > 0 ? (
+                  <div className="flex gap-4 mt-2 text-[12px]">
+                    <span className="text-slate-300">🧰 Caja: <b className="text-white">{fmt(gastosDia.caja)}</b></span>
+                    <span className="text-slate-300">🏪 Local: <b className="text-white">{fmt(gastosDia.local)}</b></span>
+                    <span className="text-slate-300">📱 MP: <b className="text-white">{fmt(gastosDia.otro)}</b></span>
+                  </div>
+                ) : (
+                  <p className="text-slate-400 text-xs mt-2">Sin gastos registrados este día ✅</p>
+                )}
+              </div>
+            </div>
+
+            {/* Ventas por hora + Top del día */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4">
+                <p className="text-slate-300 text-xs font-semibold uppercase tracking-wide mb-2">🕒 Ventas por hora</p>
+                {datosHora.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-8 text-center">Sin ventas este día</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={datosHora} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="hora" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={{ stroke: '#334155' }} />
+                      <YAxis tickFormatter={fmtCorto} tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        formatter={(value, name) => name === 'total' ? [fmt(value), '💰 Vendido'] : [value, 'Ventas']}
+                        labelFormatter={(l) => `🕒 ${l}`}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.4)', background: '#1e293b', color: '#fff' }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                      <Bar dataKey="total" fill="#34d399" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4">
+                <p className="text-slate-300 text-xs font-semibold uppercase tracking-wide mb-2">🏆 Lo más vendido del día</p>
+                {(dia.topProductos || []).length === 0 ? (
+                  <p className="text-slate-500 text-sm py-8 text-center">Sin ventas este día</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {dia.topProductos.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="text-emerald-400 font-bold w-5 text-right tabular-nums">{i + 1}.</span>
+                        <span className="text-slate-200 flex-1 truncate">{p.nombre_producto}</span>
+                        <span className="text-slate-400 text-xs tabular-nums">{parseFloat(p.cantidad_vendida)} u.</span>
+                        <span className="text-white font-semibold text-xs tabular-nums w-20 text-right">{fmt(p.total_facturado)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Widget de Salud del Negocio */}
       <SaludNegocio />
 
-      {/* Tarjetas de stats animadas */}
+      {/* Tarjetas de stats del mes */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
           <div className="flex items-center justify-between">
@@ -226,19 +443,7 @@ if (error) return (
       </div>
 
       {/* Comparación de rendimiento */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
-          <div className="flex items-center justify-between">
-            <p className="text-amber-100 text-sm font-medium">HOY</p>
-            <span className="text-2xl group-hover:rotate-12 transition-transform duration-300">⚡</span>
-          </div>
-          <p className="text-3xl font-bold mt-2">{fmt(comparacion.hoy)}</p>
-          <div className={`flex items-center gap-1 mt-2 text-sm font-semibold ${parseFloat(varPct) >= 0 ? 'bg-green-400/30' : 'bg-red-400/30'} px-2 py-1 rounded-full`}>
-            <span>{parseFloat(varPct) >= 0 ? '↑' : '↓'}</span>
-            <span>{Math.abs(varPct)}% vs ayer</span>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
           <div className="flex items-center justify-between">
             <p className="text-gray-500 text-sm font-medium">AYER</p>
@@ -539,6 +744,73 @@ if (error) return (
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* Modal detalle de ventas del día (al hacer click en una tarjeta) */}
+      {detalleCard && (() => {
+        const ventasFiltradas = (ventasDiaLista || []).filter(v =>
+          detalleCard.tipo === 'facturadas'
+            ? v.tipo_facturacion === 'electronica'
+            : v.metodo_pago === detalleCard.clave
+        );
+        const totalFiltrado = ventasFiltradas.reduce((acc, v) => acc + parseFloat(v.total), 0);
+        return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn"
+            onClick={() => setDetalleCard(null)}>
+            <div className="bg-slate-900 border border-white/10 rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">{detalleCard.icono} {detalleCard.label}</h3>
+                  <p className="text-slate-400 text-xs capitalize mt-0.5">{fechaDiaLabel}</p>
+                </div>
+                <button onClick={() => setDetalleCard(null)}
+                  className="text-slate-400 hover:text-white text-3xl leading-none">×</button>
+              </div>
+
+              <div className="px-5 py-3 bg-white/[0.04] border-b border-white/10 flex items-center justify-between">
+                <span className="text-slate-300 text-sm">{ventasFiltradas.length} venta(s)</span>
+                <span className="text-emerald-300 font-bold text-lg tabular-nums">{fmt(totalFiltrado)}</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3">
+                {cargandoDetalle ? (
+                  <div className="text-center py-10">
+                    <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-slate-400 text-sm">Cargando ventas...</p>
+                  </div>
+                ) : ventasFiltradas.length === 0 ? (
+                  <p className="text-slate-500 text-sm text-center py-10">No hay ventas de este tipo en el día</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {ventasFiltradas.map(v => (
+                      <div key={v.id} className="flex items-center gap-3 bg-white/[0.05] hover:bg-white/[0.09] rounded-xl px-3 py-2.5 transition-colors">
+                        <span className="text-slate-400 text-xs tabular-nums w-12">
+                          {new Date(v.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-200 text-sm">Venta #{v.id}</p>
+                          <p className="text-slate-500 text-[11px]">{v.cantidad_items} ítem(s){v.metodo_pago ? ` · ${v.metodo_pago.replace('_', ' ')}` : ''}</p>
+                        </div>
+                        {v.tipo_facturacion === 'electronica' && (
+                          <span className="text-[10px] bg-amber-400/15 text-amber-300 border border-amber-400/25 px-2 py-0.5 rounded-full flex-shrink-0">🧾 ARCA</span>
+                        )}
+                        <span className="text-white font-semibold text-sm tabular-nums flex-shrink-0">{fmt(v.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 border-t border-white/10">
+                <button onClick={() => setDetalleCard(null)}
+                  className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl font-semibold text-sm transition-colors">
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal Stock Bajo mejorado */}
       {mostrarStockBajo && (

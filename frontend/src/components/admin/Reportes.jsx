@@ -321,14 +321,33 @@ const calcularFechas = () => {
                   <p className="text-xs text-gray-400 mt-1">Ticket prom: {fmt(historial.ticketPromedio)}</p>
                 </div>
                 <div className="bg-white rounded-xl p-5 shadow">
-                  <p className="text-gray-500 text-sm">Ventas en Efectivo</p>
-                  <p className="text-2xl font-bold text-gray-800 mt-1">{pctMetodo('efectivo')}%</p>
-                  <p className="text-xs text-gray-400 mt-1">{fmt(historial.porMetodo?.efectivo)}</p>
+                  <p className="text-gray-500 text-sm">💵 Efectivo</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(historial.porMetodo?.efectivo)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{pctMetodo('efectivo')}% del total</p>
                 </div>
                 <div className="bg-white rounded-xl p-5 shadow">
-                  <p className="text-gray-500 text-sm">Ventas con Tarjeta</p>
-                  <p className="text-2xl font-bold text-gray-800 mt-1">{pctMetodo('tarjeta')}%</p>
-                  <p className="text-xs text-gray-400 mt-1">{fmt(historial.porMetodo?.tarjeta)}</p>
+                  <p className="text-gray-500 text-sm">🧾 Facturadas (ARCA)</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-1">{historial.facturadas || 0}</p>
+                  <p className="text-xs text-gray-400 mt-1">{fmt(historial.facturadoElectronico)}</p>
+                </div>
+              </div>
+
+              {/* Desglose por método de pago */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white rounded-xl p-4 shadow border-l-4 border-sky-400">
+                  <p className="text-gray-500 text-xs">🏦 Transferencias</p>
+                  <p className="text-lg font-bold text-gray-800 mt-1">{fmt(historial.porMetodo?.transferencia)}</p>
+                  <p className="text-xs text-gray-400">{pctMetodo('transferencia')}% del total</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 shadow border-l-4 border-indigo-400">
+                  <p className="text-gray-500 text-xs">💳 Tarjetas déb./créd.</p>
+                  <p className="text-lg font-bold text-gray-800 mt-1">{fmt(historial.porMetodo?.tarjeta)}</p>
+                  <p className="text-xs text-gray-400">{pctMetodo('tarjeta')}% del total</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 shadow border-l-4 border-cyan-400">
+                  <p className="text-gray-500 text-xs">📱 Mercado Pago</p>
+                  <p className="text-lg font-bold text-gray-800 mt-1">{fmt(historial.porMetodo?.mercadopago)}</p>
+                  <p className="text-xs text-gray-400">{pctMetodo('mercadopago')}% del total</p>
                 </div>
               </div>
 

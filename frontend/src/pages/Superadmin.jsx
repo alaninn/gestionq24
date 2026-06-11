@@ -47,6 +47,9 @@ function Superadmin() {
 
   // Visor de logs (bajo demanda: solo consume mientras está iniciado)
   const [mostrarModalLogs, setMostrarModalLogs] = useState(false);
+  const [mostrarModalPlanes, setMostrarModalPlanes] = useState(false);
+  const [planesConfig, setPlanesConfig] = useState([]);
+  const [guardandoPlan, setGuardandoPlan] = useState(null);
   const [logsContenido, setLogsContenido] = useState([]);
   const [logsActivo, setLogsActivo] = useState(false);
   const [logsCargando, setLogsCargando] = useState(false);
@@ -85,6 +88,42 @@ function Superadmin() {
   useCerrarConAtras(!!mostrarModalAdminNegocio, () => setMostrarModalAdminNegocio(null));
   useCerrarConAtras(mostrarModalMiCuenta, () => setMostrarModalMiCuenta(false));
   useCerrarConAtras(mostrarModalLogs, () => cerrarModalLogs());
+  useCerrarConAtras(mostrarModalPlanes, () => setMostrarModalPlanes(false));
+
+  // ---- Configuración de planes (límites y funciones editables) ----
+  const abrirModalPlanes = async () => {
+    setMostrarModalPlanes(true);
+    try {
+      const res = await api.get('/api/superadmin/planes');
+      setPlanesConfig(res.data);
+    } catch (err) {
+      setError('No se pudo cargar la configuración de planes');
+      setTimeout(() => setError(''), 4000);
+    }
+  };
+
+  const cambiarCampoPlan = (plan, campo, valor) => {
+    setPlanesConfig(prev => prev.map(p => p.plan === plan ? { ...p, [campo]: valor } : p));
+  };
+
+  const guardarPlan = async (p) => {
+    try {
+      setGuardandoPlan(p.plan);
+      await api.put(`/api/superadmin/planes/${p.plan}`, {
+        max_productos: p.max_productos,
+        max_usuarios: p.max_usuarios,
+        facturacion_electronica: p.facturacion_electronica,
+        reportes_avanzados: p.reportes_avanzados,
+      });
+      setExito(`Plan ${p.plan} actualizado ✅ Los cambios aplican de inmediato.`);
+      setTimeout(() => setExito(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar el plan');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setGuardandoPlan(null);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
@@ -452,6 +491,11 @@ function Superadmin() {
           <div className="hidden sm:block mr-1">
             <VersionChangelog variant="superadmin" />
           </div>
+          <button onClick={abrirModalPlanes}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            title="Configurar límites y funciones de cada plan">
+            📐 <span className="hidden sm:inline">Planes</span>
+          </button>
           <button onClick={() => setMostrarModalLogs(true)}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
             title="Ver logs del servidor">
@@ -1477,6 +1521,81 @@ function Superadmin() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Configuración de Planes */}
+      {mostrarModalPlanes && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-5 border-b bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">📐 Configuración de Planes</h3>
+                <p className="text-purple-200 text-xs mt-0.5">Definí qué incluye cada plan: límites y funciones. Los cambios aplican a todos los negocios al instante.</p>
+              </div>
+              <button onClick={() => setMostrarModalPlanes(false)}
+                className="text-white/80 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {planesConfig.length === 0 ? (
+                <p className="text-center text-gray-400 py-10">Cargando planes...</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {planesConfig.map(p => (
+                    <div key={p.plan} className={`rounded-2xl border-2 p-5 ${p.plan === 'premium' ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'}`}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-bold text-gray-800 capitalize">
+                          {p.plan === 'premium' ? '⭐' : '📦'} Plan {p.plan}
+                        </h4>
+                        {p.updated_at && (
+                          <span className="text-[10px] text-gray-400">edit. {new Date(p.updated_at).toLocaleDateString('es-AR')}</span>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">👥 Máximo de usuarios</label>
+                          <input type="number" min="1" value={p.max_usuarios}
+                            onChange={(e) => cambiarCampoPlan(p.plan, 'max_usuarios', e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">📦 Máximo de productos</label>
+                          <input type="number" min="1" value={p.max_productos}
+                            onChange={(e) => cambiarCampoPlan(p.plan, 'max_productos', e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                        </div>
+
+                        <div className="pt-2 space-y-2">
+                          <p className="text-xs font-semibold text-gray-600">Funciones incluidas</p>
+                          <label className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-purple-300 transition-colors">
+                            <span className="text-sm text-gray-700">🧾 Facturación electrónica (ARCA)</span>
+                            <input type="checkbox" checked={!!p.facturacion_electronica}
+                              onChange={(e) => cambiarCampoPlan(p.plan, 'facturacion_electronica', e.target.checked)}
+                              className="w-5 h-5 accent-purple-600" />
+                          </label>
+                          <label className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-purple-300 transition-colors">
+                            <span className="text-sm text-gray-700">📊 Reportes avanzados</span>
+                            <input type="checkbox" checked={!!p.reportes_avanzados}
+                              onChange={(e) => cambiarCampoPlan(p.plan, 'reportes_avanzados', e.target.checked)}
+                              className="w-5 h-5 accent-purple-600" />
+                          </label>
+                        </div>
+
+                        <button onClick={() => guardarPlan(p)} disabled={guardandoPlan === p.plan}
+                          className="w-full mt-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl font-semibold text-sm transition-all shadow disabled:opacity-50">
+                          {guardandoPlan === p.plan ? '⏳ Guardando...' : '💾 Guardar cambios'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-4 text-center">
+                💡 El superadmin nunca está limitado por estos valores: siempre puede crear usuarios y productos extra en cualquier negocio.
+              </p>
+            </div>
           </div>
         </div>
       )}

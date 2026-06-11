@@ -163,22 +163,24 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             return res.status(400).json({ error: 'Nombre y precio de venta son obligatorios' });
         }
 
-        // Verificar límite de productos según plan (req.planUsuario lo resuelve el
-        // middleware: para superadmin usa el plan REAL del negocio que opera)
-        const plan = req.planUsuario || req.usuario?.plan || 'estandar';
-        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
-        const countRes = await db.query(
-            'SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE',
-            [negocio_id]
-        );
-        const totalActual = parseInt(countRes.rows[0].count);
-        if (totalActual >= limites.max_productos) {
-            return res.status(403).json({
-                error: `Límite de ${limites.max_productos} productos alcanzado para el plan ${plan.charAt(0).toUpperCase() + plan.slice(1)}. Para cargar más productos necesitás el Plan Premium.`,
-                limitePlan: true,
-                limite: limites.max_productos,
-                plan
-            });
+        // Verificar límite de productos según plan. El superadmin tiene poder
+        // total: puede cargar productos extra en cualquier negocio sin límite.
+        if (req.usuario?.rol !== 'superadmin') {
+            const plan = req.planUsuario || req.usuario?.plan || 'estandar';
+            const limites = req.limitesPlan || LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+            const countRes = await db.query(
+                'SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE',
+                [negocio_id]
+            );
+            const totalActual = parseInt(countRes.rows[0].count);
+            if (totalActual >= limites.max_productos) {
+                return res.status(403).json({
+                    error: `Límite de ${limites.max_productos} productos alcanzado para el plan ${plan.charAt(0).toUpperCase() + plan.slice(1)}. Para cargar más productos necesitás el Plan Premium.`,
+                    limitePlan: true,
+                    limite: limites.max_productos,
+                    plan
+                });
+            }
         }
 
         let codigoFinal = codigo;
@@ -239,10 +241,14 @@ router.post('/importar', verificarPermiso('productos', 'crear'), async (req, res
     try {
         await client.query('BEGIN');
 
-        // Plan del negocio desde la BD (no del token, así funciona también para superadmin)
+        // Plan del negocio desde la BD (no del token, así funciona también para superadmin).
+        // El superadmin importa sin límite de productos.
         const negRes = await client.query('SELECT plan FROM negocios WHERE id = $1', [negocio_id]);
         const plan = negRes.rows[0]?.plan || 'estandar';
-        const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+        const limitesBase = req.limitesPlan || LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
+        const limites = req.usuario?.rol === 'superadmin'
+            ? { ...limitesBase, max_productos: Infinity }
+            : limitesBase;
 
         // Mapa de categorías existentes (nombre normalizado -> id)
         const catRes = await client.query('SELECT id, nombre FROM categorias WHERE negocio_id = $1', [negocio_id]);
