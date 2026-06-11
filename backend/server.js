@@ -2,6 +2,10 @@ process.env.TZ = 'America/Argentina/Buenos_Aires';
 
 require('dotenv').config();
 
+// Captura los logs del servidor en un buffer chico en memoria (~100KB)
+// para poder verlos desde el panel SuperAdmin sin gastar recursos.
+require('./services/logBuffer').instalar();
+
 const express = require('express');
 const app = express();
 const cors = require('cors');
