@@ -3,7 +3,7 @@
 // FUNCIÓN: Panel de control global - solo superadmin
 // =============================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import VersionChangelog from '../components/shared/VersionChangelog';
@@ -43,6 +43,15 @@ function Superadmin() {
   const [tickets, setTickets] = useState([]);
   const [cargandoTickets, setCargandoTickets] = useState(false);
   const [respuestaTicket, setRespuestaTicket] = useState('');
+
+  // Visor de logs (bajo demanda: solo consume mientras está iniciado)
+  const [mostrarModalLogs, setMostrarModalLogs] = useState(false);
+  const [logsContenido, setLogsContenido] = useState([]);
+  const [logsActivo, setLogsActivo] = useState(false);
+  const [logsCargando, setLogsCargando] = useState(false);
+  const logsIntervalRef = useRef(null);
+  const logsUltimoIdRef = useRef(0);
+  const logsPreRef = useRef(null);
 
   const [formNuevo, setFormNuevo] = useState({
     nombre: '', email: '', telefono: '', direccion: '',
@@ -343,6 +352,69 @@ function Superadmin() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
+  // ---- VISOR DE LOGS ----
+  const detenerLogs = () => {
+    if (logsIntervalRef.current) {
+      clearInterval(logsIntervalRef.current);
+      logsIntervalRef.current = null;
+    }
+    setLogsActivo(false);
+  };
+
+  const tickLogs = async () => {
+    try {
+      const res = await api.get(`/api/superadmin/logs/en-vivo?desde=${logsUltimoIdRef.current}`);
+      logsUltimoIdRef.current = res.data.ultimoId || logsUltimoIdRef.current;
+      if (res.data.lineas?.length > 0) {
+        const nuevas = res.data.lineas.map(l =>
+          `[${(l.fecha || '').slice(11, 19)}] ${(l.nivel || 'info').toUpperCase().padEnd(5)} ${l.mensaje}`
+        );
+        setLogsContenido(prev => [...prev, ...nuevas].slice(-500));
+      }
+    } catch { /* si falla un tick, el próximo reintenta */ }
+  };
+
+  const iniciarLogsEnVivo = () => {
+    detenerLogs();
+    setLogsContenido([`— Conectado. Mostrando logs del servidor en tiempo real (se actualiza cada 3 segundos) —`]);
+    logsUltimoIdRef.current = 0;
+    setLogsActivo(true);
+    tickLogs();
+    logsIntervalRef.current = setInterval(tickLogs, 3000);
+  };
+
+  const cargarLogArchivo = async (tipo) => {
+    detenerLogs();
+    setLogsCargando(true);
+    try {
+      const res = await api.get(`/api/superadmin/logs/archivo?tipo=${tipo}`);
+      if (!res.data.disponible) {
+        setLogsContenido([res.data.mensaje || 'Archivo de log no disponible']);
+      } else {
+        setLogsContenido(res.data.contenido.split('\n').slice(-500));
+      }
+    } catch {
+      setLogsContenido(['❌ Error al cargar el archivo de log']);
+    } finally {
+      setLogsCargando(false);
+    }
+  };
+
+  const cerrarModalLogs = () => {
+    detenerLogs();
+    setMostrarModalLogs(false);
+    setLogsContenido([]);
+    logsUltimoIdRef.current = 0;
+  };
+
+  // Auto-scroll al final cuando llegan líneas nuevas
+  useEffect(() => {
+    if (logsPreRef.current) logsPreRef.current.scrollTop = logsPreRef.current.scrollHeight;
+  }, [logsContenido]);
+
+  // Cortar el polling si se desmonta la página
+  useEffect(() => () => detenerLogs(), []);
+
   if (cargando) return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center">
       <p className="text-white text-lg">Cargando panel...</p>
@@ -367,6 +439,11 @@ function Superadmin() {
           <div className="hidden sm:block mr-1">
             <VersionChangelog variant="superadmin" />
           </div>
+          <button onClick={() => setMostrarModalLogs(true)}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            title="Ver logs del servidor">
+            📜 <span className="hidden sm:inline">Logs</span>
+          </button>
           <button onClick={() => {
             setFormMiCuenta({ nombre: usuario?.nombre || '', email: usuario?.email || '', password: '' });
             setMostrarModalMiCuenta(true);
@@ -395,6 +472,59 @@ function Superadmin() {
           <div className="bg-gradient-to-r from-red-500/10 to-pink-500/10 border border-red-500/30 text-red-400 px-6 py-4 rounded-xl backdrop-blur-sm shadow-lg flex items-center gap-3">
             <span className="text-2xl">❌</span>
             <span className="font-medium">{error}</span>
+          </div>
+        )}
+
+        {/* Tarjetas de estadísticas globales */}
+        {stats && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/30 rounded-2xl p-4">
+              <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide">Negocios</p>
+              <p className="text-3xl font-bold text-white mt-1">{stats.total_negocios}</p>
+              <p className="text-xs text-slate-400 mt-1">
+                <span className="text-green-400">{stats.negocios_activos} activos</span>
+                {parseInt(stats.negocios_vencidos) > 0 && <> · <span className="text-yellow-400">{stats.negocios_vencidos} vencidos</span></>}
+                {parseInt(stats.negocios_bloqueados) > 0 && <> · <span className="text-red-400">{stats.negocios_bloqueados} bloqueados</span></>}
+              </p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-2xl p-4">
+              <p className="text-purple-300 text-xs font-semibold uppercase tracking-wide">Usuarios</p>
+              <p className="text-3xl font-bold text-white mt-1">{stats.total_usuarios}</p>
+              <p className="text-xs text-slate-400 mt-1">en todos los negocios</p>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/10 border border-emerald-500/30 rounded-2xl p-4">
+              <p className="text-emerald-300 text-xs font-semibold uppercase tracking-wide">Ventas totales</p>
+              <p className="text-3xl font-bold text-white mt-1">{stats.total_ventas_global}</p>
+              <p className="text-xs text-slate-400 mt-1">operaciones registradas</p>
+            </div>
+            <div className="bg-gradient-to-br from-amber-500/10 to-amber-600/10 border border-amber-500/30 rounded-2xl p-4">
+              <p className="text-amber-300 text-xs font-semibold uppercase tracking-wide">Facturado global</p>
+              <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(stats.total_facturado_global)}</p>
+              <p className="text-xs text-slate-400 mt-1">histórico de todos los negocios</p>
+            </div>
+          </div>
+        )}
+
+        {/* Alertas pendientes */}
+        {alertas.filter(a => !a.resuelta).length > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4">
+            <p className="text-yellow-300 font-bold text-sm mb-3">
+              ⚠️ {alertas.filter(a => !a.resuelta).length} alerta(s) pendiente(s)
+            </p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {alertas.filter(a => !a.resuelta).slice(0, 10).map(a => (
+                <div key={a.id} className="flex items-center justify-between gap-3 bg-black/20 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">{a.titulo}</p>
+                    <p className="text-xs text-slate-400 truncate">{a.descripcion}</p>
+                  </div>
+                  <button onClick={() => resolverAlerta(a.id)}
+                    className="text-xs bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-200 px-3 py-1.5 rounded-lg flex-shrink-0 transition-colors">
+                    Resolver
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -443,7 +573,7 @@ function Superadmin() {
                           </div>
                           <div>
                             <p className="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">{negocio.nombre}</p>
-                            <p className="text-xs text-gray-500">{negocio.total_usuarios} usuarios • {negocio.total_productos} productos</p>
+                            <p className="text-xs text-gray-500">{negocio.total_usuarios} usuarios • {negocio.total_productos} productos • cliente desde {fmtFecha(negocio.created_at)}</p>
                           </div>
                         </div>
                       </td>
@@ -472,9 +602,17 @@ function Superadmin() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="font-semibold text-gray-800">{negocio.total_ventas}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {negocio.ultima_venta
+                            ? `últ: ${fmtFecha(negocio.ultima_venta)}`
+                            : 'sin ventas'}
+                        </p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="font-bold text-green-600 text-lg">{fmt(negocio.total_facturado)}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          30d: <span className="font-semibold text-gray-600">{fmt(negocio.facturado_30d)}</span> ({negocio.ventas_30d || 0} vtas)
+                        </p>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className="text-purple-500 text-sm font-medium group-hover:text-purple-700">
@@ -1221,6 +1359,168 @@ function Superadmin() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Nuevo Negocio */}
+      {mostrarModalNuevo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b sticky top-0 bg-white z-10 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">➕ Nuevo Negocio</h3>
+                <p className="text-xs text-gray-500">Se crea el negocio junto con su usuario administrador</p>
+              </div>
+              <button onClick={() => setMostrarModalNuevo(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+
+            <form onSubmit={crearNegocio} className="p-5 space-y-4">
+              {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del negocio *</label>
+                <input type="text" value={formNuevo.nombre} required
+                  onChange={(e) => setFormNuevo(p => ({ ...p, nombre: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Ej: Almacén Don Pedro" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <input type="email" value={formNuevo.email} required
+                    onChange={(e) => setFormNuevo(p => ({ ...p, email: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="dueño@negocio.com" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                  <input type="text" value={formNuevo.telefono}
+                    onChange={(e) => setFormNuevo(p => ({ ...p, telefono: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Opcional" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+                <input type="text" value={formNuevo.direccion}
+                  onChange={(e) => setFormNuevo(p => ({ ...p, direccion: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Opcional" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                  <div className="flex gap-2">
+                    {[{ id: 'estandar', label: '📦 Estándar' }, { id: 'premium', label: '✨ Premium' }].map(pl => (
+                      <button key={pl.id} type="button"
+                        onClick={() => setFormNuevo(p => ({ ...p, plan: pl.id }))}
+                        className={`flex-1 py-2 px-2 rounded-lg text-sm font-medium border-2 transition-all ${formNuevo.plan === pl.id ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600'}`}>
+                        {pl.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Días de uso</label>
+                  <input type="number" value={formNuevo.dias_uso} min="1"
+                    onChange={(e) => setFormNuevo(p => ({ ...p, dias_uso: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-gray-700">👤 Usuario administrador del negocio</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Usuario *</label>
+                    <input type="text" value={formNuevo.username_admin} required
+                      onChange={(e) => setFormNuevo(p => ({ ...p, username_admin: e.target.value.toLowerCase().replace(/\s/g, '') }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Ej: donpedro" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+                    <input type="text" value={formNuevo.password_admin} required
+                      onChange={(e) => setFormNuevo(p => ({ ...p, password_admin: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Contraseña inicial" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">Con estas credenciales el dueño inicia sesión por primera vez.</p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setMostrarModalNuevo(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors">
+                  ✅ Crear Negocio
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Visor de Logs */}
+      {mostrarModalLogs && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden border border-gray-700">
+
+            {/* Encabezado + controles */}
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-white">📜 Logs del Servidor</h3>
+                <p className="text-xs text-gray-400">
+                  Solo consume recursos mientras está iniciado. Al cerrar, se corta solo.
+                </p>
+              </div>
+              <button onClick={cerrarModalLogs} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div className="px-4 py-2 border-b border-gray-700 flex items-center gap-2 flex-wrap">
+              {!logsActivo ? (
+                <button onClick={iniciarLogsEnVivo}
+                  className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">
+                  ▶️ Iniciar en vivo
+                </button>
+              ) : (
+                <button onClick={detenerLogs}
+                  className="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">
+                  ⏸ Detener
+                </button>
+              )}
+              <div className="w-px h-6 bg-gray-700" />
+              <button onClick={() => cargarLogArchivo('out')} disabled={logsCargando}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded-lg text-sm transition-colors disabled:opacity-50">
+                📄 Archivo (salida)
+              </button>
+              <button onClick={() => cargarLogArchivo('error')} disabled={logsCargando}
+                className="bg-gray-700 hover:bg-gray-600 text-red-300 px-3 py-1.5 rounded-lg text-sm transition-colors disabled:opacity-50">
+                ❌ Archivo (errores)
+              </button>
+              {logsActivo && (
+                <span className="ml-auto flex items-center gap-1.5 text-xs text-green-400">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /> En vivo
+                </span>
+              )}
+            </div>
+
+            {/* Contenido */}
+            <pre ref={logsPreRef}
+              className="flex-1 overflow-y-auto p-4 text-xs font-mono text-green-300 whitespace-pre-wrap break-all bg-black/40">
+              {logsCargando
+                ? 'Cargando...'
+                : logsContenido.length === 0
+                  ? 'Apretá "▶️ Iniciar en vivo" para ver los logs en tiempo real,\no cargá un archivo guardado con los botones de arriba.'
+                  : logsContenido.join('\n')}
+            </pre>
           </div>
         </div>
       )}

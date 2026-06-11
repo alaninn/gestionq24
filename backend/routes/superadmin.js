@@ -4,6 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const db = require('../config/database');
 const { verificarToken, soloSuperadmin } = require('../middleware/auth');
 
@@ -14,12 +15,15 @@ router.use(soloSuperadmin);
 router.get('/negocios', async (req, res) => {
     try {
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 n.*,
                 (SELECT COUNT(*) FROM usuarios WHERE negocio_id = n.id AND activo = TRUE) AS total_usuarios,
                 (SELECT COUNT(*) FROM productos WHERE negocio_id = n.id AND activo = TRUE) AS total_productos,
                 (SELECT COUNT(*) FROM ventas WHERE negocio_id = n.id) AS total_ventas,
-                (SELECT COALESCE(SUM(total), 0) FROM ventas WHERE negocio_id = n.id) AS total_facturado
+                (SELECT COALESCE(SUM(total), 0) FROM ventas WHERE negocio_id = n.id) AS total_facturado,
+                (SELECT MAX(fecha) FROM ventas WHERE negocio_id = n.id) AS ultima_venta,
+                (SELECT COUNT(*) FROM ventas WHERE negocio_id = n.id AND fecha > NOW() - INTERVAL '30 days') AS ventas_30d,
+                (SELECT COALESCE(SUM(total), 0) FROM ventas WHERE negocio_id = n.id AND fecha > NOW() - INTERVAL '30 days') AS facturado_30d
             FROM negocios n
             ORDER BY n.created_at DESC
         `);
@@ -822,6 +826,56 @@ router.get('/backups/:archivo/descargar', async (req, res) => {
     } catch (error) {
         console.error('Error descargando backup:', error);
         res.status(500).json({ error: 'Error al descargar backup' });
+    }
+});
+
+// =============================================
+// VISOR DE LOGS (bajo demanda, pensado para servidores con poca RAM)
+// =============================================
+const logBuffer = require('../services/logBuffer');
+
+// GET /api/superadmin/logs/en-vivo?desde=ID
+// Devuelve solo las líneas nuevas desde el último id (polling incremental).
+router.get('/logs/en-vivo', (req, res) => {
+    const desde = parseInt(req.query.desde) || 0;
+    res.json(logBuffer.obtenerDesde(desde));
+});
+
+// GET /api/superadmin/logs/archivo?tipo=out|error
+// Lee SOLO los últimos 64KB del archivo de log de pm2 (no carga el archivo entero).
+router.get('/logs/archivo', (req, res) => {
+    try {
+        const os = require('os');
+        const fs = require('fs');
+        const tipo = req.query.tipo === 'error' ? 'error' : 'out';
+        const dirLogs = process.env.PM2_LOG_DIR || path.join(os.homedir(), '.pm2', 'logs');
+        const archivo = path.join(dirLogs, `gestionq24-${tipo}.log`);
+
+        if (!fs.existsSync(archivo)) {
+            return res.json({ disponible: false, mensaje: `No se encontró el archivo de log (${archivo}). Este visor de archivos funciona solo en el servidor con pm2.` });
+        }
+
+        const stat = fs.statSync(archivo);
+        const LEER = 64 * 1024; // últimos 64KB como máximo
+        const inicio = Math.max(0, stat.size - LEER);
+        const fd = fs.openSync(archivo, 'r');
+        const buf = Buffer.alloc(Math.min(LEER, stat.size));
+        fs.readSync(fd, buf, 0, buf.length, inicio);
+        fs.closeSync(fd);
+
+        let texto = buf.toString('utf8');
+        // Descartar la primera línea cortada si empezamos a mitad de archivo
+        if (inicio > 0) texto = texto.slice(texto.indexOf('\n') + 1);
+
+        res.json({
+            disponible: true,
+            archivo: `gestionq24-${tipo}.log`,
+            bytes_totales: stat.size,
+            contenido: texto,
+        });
+    } catch (error) {
+        console.error('Error leyendo log:', error);
+        res.status(500).json({ error: 'Error al leer el archivo de log' });
     }
 });
 
