@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS producto_codigos (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos(codigo, negocio_id);
 
+-- Modo de conexión ARCA: 'propio' (certificado del negocio) o 'delegado' (web service delegado al CUIT del proveedor)
+ALTER TABLE certificados_arca ADD COLUMN IF NOT EXISTS modo VARCHAR(20) DEFAULT 'propio';
+
 -- El código de producto debe ser único POR NEGOCIO, no global (multi-tenant).
 -- Quitamos el constraint global viejo y creamos un índice único por (negocio_id, codigo).
 ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_codigo_key;

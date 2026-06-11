@@ -209,11 +209,23 @@ async function emitirComprobante(datos) {
         }
         
         const certificado = certResult.rows[0];
-        
+
         // 2. Verificar que el certificado no esté vencido
-        const verificacion = verificarCertificado(certificado.cert_path);
-        if (!verificacion.valido) {
-            throw new Error('El certificado está vencido o no es válido');
+        if (certificado.modo === 'delegado') {
+            // Modo delegado: se verifica el certificado del proveedor (configurado en el servidor)
+            const delegado = wsaaService.obtenerCertDelegado();
+            if (!delegado.disponible) {
+                throw new Error(delegado.error);
+            }
+            const verifDelegado = verificarCertificado(path.relative(path.join(__dirname, '../uploads'), delegado.certPath));
+            if (!verifDelegado.valido) {
+                throw new Error('El certificado del proveedor está vencido o no es válido. Contactá a soporte.');
+            }
+        } else {
+            const verificacion = verificarCertificado(certificado.cert_path);
+            if (!verificacion.valido) {
+                throw new Error('El certificado está vencido o no es válido');
+            }
         }
         
         // 3. Obtener ticket de acceso del WSAA

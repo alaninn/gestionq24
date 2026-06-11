@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 /**
  * Modal para vender productos por peso/cantidad variable
  * Permite ingresar cantidad o precio según la unidad del producto
+ * permiteStockNegativo: si está activo en Configuración, no se valida el stock disponible
  */
-function VentaProductoModal({ producto, onClose, onAgregar }) {
+function VentaProductoModal({ producto, onClose, onAgregar, permiteStockNegativo = false }) {
   const [modo, setModo] = useState('cantidad'); // 'cantidad' o 'precio'
   const [valor, setValor] = useState('');
   const [error, setError] = useState('');
@@ -64,8 +65,9 @@ function VentaProductoModal({ producto, onClose, onAgregar }) {
       return;
     }
 
-    // Validar stock si es necesario
-    if (producto.stock && cantidad > producto.stock) {
+    // Validar stock solo si la Configuración NO permite vender sin stock.
+    // (Ojo: con stock negativo o 0 también debe poder venderse si el toggle está activo)
+    if (!permiteStockNegativo && parseFloat(producto.stock) < cantidad) {
       setError(`Stock insuficiente. Disponible: ${producto.stock} ${producto.unidad}`);
       return;
     }

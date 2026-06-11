@@ -113,6 +113,30 @@ function firmarTRA(tra, certPath, keyPath) {
  * @param {string} servicio - Servicio solicitado (default: 'wsfe')
  * @returns {Object} { token, sign, expirationTime }
  */
+// =============================================
+// MODO DELEGADO
+// El negocio delegó el web service de facturación al CUIT del proveedor
+// (gestionq24). Se usa UN solo certificado (el del proveedor, configurado
+// por variables de entorno) para autenticar, y cada factura sale con el
+// CUIT del negocio.
+// =============================================
+function obtenerCertDelegado() {
+    const cuit = process.env.ARCA_DELEGADO_CUIT;
+    const certRel = process.env.ARCA_DELEGADO_CERT;   // ej: certificados/delegado.crt (relativo a uploads/)
+    const keyRel = process.env.ARCA_DELEGADO_KEY;     // ej: certificados/delegado.key
+
+    if (!cuit || !certRel || !keyRel) return { disponible: false, error: 'La conexión delegada no está configurada en el servidor' };
+
+    const certDir = path.join(__dirname, '../uploads');
+    const certPath = path.join(certDir, certRel);
+    const keyPath = path.join(certDir, keyRel);
+
+    if (!fs.existsSync(certPath)) return { disponible: false, error: `Certificado del proveedor no encontrado: ${certRel}` };
+    if (!fs.existsSync(keyPath)) return { disponible: false, error: `Clave del proveedor no encontrada: ${keyRel}` };
+
+    return { disponible: true, cuit, certPath, keyPath };
+}
+
 async function solicitarTicketAcceso(negocio_id, servicio = 'wsfe') {
     try {
         // Obtener certificado activo del negocio
@@ -120,33 +144,41 @@ async function solicitarTicketAcceso(negocio_id, servicio = 'wsfe') {
             'SELECT * FROM certificados_arca WHERE negocio_id = $1 AND activo = true LIMIT 1',
             [negocio_id]
         );
-        
+
         if (certResult.rows.length === 0) {
             throw new Error('No hay certificado activo configurado');
         }
-        
+
         const certificado = certResult.rows[0];
-        
-        // Verificar que existan los archivos
         const certDir = path.join(__dirname, '../uploads');
-        
-        if (!certificado.cert_path) {
-            throw new Error('El certificado no tiene una ruta definida (cert_path es null)');
-        }
-        
-        if (!certificado.key_path) {
-            throw new Error('La clave privada no tiene una ruta definida (key_path es null)');
-        }
-        
-        const certPath = path.join(certDir, certificado.cert_path);
-        const keyPath = path.join(certDir, certificado.key_path);
-        
-        if (!fs.existsSync(certPath)) {
-            throw new Error(`Certificado no encontrado en: ${certPath}`);
-        }
-        
-        if (!fs.existsSync(keyPath)) {
-            throw new Error(`Clave privada no encontrada en: ${keyPath}`);
+        let certPath, keyPath;
+
+        if (certificado.modo === 'delegado') {
+            // Modo delegado: se firma con el certificado del proveedor
+            const delegado = obtenerCertDelegado();
+            if (!delegado.disponible) throw new Error(delegado.error);
+            certPath = delegado.certPath;
+            keyPath = delegado.keyPath;
+        } else {
+            // Modo propio: certificado del negocio
+            if (!certificado.cert_path) {
+                throw new Error('El certificado no tiene una ruta definida (cert_path es null)');
+            }
+
+            if (!certificado.key_path) {
+                throw new Error('La clave privada no tiene una ruta definida (key_path es null)');
+            }
+
+            certPath = path.join(certDir, certificado.cert_path);
+            keyPath = path.join(certDir, certificado.key_path);
+
+            if (!fs.existsSync(certPath)) {
+                throw new Error(`Certificado no encontrado en: ${certPath}`);
+            }
+
+            if (!fs.existsSync(keyPath)) {
+                throw new Error(`Clave privada no encontrada en: ${keyPath}`);
+            }
         }
         
         // Obtener entorno configurado
@@ -271,22 +303,33 @@ const header = loginTicketResponse.loginTicketResponse.header;
  * @param {string} servicio - Servicio
  * @returns {Object|null} Ticket válido o null
  */
-async function obtenerTicketValido(negocio_id, servicio = 'wsfe') {
+async function obtenerTicketValido(negocio_id, servicio = 'wsfe', compartido = false) {
     try {
-        const result = await db.query(
-            `SELECT * FROM tickets_acceso_wsaa 
-             WHERE negocio_id = $1 AND servicio = $2 AND expiracion > NOW() 
-             ORDER BY created_at DESC LIMIT 1`,
-            [negocio_id, servicio]
-        );
-        
+        // En modo delegado el ticket lo firma SIEMPRE el mismo certificado (el del
+        // proveedor), así que es compartido entre todos los negocios delegados.
+        // ARCA rechaza pedir un ticket nuevo si ya hay uno vigente para el mismo
+        // certificado, por eso es clave reutilizarlo.
+        const result = compartido
+            ? await db.query(
+                `SELECT * FROM tickets_acceso_wsaa
+                 WHERE servicio = $1 AND expiracion > NOW()
+                 ORDER BY created_at DESC LIMIT 1`,
+                [servicio]
+            )
+            : await db.query(
+                `SELECT * FROM tickets_acceso_wsaa
+                 WHERE negocio_id = $1 AND servicio = $2 AND expiracion > NOW()
+                 ORDER BY created_at DESC LIMIT 1`,
+                [negocio_id, servicio]
+            );
+
         if (result.rows.length > 0) {
             return {
                 token: result.rows[0].token,
                 sign: result.rows[0].sign
             };
         }
-        
+
         return null;
     } catch (error) {
         console.error('Error verificando ticket:', error);
@@ -319,20 +362,33 @@ async function almacenarTicket(negocio_id, servicio, ticket) {
  * @returns {Object} { token, sign }
  */
 async function obtenerTicketAcceso(negocio_id, servicio = 'wsfe') {
+    // Detectar si el negocio usa conexión delegada (ticket compartido)
+    let esDelegado = false;
+    try {
+        const certResult = await db.query(
+            'SELECT modo FROM certificados_arca WHERE negocio_id = $1 AND activo = true LIMIT 1',
+            [negocio_id]
+        );
+        esDelegado = certResult.rows[0]?.modo === 'delegado';
+    } catch (e) { /* si falla, sigue como propio */ }
+
+    // En delegado se usa un servicio de caché propio para no mezclar con tickets de certificados propios
+    const servicioCache = esDelegado ? `${servicio}-delegado` : servicio;
+
     // Intentar obtener ticket válido del cache
-    const ticketValido = await obtenerTicketValido(negocio_id, servicio);
-    
+    const ticketValido = await obtenerTicketValido(negocio_id, servicioCache, esDelegado);
+
     if (ticketValido) {
         console.log('✅ Usando ticket de acceso cacheado');
         return ticketValido;
     }
-    
+
     // Solicitar nuevo ticket
     const nuevoTicket = await solicitarTicketAcceso(negocio_id, servicio);
-    
+
     // Almacenar en cache
-    await almacenarTicket(negocio_id, servicio, nuevoTicket);
-    
+    await almacenarTicket(negocio_id, servicioCache, nuevoTicket);
+
     return {
         token: nuevoTicket.token,
         sign: nuevoTicket.sign
@@ -343,6 +399,7 @@ module.exports = {
     solicitarTicketAcceso,
     obtenerTicketAcceso,
     obtenerTicketValido,
+    obtenerCertDelegado,
     firmarTRA,
     crearTRA,
     WSAA_URLS

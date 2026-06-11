@@ -41,9 +41,36 @@ function FacturacionElectronica({ config, setConfig }) {
   const [testConectando, setTestConectando] = useState(false);
   const [resultadoTest, setResultadoTest] = useState(null);
 
+  // Conexión delegada (web service delegado al CUIT del proveedor)
+  const [delegacionInfo, setDelegacionInfo] = useState(null);
+  const [formDelegacion, setFormDelegacion] = useState({ cuit: '', punto_venta: '', regimen_fiscal: 'responsable_inscripto' });
+  const [activandoDelegacion, setActivandoDelegacion] = useState(false);
+  // Qué vía eligió el usuario en la pestaña Certificados: null = sin elegir, 'delegado' | 'propio'
+  const [viaConexion, setViaConexion] = useState(null);
+
   useEffect(() => {
     cargarDatosSecundarios();
+    api.get('/api/arca/delegacion-info')
+      .then(res => setDelegacionInfo(res.data))
+      .catch(() => setDelegacionInfo({ disponible: false }));
   }, [config?.regimen_fiscal]);
+
+  const activarDelegacion = async (e) => {
+    e.preventDefault();
+    try {
+      setActivandoDelegacion(true);
+      setError('');
+      const res = await api.post('/api/arca/activar-delegacion', formDelegacion);
+      setExito(`✅ ${res.data.mensaje}`);
+      await cargarDatosSecundarios();
+      setTimeout(() => setExito(''), 6000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al activar la conexión delegada');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setActivandoDelegacion(false);
+    }
+  };
 
   const cargarDatosSecundarios = async () => {
     try {
@@ -224,6 +251,9 @@ function FacturacionElectronica({ config, setConfig }) {
   };
 
   const certificadoActivo = certificados.find(c => c.activo);
+  // Vía de conexión mostrada en la pestaña Certificados: la elegida por el usuario,
+  // o la que ya está activa, o ninguna (muestra el selector)
+  const via = viaConexion ?? (certificadoActivo ? (certificadoActivo.modo === 'delegado' ? 'delegado' : 'propio') : null);
 
   if (cargando) {
     return (
@@ -302,38 +332,53 @@ function FacturacionElectronica({ config, setConfig }) {
               {[
                 {
                   paso: 1,
-                  titulo: 'Accedé al portal de ARCA',
-                  descripcion: 'Ingresá a arca.gob.ar con tu CUIT y clave fiscal',
-                  icono: '🌐',
-                  detalle: 'Usá las credenciales de tu negocio (CUIT + Clave Fiscal)'
+                  titulo: 'Generá la solicitud de certificado en este sistema',
+                  descripcion: 'Andá a la pestaña 🔐 Certificados de esta misma pantalla y tocá "Generar Certificados" con tu CUIT.',
+                  icono: '🔐',
+                  detalle: 'Se crean 2 archivos: la solicitud (.csr) que va a ARCA, y la clave privada (.key) que queda guardada acá y NO se sube a ningún lado.'
                 },
                 {
                   paso: 2,
-                  titulo: 'Generá tus certificados',
-                  descripcion: 'Desde nuestro sistema generá los archivos .key y .csr',
-                  icono: '🔐',
-                  detalle: 'Estos archivos son tu firma digital para emitir facturas'
+                  titulo: 'Ingresá al portal de ARCA',
+                  descripcion: 'Entrá con tu CUIT y Clave Fiscal (necesitás nivel 3 o superior).',
+                  icono: '🌐',
+                  detalle: 'Si no tenés clave fiscal nivel 3, podés elevarla desde la app Mi ARCA con DNI y reconocimiento facial.',
+                  link: { url: 'https://auth.afip.gob.ar/contribuyente_/login.xhtml', label: 'Abrir portal de ARCA →' }
                 },
                 {
                   paso: 3,
-                  titulo: 'Subí el .csr a ARCA',
-                  descripcion: 'En ARCA, andá a "Administración de Certificados Digitales" y subí el .csr',
+                  titulo: 'Tramitá el certificado con el .csr',
+                  descripcion: 'En el buscador del portal escribí "Administración de Certificados Digitales" → Agregar alias → subí el archivo .csr → descargá el certificado (.crt).',
                   icono: '📤',
-                  detalle: 'ARCA verificará tu solicitud y te devolverá un archivo .crt'
+                  detalle: 'Anotá el ALIAS que le pusiste al certificado: lo vas a necesitar en el paso siguiente.'
                 },
                 {
                   paso: 4,
-                  titulo: 'Descargá el .crt de ARCA',
-                  descripcion: 'Una vez aprobado, descargá el certificado .crt',
-                  icono: '📥',
-                  detalle: 'Este archivo confirma que podés emitir facturas electrónicas'
+                  titulo: 'Autorizá el web service al certificado ⚠️ (paso que muchos olvidan)',
+                  descripcion: 'En el portal buscá "Administrador de Relaciones de Clave Fiscal" → Nueva Relación → ARCA → WebServices → "Facturación Electrónica" → seleccioná el alias de tu certificado.',
+                  icono: '🔗',
+                  detalle: 'Sin este paso, el certificado existe pero ARCA rechaza la conexión. Es el error más común.'
                 },
                 {
                   paso: 5,
-                  titulo: 'Subí el .crt a nuestro sistema',
-                  descripcion: 'Volvé acá y subí el archivo .crt que descargaste',
+                  titulo: 'Creá el Punto de Venta para Web Services ⚠️',
+                  descripcion: 'En el portal buscá "Administración de puntos de venta y domicilios" → A/B/M de puntos de venta → agregá uno nuevo eligiendo el sistema "Web Services" (RECE para Responsable Inscripto / Factura Electrónica Monotributo - Web Services).',
+                  icono: '🏪',
+                  detalle: 'El número de punto de venta que crees acá es el que va en la configuración del sistema. No sirve el punto de venta de "Comprobantes en línea".'
+                },
+                {
+                  paso: 6,
+                  titulo: 'Subí el certificado (.crt) a este sistema',
+                  descripcion: 'Volvé a la pestaña 🔐 Certificados y subí el archivo .crt que descargaste de ARCA.',
+                  icono: '📥',
+                  detalle: 'El sistema valida que el archivo sea correcto, que no esté vencido y que corresponda a tu solicitud.'
+                },
+                {
+                  paso: 7,
+                  titulo: 'Probá la conexión',
+                  descripcion: 'Usá el botón "Probar conexión" para confirmar que ARCA acepta tu certificado antes de facturar.',
                   icono: '✅',
-                  detalle: 'Con esto ya podés empezar a facturar electrónicamente'
+                  detalle: 'Si la prueba da OK, ya podés emitir facturas electrónicas con CAE desde el punto de venta.'
                 }
               ].map(item => (
                 <div key={item.paso} className="p-6 hover:bg-gray-50 transition-colors">
@@ -342,12 +387,18 @@ function FacturacionElectronica({ config, setConfig }) {
                       {item.icono}
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded">PASO {item.paso}</span>
                         <h5 className="font-bold text-gray-800">{item.titulo}</h5>
                       </div>
                       <p className="text-gray-600">{item.descripcion}</p>
                       <p className="text-sm text-gray-400 mt-1">{item.detalle}</p>
+                      {item.link && (
+                        <a href={item.link.url} target="_blank" rel="noopener noreferrer"
+                          className="inline-block mt-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                          {item.link.label}
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -746,6 +797,22 @@ function FacturacionElectronica({ config, setConfig }) {
             <h4 className="font-bold text-gray-800 mb-4">🔐 Estado de Certificados</h4>
             
             {certificadoActivo ? (
+              certificadoActivo.modo === 'delegado' ? (
+                <div className="p-4 rounded-xl border-2 bg-blue-50 border-blue-200">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-xl">🚀</div>
+                    <div>
+                      <p className="font-bold text-gray-800">Conexión rápida activa (servicio delegado)</p>
+                      <p className="text-sm text-gray-500">
+                        CUIT: {certificadoActivo.cuit} | Punto de Venta: {certificadoActivo.punto_venta}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    Facturás con tu CUIT a través de la conexión de gestionq24. No manejás certificados.
+                  </p>
+                </div>
+              ) : (
               <div className={`p-4 rounded-xl border-2 ${
                 certificadoActivo.estado_certificado?.valido
                   ? 'bg-green-50 border-green-200'
@@ -771,15 +838,110 @@ function FacturacionElectronica({ config, setConfig }) {
                   </p>
                 )}
               </div>
+              )
             ) : (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                 <p className="text-yellow-700">
-                  ⚠️ No tenés certificados configurados. Generá tus certificados a continuación.
+                  ⚠️ Todavía no configuraste la conexión con ARCA. Elegí una de las dos formas de abajo.
                 </p>
               </div>
             )}
           </div>
 
+          {/* Selector de vía de conexión */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button type="button" onClick={() => setViaConexion('delegado')}
+              className={`text-left p-5 rounded-2xl border-2 transition-all ${via === 'delegado' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="text-2xl">🚀</span>
+                <p className="font-bold text-gray-800">Conexión rápida</p>
+                <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">RECOMENDADA</span>
+              </div>
+              <p className="text-sm text-gray-600">Sin certificados. Autorizás el servicio a gestionq24 desde tu clave fiscal (un trámite de 3 minutos) y listo.</p>
+            </button>
+            <button type="button" onClick={() => setViaConexion('propio')}
+              className={`text-left p-5 rounded-2xl border-2 transition-all ${via === 'propio' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-white hover:border-orange-300'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-2xl">🔐</span>
+                <p className="font-bold text-gray-800">Certificado propio</p>
+                <span className="text-xs bg-gray-100 text-gray-600 font-bold px-2 py-0.5 rounded-full">AVANZADA</span>
+              </div>
+              <p className="text-sm text-gray-600">Tramitás tu propio certificado digital en ARCA y lo subís acá. Seguí el tutorial de 7 pasos.</p>
+            </button>
+          </div>
+
+          {/* ---- VÍA DELEGADA ---- */}
+          {via === 'delegado' && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+              <h4 className="font-bold text-gray-800">🚀 Activar Conexión Rápida</h4>
+
+              {delegacionInfo?.disponible === false ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                  <p className="text-yellow-700 text-sm">
+                    ⚠️ La conexión rápida todavía no está habilitada en este servidor. Escribinos por soporte y la activamos, o usá la opción de certificado propio.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <p className="text-sm font-semibold text-blue-800">Pasos en ARCA (una sola vez):</p>
+                    <ol className="text-sm text-blue-800 list-decimal ml-5 space-y-1.5">
+                      <li>Entrá a <a href="https://auth.afip.gob.ar/contribuyente_/login.xhtml" target="_blank" rel="noopener noreferrer" className="underline font-medium">arca.gob.ar</a> con tu CUIT y clave fiscal (nivel 3).</li>
+                      <li>Buscá <strong>"Administrador de Relaciones de Clave Fiscal"</strong> → Nueva Relación.</li>
+                      <li>Elegí ARCA → <strong>WebServices</strong> → <strong>"Facturación Electrónica"</strong>.</li>
+                      <li>En "Representante" ingresá el CUIT <strong className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">{delegacionInfo?.cuit_proveedor || '...'}</strong> (gestionq24) y confirmá.</li>
+                      <li>Creá tu <strong>Punto de Venta para Web Services</strong> en "Administración de puntos de venta y domicilios" (si todavía no lo tenés).</li>
+                    </ol>
+                  </div>
+
+                  <form onSubmit={activarDelegacion} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tu CUIT *</label>
+                        <input type="text" value={formDelegacion.cuit} required
+                          onChange={(e) => setFormDelegacion(p => ({ ...p, cuit: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          placeholder="Ej: 20123456789" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Punto de Venta (Web Services) *</label>
+                        <input type="number" value={formDelegacion.punto_venta} required min="1"
+                          onChange={(e) => setFormDelegacion(p => ({ ...p, punto_venta: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          placeholder="Ej: 3" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Régimen fiscal</label>
+                      <div className="flex gap-2">
+                        {[
+                          { id: 'responsable_inscripto', label: 'Responsable Inscripto' },
+                          { id: 'monotributista', label: 'Monotributista' },
+                        ].map(r => (
+                          <button key={r.id} type="button"
+                            onClick={() => setFormDelegacion(p => ({ ...p, regimen_fiscal: r.id }))}
+                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border-2 transition-all ${formDelegacion.regimen_fiscal === r.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600'}`}>
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button type="submit" disabled={activandoDelegacion}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50">
+                      {activandoDelegacion ? 'Activando...' : '🚀 Activar Conexión Rápida'}
+                    </button>
+                    <p className="text-xs text-gray-400">
+                      Después de activar, usá "Probar Conexión" (pestaña Configuración) para confirmar que la delegación en ARCA quedó bien hecha.
+                    </p>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ---- VÍA CERTIFICADO PROPIO ---- */}
+          {via === 'propio' && (
+          <>
           {/* Generar certificados */}
           <div className="bg-white rounded-2xl border border-gray-200 p-6">
             <h4 className="font-bold text-gray-800 mb-4">📝 Generar Certificados</h4>
@@ -880,6 +1042,8 @@ function FacturacionElectronica({ config, setConfig }) {
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
 

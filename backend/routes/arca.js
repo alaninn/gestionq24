@@ -10,6 +10,7 @@ const fs = require('fs');
 const db = require('../config/database');
 const { verificarToken, soloAdmin } = require('../middleware/auth');
 const arcaService = require('../services/arcaService');
+const wsaaService = require('../services/wsaaService');
 
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
@@ -122,8 +123,41 @@ router.post('/subir-certificado', verificarToken, soloAdmin, upload.single('cert
         }
 
         // Leer el archivo subido
-        // Leer el archivo subido
 const certBuffer = fs.readFileSync(req.file.path);
+
+// ---- VALIDACIONES DEL ARCHIVO (evita errores comunes del usuario) ----
+const forge = require('node-forge');
+const certTexto = certBuffer.toString('utf8');
+
+// 1. ¿Es un certificado? (errores típicos: subir el .csr o el .key en vez del .crt)
+if (certTexto.includes('CERTIFICATE REQUEST')) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Subiste el archivo de SOLICITUD (.csr). Ese archivo va a ARCA. Acá tenés que subir el certificado (.crt) que ARCA te devuelve.' });
+}
+if (certTexto.includes('PRIVATE KEY')) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'Subiste la clave privada (.key). Ese archivo no se sube a ningún lado. Acá va el certificado (.crt) que descargaste de ARCA.' });
+}
+if (!certTexto.includes('BEGIN CERTIFICATE')) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'El archivo no parece ser un certificado válido. Subí el archivo .crt/.pem que descargaste de ARCA.' });
+}
+
+let fechaVencimientoCert = null;
+let certParseado = null;
+try {
+    certParseado = forge.pki.certificateFromPem(certTexto);
+    fechaVencimientoCert = certParseado.validity.notAfter;
+} catch (e) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'No se pudo leer el certificado. Verificá que sea el archivo original descargado de ARCA, sin modificar.' });
+}
+
+// 2. ¿Está vencido?
+if (fechaVencimientoCert < new Date()) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: `El certificado está VENCIDO (venció el ${fechaVencimientoCert.toLocaleDateString('es-AR')}). Generá uno nuevo en ARCA.` });
+}
 
 // Buscar el .key más reciente generado para este CUIT
 const certDir = path.join(__dirname, '../uploads/certificados');
@@ -136,9 +170,22 @@ const keyFiles = archivos
 const keyPath = keyFiles.length > 0 ? `certificados/${keyFiles[0]}` : null;
 
 if (!keyPath) {
-    return res.status(400).json({ 
-        error: 'No se encontró la clave privada (.key) para este CUIT. Generá los certificados primero.' 
+    return res.status(400).json({
+        error: 'No se encontró la clave privada (.key) para este CUIT. Generá los certificados primero.'
     });
+}
+
+// 3. ¿El certificado corresponde a la clave privada generada acá?
+//    (error típico: generar el CSR de nuevo y subir un .crt viejo, o de otra máquina)
+try {
+    const keyPem = fs.readFileSync(path.join(__dirname, '../uploads', keyPath), 'utf8');
+    const clavePrivada = forge.pki.privateKeyFromPem(keyPem);
+    if (certParseado.publicKey.n.toString(16) !== clavePrivada.n.toString(16)) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: 'El certificado NO corresponde a la clave generada en este sistema. Probablemente generaste la solicitud de nuevo después de tramitar el certificado. Volvé a generar la solicitud (.csr), tramitá un certificado nuevo en ARCA con esa solicitud y subilo.' });
+    }
+} catch (e) {
+    console.warn('No se pudo verificar correspondencia cert/key:', e.message);
 }
 
 // Guardar certificado en BD
@@ -150,6 +197,16 @@ const certificado = await arcaService.guardarCertificadoNegocio(
     regimen_fiscal || 'responsable_inscripto',
     keyPath
 );
+
+// Guardar fecha de vencimiento para poder avisar antes de que venza
+if (certificado?.id && fechaVencimientoCert) {
+    await db.query('UPDATE certificados_arca SET fecha_vencimiento = $1 WHERE id = $2', [fechaVencimientoCert, certificado.id]);
+}
+
+// CRÍTICO: invalidar tickets WSAA cacheados del negocio. Si quedara un ticket
+// firmado con el certificado ANTERIOR, ARCA rechaza las facturas con
+// "600: ValidacionDeToken: No aparecio CUIT en lista de relaciones".
+await db.query('DELETE FROM tickets_acceso_wsaa WHERE negocio_id = $1', [negocio_id]);
 
         // Eliminar archivo temporal
         fs.unlinkSync(req.file.path);
@@ -180,6 +237,18 @@ router.get('/certificados', verificarToken, async (req, res) => {
 
         // Verificar estado de cada certificado
         const certificados = resultado.rows.map(cert => {
+            // En modo delegado no hay archivos del negocio: se verifica el del proveedor
+            if (cert.modo === 'delegado') {
+                const delegado = wsaaService.obtenerCertDelegado();
+                return {
+                    ...cert,
+                    estado_certificado: {
+                        valido: delegado.disponible,
+                        delegado: true,
+                        error: delegado.disponible ? undefined : delegado.error
+                    }
+                };
+            }
             const verificacion = arcaService.verificarCertificado(cert.cert_path);
             return {
                 ...cert,
@@ -361,6 +430,60 @@ router.get('/ultimo-numero', verificarToken, async (req, res) => {
 // =============================================
 // TEST DE CONEXIÓN CON ARCA
 // =============================================
+// =============================================
+// CONEXIÓN DELEGADA (web service delegado al CUIT del proveedor)
+// =============================================
+
+// Info pública para el asistente: ¿está disponible? ¿a qué CUIT delegar?
+router.get('/delegacion-info', verificarToken, async (req, res) => {
+    const delegado = wsaaService.obtenerCertDelegado();
+    res.json({
+        disponible: delegado.disponible,
+        cuit_proveedor: delegado.disponible ? delegado.cuit : null,
+    });
+});
+
+// Activar la conexión delegada para el negocio
+router.post('/activar-delegacion', verificarToken, soloAdmin, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const delegado = wsaaService.obtenerCertDelegado();
+        if (!delegado.disponible) {
+            return res.status(400).json({ error: 'La conexión delegada no está disponible en este servidor. Contactá a soporte.' });
+        }
+
+        const { cuit, punto_venta, regimen_fiscal } = req.body;
+        const cuitLimpio = String(cuit || '').replace(/[-\s]/g, '');
+        if (!/^\d{11}$/.test(cuitLimpio)) {
+            return res.status(400).json({ error: 'Ingresá un CUIT válido de 11 dígitos' });
+        }
+
+        // Desactivar configuraciones anteriores (certificados propios o delegaciones viejas)
+        await db.query('UPDATE certificados_arca SET activo = false WHERE negocio_id = $1', [negocio_id]);
+
+        // Crear registro en modo delegado (sin archivos: se usa el certificado del proveedor)
+        const r = await db.query(`
+            INSERT INTO certificados_arca (negocio_id, cuit, punto_venta, regimen_fiscal, activo, modo)
+            VALUES ($1, $2, $3, $4, true, 'delegado')
+            RETURNING *
+        `, [negocio_id, cuitLimpio, parseInt(punto_venta) || 1, regimen_fiscal || 'responsable_inscripto']);
+
+        // Invalidar tickets cacheados del negocio (por si venía de modo propio)
+        await db.query('DELETE FROM tickets_acceso_wsaa WHERE negocio_id = $1', [negocio_id]);
+
+        res.json({
+            exito: true,
+            mensaje: 'Conexión delegada activada. Probá la conexión para confirmar que la delegación en ARCA esté hecha.',
+            certificado: r.rows[0],
+        });
+    } catch (error) {
+        console.error('❌ Error activando delegación:', error);
+        res.status(500).json({ error: 'Error al activar la conexión delegada' });
+    }
+});
+
 router.post('/test-conexion', verificarToken, soloAdmin, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
@@ -381,14 +504,22 @@ router.post('/test-conexion', verificarToken, soloAdmin, async (req, res) => {
 
         const certificado = certResult.rows[0];
 
-        // Verificar certificado
-        const verificacion = arcaService.verificarCertificado(certificado.cert_path);
-        
-        if (!verificacion.valido) {
-            return res.json({
-                exito: false,
-                mensaje: `Certificado inválido: ${verificacion.error || 'Vencido o corrupto'}`
-            });
+        // Verificar certificado (propio o del proveedor según el modo)
+        let verificacion = null;
+        if (certificado.modo === 'delegado') {
+            const delegado = wsaaService.obtenerCertDelegado();
+            if (!delegado.disponible) {
+                return res.json({ exito: false, mensaje: delegado.error });
+            }
+        } else {
+            verificacion = arcaService.verificarCertificado(certificado.cert_path);
+
+            if (!verificacion.valido) {
+                return res.json({
+                    exito: false,
+                    mensaje: `Certificado inválido: ${verificacion.error || 'Vencido o corrupto'}`
+                });
+            }
         }
 
         // Obtener configuración para determinar entorno
@@ -412,11 +543,12 @@ res.json({
             detalles: {
                 entorno: entorno,
                 url_wsaa: urlWsaa,
+                modo: certificado.modo || 'propio',
                 cuit: certificado.cuit,
                 punto_venta: certificado.punto_venta,
                 certificado_vigente: true,
-                dias_restantes: verificacion.diasRestantes,
-                vencimiento: verificacion.fechaVencimiento
+                dias_restantes: verificacion?.diasRestantes ?? null,
+                vencimiento: verificacion?.fechaVencimiento ?? null
             }
         });
     } catch (error) {
