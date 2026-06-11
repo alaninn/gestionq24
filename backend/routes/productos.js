@@ -7,13 +7,22 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const { buscar, categoria, pagina, limite = 50, stock_bajo } = req.query;
+        const { buscar, categoria, pagina, limite = 50, stock_bajo, rapida } = req.query;
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         let whereClause = 'WHERE p.activo = TRUE AND p.negocio_id = $1';
         let valores = [negocio_id];
         let contador = 2;
+
+        // Orden por relevancia cuando hay búsqueda:
+        //  0 = el nombre EMPIEZA con la primera palabra buscada ("leche" → "Leche Serenísima")
+        //  1 = alguna palabra del nombre empieza con lo buscado ("...dulce de Leche")
+        //  2 = coincidencia en cualquier parte / por código
+        // No afecta QUÉ se encuentra (la búsqueda multi-palabra "coca 2.25" sigue igual),
+        // solo el ORDEN de los resultados.
+        let ordenarPor = 'p.nombre ASC';
+        let paramsOrden = [];
 
         if (buscar) {
             const palabras = buscar.trim().split(/\s+/).filter(p => p.length > 0);
@@ -29,6 +38,17 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
                 valores.push(`%${palabra}%`);
                 contador++;
             }
+
+            if (palabras.length > 0) {
+                // Parámetros del ranking separados de `valores` (el COUNT de la
+                // paginación usa solo `valores` y no debe recibir parámetros de más)
+                paramsOrden = [`${palabras[0]}%`, `% ${palabras[0]}%`];
+                ordenarPor = `CASE
+                    WHEN p.nombre ILIKE $${contador} THEN 0
+                    WHEN p.nombre ILIKE $${contador + 1} THEN 1
+                    ELSE 2 END, p.nombre ASC`;
+                contador += 2;
+            }
         }
 
         if (categoria) {
@@ -43,15 +63,17 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         }
 
         // Sin paginación → devuelve array directo (para el POS)
+        // rapida=1: limita los resultados (la búsqueda del POS no necesita cientos de filas)
         if (!pagina) {
+            const limiteRapido = rapida === '1' ? 'LIMIT 60' : '';
             const resultado = await db.query(`
                 SELECT p.*, c.nombre AS categoria_nombre
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria_id = c.id
                 ${whereClause}
-                ORDER BY p.nombre ASC
-                
-            `, valores);
+                ORDER BY ${ordenarPor}
+                ${limiteRapido}
+            `, [...valores, ...paramsOrden]);
             return res.json(resultado.rows);
         }
 
@@ -70,9 +92,9 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             FROM productos p
             LEFT JOIN categorias c ON p.categoria_id = c.id
             ${whereClause}
-            ORDER BY p.nombre ASC
+            ORDER BY ${ordenarPor}
             LIMIT $${contador} OFFSET $${contador + 1}
-        `, [...valores, limiteNum, offset]);
+        `, [...valores, ...paramsOrden, limiteNum, offset]);
 
         res.json({
             productos: resultado.rows,

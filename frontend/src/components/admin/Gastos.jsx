@@ -12,7 +12,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 // COMPONENTE MODAL DE GASTO
 // Se exporta para poder usarlo también en el POS
 // =============================================
-export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
+export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = null }) {
 
   const [tabActiva, setTabActiva] = useState('gasto'); // 'gasto' | 'proveedor'
   const [formulario, setFormulario] = useState({
@@ -21,6 +21,9 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
     categoria: '',
     tipo: 'variable',
     metodo_pago: 'efectivo',
+    // De dónde sale el dinero: 'caja' descuenta del cierre del turno;
+    // 'local' (plata del negocio) y 'otro' no afectan la caja.
+    origen_dinero: turno ? 'caja' : 'local',
     proveedor_id: '',
     tipo_pago_proveedor: 'a_cuenta',
     recibo_url: '',
@@ -120,6 +123,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
         categoria: esPagoProveedor ? 'Proveedores' : (esCompra ? 'Compras' : formulario.categoria),
         tipo: esCompra ? 'compra' : (esPagoProveedor ? 'pago_proveedor' : formulario.tipo),
         metodo_pago: formulario.metodo_pago,
+        turno_id: turno?.id || null,
+        origen_dinero: formulario.origen_dinero,
         proveedor_id: formulario.proveedor_id || null,
         tipo_pago_proveedor: formulario.tipo_pago_proveedor,
         es_compra: esCompra,
@@ -315,6 +320,38 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
                   <option value="tarjeta">💳 Tarjeta</option>
                   <option value="transferencia">🏦 Transferencia</option>
                 </select>
+              </div>
+
+              {/* ¿De dónde sale el dinero? — clave para que el cierre de caja cierre bien */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">¿DE DÓNDE SALE EL DINERO?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'caja', label: '🧰 Caja del turno', desc: 'Descuenta del cierre', soloConTurno: true },
+                    { id: 'local', label: '🏪 Dinero del local', desc: 'No afecta la caja' },
+                    { id: 'otro', label: '💳 Otro', desc: 'No afecta la caja' },
+                  ].map(o => {
+                    const deshabilitado = o.soloConTurno && !turno;
+                    return (
+                      <button key={o.id} type="button" disabled={deshabilitado}
+                        onClick={() => setFormulario(p => ({ ...p, origen_dinero: o.id }))}
+                        title={deshabilitado ? 'Necesitás una caja abierta (se elige desde el POS)' : o.desc}
+                        className={`p-2 rounded-lg border-2 text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                          formulario.origen_dinero === o.id
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}>
+                        <p className="text-xs font-semibold text-gray-800 leading-tight">{o.label}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{o.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {formulario.origen_dinero === 'caja' && turno && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    ⚠️ Este gasto se descuenta del efectivo esperado al cerrar la caja "{turno.nombre || 'actual'}".
+                  </p>
+                )}
               </div>
 
               <div>
@@ -533,6 +570,11 @@ function Gastos() {
   const [proveedores, setProveedores] = useState([]);
   const [exito, setExito] = useState('');
 
+  // Edición de un gasto existente (por si hubo un error al cargarlo)
+  const [gastoEditando, setGastoEditando] = useState(null);
+  const [formEditarGasto, setFormEditarGasto] = useState({});
+  const [guardandoEdicionGasto, setGuardandoEdicionGasto] = useState(false);
+
   const [compra, setCompra] = useState({
     proveedor_id: '',
     fecha: new Date().toISOString().split('T')[0],
@@ -734,6 +776,44 @@ function Gastos() {
       setTimeout(() => setExito(''), 2000);
     } catch (err) {
       console.error('Error:', err);
+    }
+  };
+
+  // ---- Editar un gasto existente ----
+  const abrirEditarGasto = (gasto) => {
+    setGastoEditando(gasto);
+    setFormEditarGasto({
+      descripcion: gasto.descripcion || '',
+      monto: gasto.monto,
+      categoria: gasto.categoria || '',
+      metodo_pago: gasto.metodo_pago || 'efectivo',
+      origen_dinero: gasto.origen_dinero || 'caja',
+    });
+  };
+
+  const guardarEdicionGasto = async (e) => {
+    e.preventDefault();
+    try {
+      setGuardandoEdicionGasto(true);
+      // El PUT del backend actualiza todos los campos: enviamos los editados
+      // y conservamos el resto tal como estaba en el gasto original.
+      await api.put(`/api/gastos/${gastoEditando.id}`, {
+        ...gastoEditando,
+        descripcion: formEditarGasto.descripcion,
+        monto: formEditarGasto.monto,
+        categoria: formEditarGasto.categoria,
+        metodo_pago: formEditarGasto.metodo_pago,
+        origen_dinero: formEditarGasto.origen_dinero,
+        productos_json: gastoEditando.productos_json || null,
+      });
+      setGastoEditando(null);
+      setExito('Gasto actualizado');
+      cargarGastos();
+      setTimeout(() => setExito(''), 2500);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al actualizar el gasto');
+    } finally {
+      setGuardandoEdicionGasto(false);
     }
   };
 
@@ -1581,7 +1661,16 @@ gastos.map(gasto => (
                     {gasto.tipo_documento ? gasto.tipo_documento.replace('_', ' ').toUpperCase() : '-'}
                   </td>
                   <td className="px-4 py-3 text-gray-600 text-sm">
-                    {iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}
+                    <div>{iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}</div>
+                    <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                      (gasto.origen_dinero || 'caja') === 'caja'
+                        ? 'bg-amber-100 text-amber-700'
+                        : gasto.origen_dinero === 'local'
+                          ? 'bg-sky-100 text-sky-700'
+                          : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {(gasto.origen_dinero || 'caja') === 'caja' ? '🧰 Caja' : gasto.origen_dinero === 'local' ? '🏪 Local' : '💳 Otro'}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
@@ -1617,11 +1706,18 @@ gastos.map(gasto => (
                     {formatearPeso(gasto.monto)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => eliminarGasto(gasto.id)}
-                      className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors">
-                      Eliminar
-                    </button>
+                    <div className="flex justify-center gap-1.5">
+                      <button
+                        onClick={() => abrirEditarGasto(gasto)}
+                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors">
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => eliminarGasto(gasto.id)}
+                        className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors">
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -1642,6 +1738,92 @@ gastos.map(gasto => (
             setTimeout(() => setExito(''), 3000);
           }}
         />
+      )}
+
+      {/* Modal Editar Gasto */}
+      {gastoEditando && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
+              <div>
+                <h3 className="font-bold text-gray-800">✏️ Editar gasto</h3>
+                <p className="text-xs text-gray-400">Registrado por {gastoEditando.usuario_nombre || 'Admin'} · {new Date(gastoEditando.fecha).toLocaleString('es-AR')}</p>
+              </div>
+              <button onClick={() => setGastoEditando(null)} className="text-2xl text-gray-400 hover:text-gray-600">×</button>
+            </div>
+
+            <form onSubmit={guardarEdicionGasto} className="p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+                    <input type="number" min="0.01" step="0.01" required value={formEditarGasto.monto}
+                      onChange={(e) => setFormEditarGasto(p => ({ ...p, monto: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-xl pl-7 pr-3 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <input type="text" value={formEditarGasto.categoria}
+                    onChange={(e) => setFormEditarGasto(p => ({ ...p, categoria: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <input type="text" value={formEditarGasto.descripcion}
+                  onChange={(e) => setFormEditarGasto(p => ({ ...p, descripcion: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
+                <select value={formEditarGasto.metodo_pago}
+                  onChange={(e) => setFormEditarGasto(p => ({ ...p, metodo_pago: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+                  <option value="efectivo">💵 Efectivo</option>
+                  <option value="tarjeta">💳 Tarjeta</option>
+                  <option value="transferencia">🏦 Transferencia</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">¿De dónde salió el dinero?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'caja', label: '🧰 Caja del turno' },
+                    { id: 'local', label: '🏪 Dinero del local' },
+                    { id: 'otro', label: '💳 Otro' },
+                  ].map(o => (
+                    <button key={o.id} type="button"
+                      onClick={() => setFormEditarGasto(p => ({ ...p, origen_dinero: o.id }))}
+                      className={`p-2 rounded-lg border-2 text-xs font-semibold transition-all ${
+                        formEditarGasto.origen_dinero === o.id
+                          ? 'border-green-500 bg-green-50 text-gray-800'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">"Caja del turno" descuenta del cierre de esa caja; los otros no afectan.</p>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setGastoEditando(null)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={guardandoEdicionGasto}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50">
+                  {guardandoEdicionGasto ? 'Guardando...' : '💾 Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

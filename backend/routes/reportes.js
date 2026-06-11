@@ -38,7 +38,24 @@ router.get('/historial', async (req, res) => {
         }, {});
         const ticketPromedio = totalVentas > 0 ? totalVendido / totalVentas : 0;
 
-        res.json({ ventas: ventas.rows, totalVendido, totalVentas, ticketPromedio, porMetodo, porDia });
+        // Gastos del turno: los pagados con dinero de la CAJA descuentan del
+        // efectivo esperado en el cierre. Los de 'local'/'otro' no afectan.
+        let gastosCaja = 0, gastosTotal = 0, gastosCantidad = 0;
+        if (turno_id) {
+            const g = await db.query(`
+                SELECT
+                    COALESCE(SUM(monto) FILTER (WHERE COALESCE(origen_dinero, 'caja') = 'caja'), 0) AS gastos_caja,
+                    COALESCE(SUM(monto), 0) AS gastos_total,
+                    COUNT(*) AS cantidad
+                FROM gastos
+                WHERE negocio_id = $1 AND turno_id = $2
+            `, [negocio_id, turno_id]);
+            gastosCaja = parseFloat(g.rows[0].gastos_caja) || 0;
+            gastosTotal = parseFloat(g.rows[0].gastos_total) || 0;
+            gastosCantidad = parseInt(g.rows[0].cantidad) || 0;
+        }
+
+        res.json({ ventas: ventas.rows, totalVendido, totalVentas, ticketPromedio, porMetodo, porDia, gastosCaja, gastosTotal, gastosCantidad });
     } catch (error) {
         console.error('Error en historial:', error);
         res.status(500).json({ error: 'Error al generar historial' });
