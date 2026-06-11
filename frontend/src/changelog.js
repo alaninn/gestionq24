@@ -33,6 +33,8 @@ export const CHANGELOG = [
       { t: 'Facturación: al subir el certificado, el sistema valida que sea el archivo correcto, que no esté vencido y que corresponda a tu solicitud, con mensajes claros de qué salió mal.' },
       { t: 'Corregido: al cargar un certificado nuevo se limpia la conexión anterior (evita el error de ARCA "No apareció CUIT en lista de relaciones").' },
       { t: 'Corregido: la venta de productos por peso (Kg/Lt/Mt) ahora respeta la configuración "Stock Negativo" — antes bloqueaba siempre, y con stock ya negativo no dejaba vender nunca.' },
+      { t: 'Corregido: pantalla en blanco ocasional en el POS. Ahora, ante cualquier error, se muestra una pantalla de recuperación con el detalle y botones para recargar o restablecer.' },
+      { t: 'Facturación: al activar facturación electrónica en una venta, ahora sale Factura B (consumidor final) por defecto. La Factura A se elige a mano solo para ventas a otros Responsables Inscriptos.' },
     ],
   },
   {
