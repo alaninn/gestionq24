@@ -107,9 +107,10 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
       {/* Botones de acción */}
       <div className="flex gap-1.5 mt-2">
         <button onClick={() => onAjustar(producto)}
-          className="flex-1 py-1.5 bg-yellow-400 hover:bg-yellow-500 active:scale-95 text-yellow-900 rounded-lg text-sm font-bold transition-all">
+          className="px-5 py-1.5 bg-amber-100 hover:bg-amber-200 active:scale-95 text-amber-700 border border-amber-200 rounded-lg text-sm font-semibold transition-all">
           Ajustar
         </button>
+        <span className="flex-1" />
         <button onClick={() => onHistorial(producto)} title="Historial de stock"
           className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm transition-colors">
           🕒

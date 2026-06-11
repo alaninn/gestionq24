@@ -532,7 +532,7 @@ function FacturacionElectronica({ config, setConfig }) {
                 <h4 className="font-bold text-gray-800 mb-2">📋 Mi Régimen Fiscal</h4>
                 <p className="text-sm text-gray-500 mb-4">Seleccioná tu régimen fiscal según tu situación tributaria</p>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button
                     onClick={() => cambiarRegimenFiscal('responsable_inscripto')}
                     className={`p-6 rounded-xl border-2 text-left transition-all ${
@@ -657,7 +657,7 @@ function FacturacionElectronica({ config, setConfig }) {
                 <h4 className="font-bold text-gray-800 mb-2"> Entorno de Facturación</h4>
                 <p className="text-sm text-gray-500 mb-4">Elegí el entorno según si estás en pruebas o producción real</p>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button
                     onClick={() => set('entorno_arca', 'homologacion')}
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
@@ -1084,7 +1084,7 @@ function FacturacionElectronica({ config, setConfig }) {
 
             {mostrarFormComprobante && (
               <div className="space-y-4 p-4 bg-gray-50 rounded-xl">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Comprobante *</label>
                     <select
@@ -1113,7 +1113,7 @@ function FacturacionElectronica({ config, setConfig }) {
                 </div>
 
                 {formComprobante.tipo_documento !== 99 && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento</label>
                       <input
@@ -1137,7 +1137,7 @@ function FacturacionElectronica({ config, setConfig }) {
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Importe Total *</label>
                     <div className="relative">
