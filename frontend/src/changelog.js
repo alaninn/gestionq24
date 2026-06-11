@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.5.1';
+export const VERSION_ACTUAL = '2.5.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.5.2',
+    fecha: '2026-06-11',
+    titulo: 'Stock: conteo perfecto en el celular',
+    cambios: [
+      { t: 'Stock: el panel de conteo ahora queda pegado ENCIMA del teclado del celular — se ven el producto, el número y los botones sin cerrar el teclado.' },
+      { t: 'Stock: tocar Guardar/Omitir/+/− ya no cierra el teclado: el flujo tipear → guardar → tipear es continuo.' },
+      { t: 'Stock: panel de conteo compacto rediseñado (todo en una fila, progreso arriba).' },
+      { t: 'Stock: el botón ✏️ ahora abre la edición del producto ahí mismo (nombre, categoría, código, precios, stock mínimo, unidad), sin saltar a la pantalla de Productos.' },
+    ],
+  },
   {
     version: '2.5.1',
     fecha: '2026-06-11',
