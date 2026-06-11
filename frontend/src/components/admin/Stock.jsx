@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../../api/axios';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -146,6 +147,11 @@ function Stock() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const alturaTeclado = useAlturaTeclado();
+
+  // El botón "atrás" del celular cierra el modal abierto (no sale de la página)
+  useCerrarConAtras(mostrarAjustar, () => cerrarAjustar());
+  useCerrarConAtras(mostrarEditar, () => setMostrarEditar(false));
+  useCerrarConAtras(mostrarHistorial, () => setMostrarHistorial(false));
 
   const cargarTodo = async () => {
     try {
