@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 
 const ROLES = [
   { id: 'admin', label: 'Admin', desc: 'Acceso total al negocio. Precarga todos los permisos', color: 'bg-purple-100 text-purple-700' },
@@ -77,6 +78,9 @@ function Usuarios() {
   });
 
   useEffect(() => { cargarUsuarios(); }, []);
+
+  // El botón "atrás" del celular cierra el modal abierto
+  useCerrarConAtras(mostrarModal, () => setMostrarModal(false));
 
   const cargarUsuarios = async () => {
     try {

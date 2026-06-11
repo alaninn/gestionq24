@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { VERSION_ACTUAL, CHANGELOG } from '../../changelog';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 
 const STORAGE_KEY = 'version_vista';
 
@@ -30,6 +31,9 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
     localStorage.setItem(STORAGE_KEY, VERSION_ACTUAL);
     setHayNovedades(false);
   };
+
+  // El botón "atrás" del celular cierra el modal de novedades
+  useCerrarConAtras(abierto, cerrar);
 
   // En el panel del usuario ocultamos los cambios marcados como super (solo SuperAdmin).
   // En el panel SuperAdmin se muestra todo.

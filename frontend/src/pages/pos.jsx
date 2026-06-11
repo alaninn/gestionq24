@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import useCerrarConAtras from '../hooks/useCerrarConAtras';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -1867,6 +1868,16 @@ function POS() {
   const carritoActivo = pestanas.find(p => p.id === pestanaActiva)?.carrito || [];
 
   // Función para resetear estados de facturación electrónica
+  // El botón "atrás" del celular cierra el modal abierto en vez de salir del POS
+  useCerrarConAtras(mostrarModalVenta, () => { setMostrarModalVenta(false); resetearFacturacion(false); });
+  useCerrarConAtras(mostrarModalGasto, () => setMostrarModalGasto(false));
+  useCerrarConAtras(mostrarModalCierre, () => setMostrarModalCierre(false));
+  useCerrarConAtras(mostrarModalRapida, () => setMostrarModalRapida(false));
+  useCerrarConAtras(mostrarModalFiados, () => setMostrarModalFiados(false));
+  useCerrarConAtras(mostrarModalHistorial, () => setMostrarModalHistorial(false));
+  useCerrarConAtras(!!mostrarModalVentaProducto, () => setMostrarModalVentaProducto(null));
+  useCerrarConAtras(ventaExitosa, () => setVentaExitosa(false));
+
   const resetearFacturacion = (mantenerComprobante = false) => {
     setFacturacionElectronica(false);
     setTipoComprobante('');

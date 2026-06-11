@@ -27,6 +27,8 @@ export const CHANGELOG = [
       { t: 'Stock: panel de conteo compacto rediseñado (todo en una fila, progreso arriba).' },
       { t: 'Stock: el botón ✏️ ahora abre la edición del producto ahí mismo (nombre, categoría, código, precios, stock mínimo, unidad), sin saltar a la pantalla de Productos.' },
       { t: 'Stock: el botón "atrás" del celular ahora cierra el modal abierto (ajustar, editar, historial) en vez de salir de la página.' },
+      { t: 'El botón "atrás" del celular también cierra los modales del Punto de Venta, Productos, Usuarios y panel SuperAdmin.' },
+      { t: 'Mejora visual general: nueva tipografía más legible, números alineados en precios y stock, animaciones suaves al abrir paneles, barra de filtros con efecto vidrio y el color de tu negocio como acento en el inventario.' },
     ],
   },
   {
