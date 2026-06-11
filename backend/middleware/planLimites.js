@@ -18,11 +18,26 @@ const LIMITES_PLANES = {
   }
 };
 
+const db = require('../config/database');
+
 async function validarLimitePlan(req, res, next) {
   try {
     if (!req.usuario) return next();
 
-    const plan = req.usuario.plan || 'estandar';
+    let plan = req.usuario.plan || 'estandar';
+
+    // El superadmin no tiene plan propio en el token. Cuando opera un negocio
+    // (header x-negocio-id), se usa el plan REAL de ese negocio; en su propio
+    // panel no se le aplican límites.
+    if (req.usuario.rol === 'superadmin') {
+      if (req.negocio_id) {
+        const r = await db.query('SELECT plan FROM negocios WHERE id = $1', [req.negocio_id]);
+        plan = r.rows[0]?.plan || 'premium';
+      } else {
+        plan = 'premium';
+      }
+    }
+
     const limites = LIMITES_PLANES[plan] || LIMITES_PLANES.estandar;
 
     // Adjuntar limites al request para uso en las rutas

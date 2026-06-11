@@ -179,6 +179,9 @@ WHERE codigo IS NOT NULL;
 -- Agregar columna username a usuarios si no existe
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS username VARCHAR(50);
 
+-- El email es OPCIONAL (se inicia sesión con username): no puede ser NOT NULL
+ALTER TABLE usuarios ALTER COLUMN email DROP NOT NULL;
+
 -- Crear índice único para username por negocio (null permitido para compatibilidad)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_username_negocio 
 ON usuarios(username, negocio_id) 

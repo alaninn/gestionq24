@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.6.0';
+export const VERSION_ACTUAL = '2.6.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.6.1',
+    fecha: '2026-06-11',
+    titulo: 'Correcciones de límites de plan',
+    cambios: [
+      { t: 'Corregido: cuando el SuperAdmin entra a un negocio Premium, ya no se le aplican los límites del plan Estándar (crear usuarios, productos, facturación). Ahora usa el plan real del negocio que está operando.', super: true },
+      { t: 'Corregido: el email de los usuarios ahora es realmente opcional al crearlos (antes fallaba si se dejaba vacío).' },
+    ],
+  },
   {
     version: '2.6.0',
     fecha: '2026-06-11',

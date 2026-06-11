@@ -329,7 +329,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                   {[
                     { id: 'caja', label: '🧰 Caja del turno', desc: 'Descuenta del cierre', soloConTurno: true },
                     { id: 'local', label: '🏪 Dinero del local', desc: 'No afecta la caja' },
-                    { id: 'otro', label: '💳 Otro', desc: 'No afecta la caja' },
+                    { id: 'otro', label: '📱 MP del local', desc: 'No afecta la caja' },
                   ].map(o => {
                     const deshabilitado = o.soloConTurno && !turno;
                     return (
@@ -1669,7 +1669,7 @@ gastos.map(gasto => (
                           ? 'bg-sky-100 text-sky-700'
                           : 'bg-gray-100 text-gray-600'
                     }`}>
-                      {(gasto.origen_dinero || 'caja') === 'caja' ? '🧰 Caja' : gasto.origen_dinero === 'local' ? '🏪 Local' : '💳 Otro'}
+                      {(gasto.origen_dinero || 'caja') === 'caja' ? '🧰 Caja' : gasto.origen_dinero === 'local' ? '🏪 Local' : '📱 MP local'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -1795,7 +1795,7 @@ gastos.map(gasto => (
                   {[
                     { id: 'caja', label: '🧰 Caja del turno' },
                     { id: 'local', label: '🏪 Dinero del local' },
-                    { id: 'otro', label: '💳 Otro' },
+                    { id: 'otro', label: '📱 MP del local' },
                   ].map(o => (
                     <button key={o.id} type="button"
                       onClick={() => setFormEditarGasto(p => ({ ...p, origen_dinero: o.id }))}
