@@ -350,12 +350,13 @@ router.put('/negocios/:id/dias-uso', async (req, res) => {
 router.get('/alertas', async (req, res) => {
     try {
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 a.*,
                 n.nombre as negocio_nombre
             FROM alertas a
             LEFT JOIN negocios n ON n.id = a.negocio_id
             WHERE a.resuelta = false
+              AND a.severidad IN ('alta', 'crítica')
             ORDER BY 
                 CASE 
                     WHEN a.severidad = 'crítica' THEN 1
@@ -364,7 +365,7 @@ router.get('/alertas', async (req, res) => {
                     ELSE 4
                 END,
                 a.fecha DESC
-            LIMIT 100
+            LIMIT 20
         `);
         res.json(resultado.rows);
     } catch (error) {

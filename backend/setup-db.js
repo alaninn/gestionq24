@@ -124,6 +124,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos
 ALTER TABLE certificados_arca ADD COLUMN IF NOT EXISTS modo VARCHAR(20) DEFAULT 'propio';
 
 -- =============================================
+-- TABLA: stock_categorias
+-- Secciones propias de la pantalla de Stock (góndolas, heladeras, depósito...)
+-- Independientes de las categorías de productos: reflejan el orden FÍSICO del local
+-- para hacer inventario recorriendo las estanterías con el celular.
+-- =============================================
+CREATE TABLE IF NOT EXISTS stock_categorias (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    nombre VARCHAR(100) NOT NULL,
+    orden INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_stock_categorias_negocio ON stock_categorias(negocio_id, orden);
+
+-- Ubicación y orden de cada producto dentro de la pantalla de Stock
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_categoria_id INTEGER REFERENCES stock_categorias(id) ON DELETE SET NULL;
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_orden INTEGER DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_productos_stock_cat ON productos(negocio_id, stock_categoria_id, stock_orden);
+
+-- =============================================
 -- TABLA: errores_frontend
 -- Errores de pantalla reportados automáticamente por la app (ErrorBoundary)
 -- =============================================

@@ -453,6 +453,69 @@ router.post('/categoria-masivo', verificarPermiso('productos', 'editar'), async 
     }
 });
 
+// -----------------------------------------------
+// RUTA: PUT /api/productos/stock-organizar
+// FUNCIÓN: Asigna un producto a una sección de la pantalla de Stock
+//          (queda al final de la sección destino)
+// -----------------------------------------------
+router.put('/stock-organizar', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const producto_id = parseInt(req.body?.producto_id);
+        if (isNaN(producto_id)) return res.status(400).json({ error: 'producto_id requerido' });
+
+        // null = "sin ubicación"
+        const catId = req.body?.stock_categoria_id != null ? parseInt(req.body.stock_categoria_id) : null;
+
+        if (catId !== null) {
+            const cat = await db.query('SELECT id FROM stock_categorias WHERE id = $1 AND negocio_id = $2', [catId, negocio_id]);
+            if (cat.rows.length === 0) return res.status(404).json({ error: 'Sección no encontrada' });
+        }
+
+        const max = await db.query(
+            'SELECT COALESCE(MAX(stock_orden), 0) AS max FROM productos WHERE negocio_id = $1 AND stock_categoria_id IS NOT DISTINCT FROM $2',
+            [negocio_id, catId]
+        );
+
+        await db.query(
+            'UPDATE productos SET stock_categoria_id = $1, stock_orden = $2 WHERE id = $3 AND negocio_id = $4',
+            [catId, parseInt(max.rows[0].max) + 1, producto_id, negocio_id]
+        );
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error organizando producto:', error);
+        res.status(500).json({ error: 'Error al mover el producto' });
+    }
+});
+
+// -----------------------------------------------
+// RUTA: PUT /api/productos/stock-reordenar
+// FUNCIÓN: Guarda el orden de los productos dentro de una sección
+//          según la posición que tienen en el array recibido
+// -----------------------------------------------
+router.put('/stock-reordenar', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const ids = (req.body?.ids || []).map(x => parseInt(x)).filter(x => !isNaN(x));
+        if (ids.length === 0) return res.status(400).json({ error: 'Sin productos para ordenar' });
+
+        for (let i = 0; i < ids.length; i++) {
+            await db.query(
+                'UPDATE productos SET stock_orden = $1 WHERE id = $2 AND negocio_id = $3',
+                [i + 1, ids[i], negocio_id]
+            );
+        }
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error reordenando productos:', error);
+        res.status(500).json({ error: 'Error al guardar el orden' });
+    }
+});
+
 router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;

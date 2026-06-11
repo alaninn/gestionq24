@@ -68,9 +68,9 @@ function Superadmin() {
 
   useEffect(() => {
     cargarDatos();
+    // Las alertas se cargan UNA sola vez al entrar (sin polling, para no
+    // consumir recursos). Solo llegan las de severidad alta o crítica.
     cargarAlertas();
-    const interval = setInterval(cargarAlertas, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const cargarDatos = async () => {
@@ -509,7 +509,7 @@ function Superadmin() {
         {alertas.filter(a => !a.resuelta).length > 0 && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4">
             <p className="text-yellow-300 font-bold text-sm mb-3">
-              ⚠️ {alertas.filter(a => !a.resuelta).length} alerta(s) pendiente(s)
+              ⚠️ {alertas.filter(a => !a.resuelta).length} alerta(s) importante(s) — solo se muestran las de severidad alta o crítica
             </p>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {alertas.filter(a => !a.resuelta).slice(0, 10).map(a => (
