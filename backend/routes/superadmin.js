@@ -787,4 +787,62 @@ router.put('/negocios/:id/admin', async (req, res) => {
     }
 });
 
+// =============================================
+// BACKUPS DE BASE DE DATOS
+// =============================================
+const backupService = require('../services/backupService');
+
+// GET /api/superadmin/backups — listar backups existentes
+router.get('/backups', async (req, res) => {
+    try {
+        res.json(backupService.listarBackups());
+    } catch (error) {
+        console.error('Error listando backups:', error);
+        res.status(500).json({ error: 'Error al listar backups' });
+    }
+});
+
+// POST /api/superadmin/backups — crear un backup ahora
+router.post('/backups', async (req, res) => {
+    try {
+        const r = await backupService.hacerBackup();
+        res.json({ exito: true, ...r });
+    } catch (error) {
+        console.error('Error creando backup:', error);
+        res.status(500).json({ error: error.message || 'Error al crear backup' });
+    }
+});
+
+// GET /api/superadmin/backups/:archivo/descargar — bajar un backup
+router.get('/backups/:archivo/descargar', async (req, res) => {
+    try {
+        const ruta = backupService.rutaBackup(req.params.archivo);
+        if (!ruta) return res.status(404).json({ error: 'Backup no encontrado' });
+        res.download(ruta);
+    } catch (error) {
+        console.error('Error descargando backup:', error);
+        res.status(500).json({ error: 'Error al descargar backup' });
+    }
+});
+
+// =============================================
+// ERRORES DEL FRONTEND (reportados automáticamente)
+// =============================================
+// GET /api/superadmin/errores-frontend — últimos errores reportados
+router.get('/errores-frontend', async (req, res) => {
+    try {
+        const r = await db.query(`
+            SELECT e.*, n.nombre AS negocio_nombre
+            FROM errores_frontend e
+            LEFT JOIN negocios n ON n.id = e.negocio_id
+            ORDER BY e.fecha DESC
+            LIMIT 100
+        `);
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error obteniendo errores frontend:', error);
+        res.status(500).json({ error: 'Error al obtener errores' });
+    }
+});
+
 module.exports = router;

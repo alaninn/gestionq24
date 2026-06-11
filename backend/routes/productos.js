@@ -7,7 +7,7 @@ const db = require('../config/database');
 
 router.get('/', async (req, res) => {
     try {
-        const { buscar, categoria, pagina, limite = 50 } = req.query;
+        const { buscar, categoria, pagina, limite = 50, stock_bajo } = req.query;
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
@@ -35,6 +35,11 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             whereClause += ` AND p.categoria_id = $${contador}`;
             valores.push(categoria);
             contador++;
+        }
+
+        // Filtro de stock bajo (stock por debajo o igual al mínimo configurado)
+        if (stock_bajo === '1') {
+            whereClause += ' AND p.stock <= p.stock_minimo';
         }
 
         // Sin paginación → devuelve array directo (para el POS)

@@ -85,6 +85,7 @@ const [categorias, setCategorias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [buscar, setBuscar] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [soloStockBajo, setSoloStockBajo] = useState(false);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
   const [error, setError] = useState('');
@@ -129,7 +130,7 @@ const [categorias, setCategorias] = useState([]);
   useEffect(() => {
     const timer = setTimeout(() => cargarProductos(), 400);
     return () => clearTimeout(timer);
-  }, [buscar, categoriaFiltro]);
+  }, [buscar, categoriaFiltro, soloStockBajo]);
 
   useEffect(() => {
     if (celdaEditando && inputRef.current) {
@@ -148,6 +149,7 @@ const [categorias, setCategorias] = useState([]);
       let url = `/api/productos?pagina=${pagina}&limite=${LIMITE}`;
       if (buscar) url += `&buscar=${buscar}`;
       if (categoriaFiltro) url += `&categoria=${categoriaFiltro}`;
+      if (soloStockBajo) url += `&stock_bajo=1`;
       const res = await api.get(url);
       setProductos(res.data.productos);
       setTotalProductos(res.data.total);
@@ -284,6 +286,33 @@ const cargarCategorias = async () => {
       .then(res => setCodigos(res.data))
       .catch(() => {})
       .finally(() => setCargandoCodigos(false));
+  };
+
+  // Abre el formulario de "nuevo producto" precargado con los datos de otro.
+  // Útil para variantes (ej: misma gaseosa en 500ml y 1L). El código queda
+  // vacío para que se genere uno nuevo y el stock arranca en 0.
+  const duplicarProducto = (producto) => {
+    setFormulario({
+      codigo: '',
+      nombre: `${producto.nombre} (copia)`,
+      categoria_id: producto.categoria_id || '',
+      precio_costo: producto.precio_costo,
+      margen_ganancia: producto.margen_ganancia || '',
+      alicuota_iva: producto.alicuota_iva ?? '0',
+      precio_venta: producto.precio_venta,
+      precio_mayorista: producto.precio_mayorista || '',
+      margen_mayorista: '',
+      stock: '0',
+      stock_minimo: producto.stock_minimo,
+      unidad: producto.unidad || 'Uni',
+    });
+    setProductoEditando(null);
+    setError('');
+    setMostrarFormulario(true);
+    setCodigos([]);
+    setNuevoCodigo('');
+    setNuevaCategoria('');
+    setCreandoCategoria(false);
   };
 
   const guardarProducto = async (e) => {
@@ -697,6 +726,15 @@ const exportarExcel = async () => {
           <option value="">Todas las categorías</option>
           {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
         </select>
+        <button onClick={() => setSoloStockBajo(v => !v)}
+          title="Mostrar solo productos con stock en o por debajo del mínimo"
+          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+            soloStockBajo
+              ? 'bg-red-500 border-red-500 text-white'
+              : 'bg-white border-gray-300 text-gray-600 hover:border-red-300'
+          }`}>
+          ⚠️ Stock bajo
+        </button>
       </div>
 
       <p className="text-xs text-gray-400">💡 Hacé clic en el precio o stock para editarlo. Enter para guardar, Escape para cancelar.</p>
@@ -808,6 +846,8 @@ const exportarExcel = async () => {
                     <td className="px-4 py-2 text-center">
                       <div className="flex justify-center gap-2">
                         <button onClick={() => abrirFormularioEditar(producto)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors">Editar</button>
+                        <button onClick={() => duplicarProducto(producto)} title="Crear una copia de este producto"
+                          className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-sm transition-colors">⧉</button>
                         <button onClick={() => eliminarProducto(producto.id, producto.nombre)} className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors">Borrar</button>
                       </div>
                     </td>

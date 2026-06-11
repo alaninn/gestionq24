@@ -119,6 +119,9 @@ app.listen(PUERTO, host, () => {
     }
 });
 
+// Backup automático diario de la base de datos
+require('./services/backupService').iniciarBackupsAutomaticos();
+
 // Pool ya disponible via require('./config/database')
 
 schedule.scheduleJob('0 * * * *', async () => { // cada hora
