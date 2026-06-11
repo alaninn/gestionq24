@@ -26,6 +26,7 @@ export const CHANGELOG = [
       { t: 'Stock: tocar Guardar/Omitir/+/− ya no cierra el teclado: el flujo tipear → guardar → tipear es continuo.' },
       { t: 'Stock: panel de conteo compacto rediseñado (todo en una fila, progreso arriba).' },
       { t: 'Stock: el botón ✏️ ahora abre la edición del producto ahí mismo (nombre, categoría, código, precios, stock mínimo, unidad), sin saltar a la pantalla de Productos.' },
+      { t: 'Stock: el botón "atrás" del celular ahora cierra el modal abierto (ajustar, editar, historial) en vez de salir de la página.' },
     ],
   },
   {
