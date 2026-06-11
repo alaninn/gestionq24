@@ -2620,7 +2620,7 @@ const imprimirTicketDesdeModal = () => {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- PANEL IZQUIERDO: BÚSQUEDA ---- */}
-       <div className={`${vistaMobil === 'carrito' ? 'hidden' : 'flex'} lg:flex w-full lg:w-96 flex-col flex-shrink-0`} style={estilos.panelBusqueda}>
+       <div className={`${vistaMobil === 'carrito' ? 'hidden' : 'flex'} lg:flex w-full lg:w-[28rem] xl:w-[32rem] flex-col flex-shrink-0`} style={estilos.panelBusqueda}>
 
           {/* Buscador */}
           <div className="p-3" style={{ borderBottom: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #d1d5db' }}>
@@ -2722,7 +2722,11 @@ const imprimirTicketDesdeModal = () => {
                         {(producto.nombre || '?').charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate leading-tight" style={{ color: oscuro ? 'rgba(255,255,255,0.9)' : '#111827' }}>
+                        <p className="text-sm font-medium leading-tight break-words"
+                          style={{
+                            color: oscuro ? 'rgba(255,255,255,0.9)' : '#111827',
+                            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                          }}>
                           {producto.nombre}
                         </p>
                         <p className="text-xs mt-0.5" style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}>{producto.categoria_nombre || 'Sin categoría'}</p>
@@ -2792,7 +2796,9 @@ const imprimirTicketDesdeModal = () => {
               <div className="space-y-2 max-w-2xl mx-auto">
                 {carritoActivo.map((item, idx) => (
                <div key={item.producto_id}
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all"
+                  onClick={() => cambiarCantidad(item.producto_id, item.cantidad + 1)}
+                  title="Tocá la tarjeta para sumar 1"
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all cursor-pointer active:scale-[0.99] select-none"
                   style={{ ...estilos.itemCarrito, animationDelay: `${idx * 30}ms` }}>
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${item.esRapida ? 'bg-purple-500 bg-opacity-20 text-purple-300' : 'text-white'}`}
                       style={!item.esRapida ? { backgroundColor: 'var(--color-primario)' } : {}}>
@@ -2803,13 +2809,15 @@ const imprimirTicketDesdeModal = () => {
                       <p className="text-xs mt-0.5" style={estilos.textoItemSecundario}>{fmt(item.precio_unitario)} c/u</p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <button onClick={() => cambiarCantidad(item.producto_id, item.cantidad - 1)}
+                      <button onClick={(e) => { e.stopPropagation(); cambiarCantidad(item.producto_id, item.cantidad - 1); }}
                         className="w-7 h-7 rounded-lg font-bold text-sm transition-all hover:scale-105 active:scale-95"
                         style={estilos.botonCantidad}>−</button>
                       {editandoCantidad === item.producto_id ? (
                         <input
                           type="number" min="1" autoFocus
                           defaultValue={item.cantidad}
+                          onClick={(e) => e.stopPropagation()}
+                          onFocus={(e) => e.target.select()}
                           className="w-10 h-7 text-center font-bold text-sm rounded-lg outline-none border-0 bg-white text-gray-900"
                           onBlur={(e) => {
                             const v = parseFloat(e.target.value);
@@ -2823,21 +2831,21 @@ const imprimirTicketDesdeModal = () => {
                         />
                       ) : (
                         <button
-                          onClick={() => setEditandoCantidad(item.producto_id)}
+                          onClick={(e) => { e.stopPropagation(); setEditandoCantidad(item.producto_id); }}
                           className="w-10 h-7 rounded-lg font-bold text-sm transition-all hover:bg-white hover:bg-opacity-10"
                           style={estilos.textoItemCarrito}
                           title="Click para editar cantidad">
                           {item.cantidad}
                         </button>
                       )}
-                      <button onClick={() => cambiarCantidad(item.producto_id, item.cantidad + 1)}
+                      <button onClick={(e) => { e.stopPropagation(); cambiarCantidad(item.producto_id, item.cantidad + 1); }}
                         className="w-7 h-7 rounded-lg font-bold text-sm transition-all hover:scale-105 active:scale-95"
                         style={estilos.botonCantidad}>+</button>
                     </div>
                       <div className="text-right flex-shrink-0 w-20">
                       <p className="font-bold text-sm" style={estilos.textoItemCarrito}>{fmt(item.subtotal)}</p>
                     </div>
-                    <button onClick={() => eliminarDelCarrito(item.producto_id)}
+                    <button onClick={(e) => { e.stopPropagation(); eliminarDelCarrito(item.producto_id); }}
                       className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-xs hover:scale-110"
                       style={estilos.botonBasura}
                       title="Quitar del carrito">

@@ -239,7 +239,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
           {tabActiva === 'gasto' && (
             <>
               {/* Monto */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">MONTO *</label>
                   <div className="relative">
@@ -278,7 +278,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">CATEGORÍA *</label>
                   <select
@@ -428,7 +428,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false }) {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">PAGÁS AHORA *</label>
                   <input

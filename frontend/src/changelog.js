@@ -29,6 +29,11 @@ export const CHANGELOG = [
       { t: 'Stock: el botón "atrás" del celular ahora cierra el modal abierto (ajustar, editar, historial) en vez de salir de la página.' },
       { t: 'El botón "atrás" del celular también cierra los modales del Punto de Venta, Productos, Usuarios y panel SuperAdmin.' },
       { t: 'Mejora visual general: nueva tipografía más legible, números alineados en precios y stock, animaciones suaves al abrir paneles, barra de filtros con efecto vidrio y el color de tu negocio como acento en el inventario.' },
+      { t: 'POS: el buscador de productos es más ancho y los nombres largos se muestran completos (hasta 2 líneas).' },
+      { t: 'POS: tocar la tarjeta de un producto en el carrito suma 1 unidad (igual que el botón +).' },
+      { t: 'POS: al tocar la cantidad de un producto, el número queda seleccionado para tipear el nuevo valor directo.' },
+      { t: 'Stock: botón Ajustar más discreto y elegante.' },
+      { t: 'Formularios de Gastos y Facturación adaptados al celular (campos apilados).' },
     ],
   },
   {
