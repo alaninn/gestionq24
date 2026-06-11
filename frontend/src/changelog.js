@@ -21,7 +21,16 @@ export const CHANGELOG = [
     version: '2.5.1',
     fecha: '2026-06-11',
     titulo: 'Stock: vuelven los botones de siempre + filtro por categoría',
+    destacados: [
+      {
+        titulo: '▶ Modo Conteo: el inventario más rápido',
+        detalle: 'Cada sección tiene un botón "▶ Contar" que te lleva producto por producto: tipeás la cantidad y "Guardar y seguir" pasa al siguiente sin cerrar el teclado. Con barra de progreso, botón Omitir para saltear, y aviso cuando terminás la sección. Contar una góndola entera lleva segundos por producto.',
+      },
+    ],
     cambios: [
+      { t: 'Stock: modo Conteo secuencial por sección (▶ Contar) — tipear, seguir, tipear, seguir.' },
+      { t: 'Stock: chip "⚠ con stock bajo" para ver de un toque todo lo que hay que reponer.' },
+      { t: 'Stock: el buscador y los filtros quedan fijos arriba al hacer scroll.' },
       { t: 'Stock: cada producto vuelve a tener sus botones Ajustar, Historial (🕒), Modificar (✏️) y Eliminar (🗑️).' },
       { t: 'Stock: "Ajustar" abre el teclado numérico con la cantidad seleccionada para tipear directo el conteo (también tiene + y −).' },
       { t: 'Stock: filtro por categoría real de productos, ideal para encontrar y reorganizar productos por góndola.' },

@@ -106,6 +106,10 @@ function Stock() {
   const [nuevoStock, setNuevoStock] = useState('');
   const inputAjustarRef = useRef(null);
 
+  // Modo conteo secuencial: recorre una sección producto por producto sin volver a la lista
+  const [conteo, setConteo] = useState(null); // { ids: [], idx, titulo }
+  const [soloBajos, setSoloBajos] = useState(false);
+
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [historial, setHistorial] = useState([]);
   const [productoHistorial, setProductoHistorial] = useState(null);
@@ -133,22 +137,30 @@ function Stock() {
 
   useEffect(() => { cargarTodo(); }, []);
 
-  // Autofoco + selección del número al abrir el modal Ajustar (tipeo directo)
+  // Autofoco + selección del número al abrir el modal Ajustar o avanzar de producto
+  // (en el modo conteo, el teclado queda abierto y el número seleccionado: tipeo directo)
   useEffect(() => {
     if (mostrarAjustar && inputAjustarRef.current) {
       inputAjustarRef.current.focus();
       inputAjustarRef.current.select();
     }
-  }, [mostrarAjustar]);
+  }, [mostrarAjustar, productoAjustar?.id]);
 
   const avisoOk = (msg) => { setExito(msg); setTimeout(() => setExito(''), 2500); };
   const avisoError = (msg) => { setError(msg); setTimeout(() => setError(''), 4000); };
 
-  // ---- Filtro por categoría real + agrupado por sección ----
+  // ---- Filtros (categoría real + solo stock bajo) ----
+  const totalBajos = useMemo(
+    () => productos.filter(p => Number(p.stock) <= Number(p.stock_minimo ?? 0)).length,
+    [productos]
+  );
+
   const productosFiltrados = useMemo(() => {
-    if (!categoriaFiltro) return productos;
-    return productos.filter(p => String(p.categoria_id) === String(categoriaFiltro));
-  }, [productos, categoriaFiltro]);
+    let lista = productos;
+    if (categoriaFiltro) lista = lista.filter(p => String(p.categoria_id) === String(categoriaFiltro));
+    if (soloBajos) lista = lista.filter(p => Number(p.stock) <= Number(p.stock_minimo ?? 0));
+    return lista;
+  }, [productos, categoriaFiltro, soloBajos]);
 
   const grupos = useMemo(() => {
     const mapa = {};
@@ -175,9 +187,45 @@ function Stock() {
 
   // ---- AJUSTAR STOCK (flujo principal: escribir la cantidad contada) ----
   const abrirAjustar = (producto) => {
+    setConteo(null); // ajuste individual, sin secuencia
     setProductoAjustar(producto);
     setNuevoStock(String(producto.stock ?? 0));
     setMostrarAjustar(true);
+  };
+
+  const cerrarAjustar = () => {
+    setMostrarAjustar(false);
+    setProductoAjustar(null);
+    setConteo(null);
+  };
+
+  // ---- MODO CONTEO: recorre la sección producto por producto ----
+  const iniciarConteo = (sec, lista) => {
+    if (!lista || lista.length === 0) return;
+    const primero = lista[0];
+    setConteo({ ids: lista.map(p => p.id), idx: 0, titulo: sec ? sec.nombre : 'Sin ubicación' });
+    setProductoAjustar(primero);
+    setNuevoStock(String(primero.stock ?? 0));
+    setMostrarAjustar(true);
+  };
+
+  // Avanza al siguiente producto de la secuencia (o termina)
+  const avanzarConteo = (estadoConteo) => {
+    const siguienteIdx = estadoConteo.idx + 1;
+    if (siguienteIdx >= estadoConteo.ids.length) {
+      cerrarAjustar();
+      avisoOk(`🎉 "${estadoConteo.titulo}" contada completa (${estadoConteo.ids.length} productos)`);
+      return;
+    }
+    const siguiente = productos.find(p => p.id === estadoConteo.ids[siguienteIdx]);
+    if (!siguiente) { cerrarAjustar(); return; }
+    setConteo({ ...estadoConteo, idx: siguienteIdx });
+    setProductoAjustar(siguiente);
+    setNuevoStock(String(siguiente.stock ?? 0));
+  };
+
+  const omitirProducto = () => {
+    if (conteo) avanzarConteo(conteo);
   };
 
   const guardarAjuste = async () => {
@@ -186,12 +234,17 @@ function Stock() {
       avisoError('Ingresá una cantidad válida (0 o más)');
       return;
     }
+    const producto = productoAjustar;
     try {
-      await api.put(`/api/productos/${productoAjustar.id}/stock`, { stock: parsed });
-      setProductos(prev => prev.map(p => p.id === productoAjustar.id ? { ...p, stock: parsed } : p));
-      setMostrarAjustar(false);
-      setProductoAjustar(null);
-      avisoOk(`✅ ${productoAjustar.nombre}: ${parsed}`);
+      await api.put(`/api/productos/${producto.id}/stock`, { stock: parsed });
+      setProductos(prev => prev.map(p => p.id === producto.id ? { ...p, stock: parsed } : p));
+      if (conteo) {
+        // En modo conteo, guardar avanza directo al siguiente (sin cerrar el teclado)
+        avanzarConteo(conteo);
+      } else {
+        cerrarAjustar();
+        avisoOk(`✅ ${producto.nombre}: ${parsed}`);
+      }
     } catch (e) {
       avisoError('Error al actualizar el stock');
     }
@@ -349,6 +402,15 @@ function Stock() {
               <button onClick={() => eliminarSeccion(sec)} className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 text-xs">🗑️</button>
             </div>
           )}
+
+          {/* Conteo secuencial: recorre la sección sin volver a la lista */}
+          {!organizar && lista.length > 0 && (
+            <button onClick={() => iniciarConteo(sec, lista)}
+              title="Contar esta sección producto por producto"
+              className="flex-shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
+              ▶ Contar
+            </button>
+          )}
         </div>
 
         {abierta && (
@@ -406,22 +468,43 @@ function Stock() {
         </div>
       )}
 
-      {/* Buscador + filtro por categoría real */}
-      <div className="flex gap-2 flex-col sm:flex-row">
-        <div className="relative flex-1">
-          <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
-          <input value={buscar} onChange={(e) => setBuscar(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            placeholder="Buscar producto por nombre o código..." />
-          {buscar && (
-            <button onClick={() => setBuscar('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">✕</button>
+      {/* Buscador + filtros — fijos arriba al hacer scroll, siempre a mano */}
+      <div className="sticky top-0 z-20 bg-gray-50 -mx-4 px-4 lg:-mx-6 lg:px-6 py-2 space-y-2 border-b border-gray-200/70">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+            <input value={buscar} onChange={(e) => setBuscar(e.target.value)}
+              className="w-full border border-gray-300 bg-white rounded-xl pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Buscar por nombre o código..." />
+            {buscar && (
+              <button onClick={() => setBuscar('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">✕</button>
+            )}
+          </div>
+          <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}
+            className={`border rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 max-w-[150px] sm:max-w-[200px] ${categoriaFiltro ? 'border-green-500 bg-green-50 font-medium' : 'border-gray-300 bg-white'}`}>
+            <option value="">🏷️ Categorías</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+
+        {/* Chips de estado */}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-gray-400">{productosFiltrados.length} productos</span>
+          {totalBajos > 0 && (
+            <button onClick={() => setSoloBajos(v => !v)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold transition-colors ${
+                soloBajos ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600 hover:bg-red-200'
+              }`}>
+              ⚠ {totalBajos} con stock bajo {soloBajos && '✕'}
+            </button>
+          )}
+          {(categoriaFiltro || soloBajos) && (
+            <button onClick={() => { setCategoriaFiltro(''); setSoloBajos(false); }}
+              className="text-gray-400 hover:text-gray-600 underline">
+              limpiar filtros
+            </button>
           )}
         </div>
-        <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}
-          className={`border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 sm:max-w-[200px] ${categoriaFiltro ? 'border-green-500 bg-green-50 font-medium' : 'border-gray-300'}`}>
-          <option value="">🏷️ Todas las categorías</option>
-          {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
       </div>
 
       {error && <div className="bg-red-100 border border-red-300 text-red-700 px-3 py-2 rounded-xl text-sm">❌ {error}</div>}
@@ -456,41 +539,80 @@ function Stock() {
         </div>
       )}
 
-      {/* ---- Modal AJUSTAR (flujo principal del inventario) ---- */}
+      {/* ---- Modal AJUSTAR / CONTEO (flujo principal del inventario) ---- */}
       {mostrarAjustar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
-            <div className="p-4 border-b bg-yellow-50">
-              <h3 className="font-bold text-gray-800">📋 Ajustar stock</h3>
-              <p className="text-sm text-gray-600 truncate">{productoAjustar?.nombre}</p>
-              <p className="text-xs text-gray-400 mt-0.5">Stock actual: {productoAjustar?.stock ?? 0}</p>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+
+            {/* Encabezado: en conteo muestra sección y progreso */}
+            <div className={`p-4 border-b ${conteo ? 'bg-green-50' : 'bg-yellow-50'}`}>
+              {conteo ? (
+                <>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-green-700 uppercase tracking-wide">▶ Contando: {conteo.titulo}</span>
+                    <button onClick={cerrarAjustar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+                  </div>
+                  {/* Barra de progreso */}
+                  <div className="w-full bg-green-100 rounded-full h-1.5 mb-2">
+                    <div className="bg-green-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${((conteo.idx + 1) / conteo.ids.length) * 100}%` }} />
+                  </div>
+                  <p className="text-base font-bold text-gray-800 leading-tight">{productoAjustar?.nombre}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {conteo.idx + 1} de {conteo.ids.length} · stock actual: {productoAjustar?.stock ?? 0}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-gray-800">📋 Ajustar stock</h3>
+                    <button onClick={cerrarAjustar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+                  </div>
+                  <p className="text-sm text-gray-600 truncate">{productoAjustar?.nombre}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Stock actual: {productoAjustar?.stock ?? 0}</p>
+                </>
+              )}
             </div>
+
             <div className="p-4 space-y-3">
-              <label className="block text-sm font-medium text-gray-700">Cantidad contada</label>
               <div className="flex items-center gap-2">
                 <button onClick={() => setNuevoStock(String(Math.max(0, (parseInt(nuevoStock) || 0) - 1)))}
-                  className="w-12 h-12 rounded-xl bg-red-100 hover:bg-red-200 active:scale-95 text-red-700 font-bold text-xl transition-all">−</button>
+                  className="w-12 h-12 rounded-xl bg-red-100 hover:bg-red-200 active:scale-95 text-red-700 font-bold text-xl transition-all flex-shrink-0">−</button>
                 <input
                   ref={inputAjustarRef}
                   type="number" inputMode="numeric" min="0"
                   value={nuevoStock}
                   onChange={(e) => setNuevoStock(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') guardarAjuste(); }}
-                  className="flex-1 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl focus:outline-none focus:border-yellow-400"
+                  className={`flex-1 h-12 text-center text-2xl font-bold border-2 rounded-xl focus:outline-none ${conteo ? 'border-green-300 focus:border-green-500' : 'border-gray-300 focus:border-yellow-400'}`}
                 />
                 <button onClick={() => setNuevoStock(String((parseInt(nuevoStock) || 0) + 1))}
-                  className="w-12 h-12 rounded-xl bg-green-100 hover:bg-green-200 active:scale-95 text-green-700 font-bold text-xl transition-all">+</button>
+                  className="w-12 h-12 rounded-xl bg-green-100 hover:bg-green-200 active:scale-95 text-green-700 font-bold text-xl transition-all flex-shrink-0">+</button>
               </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => { setMostrarAjustar(false); setProductoAjustar(null); }}
-                  className="flex-1 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={guardarAjuste}
-                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
-                  ✅ Guardar
-                </button>
-              </div>
+
+              {conteo ? (
+                <div className="flex gap-2 pt-1">
+                  <button onClick={omitirProducto}
+                    className="px-4 py-3 border border-gray-300 rounded-xl text-gray-600 font-medium hover:bg-gray-50 transition-colors text-sm">
+                    Omitir ↷
+                  </button>
+                  <button onClick={guardarAjuste}
+                    className="flex-1 py-3 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white rounded-xl font-bold text-lg transition-all shadow-md">
+                    {conteo.idx + 1 >= conteo.ids.length ? '✅ Guardar y terminar' : 'Guardar y seguir ➞'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 pt-1">
+                  <button onClick={cerrarAjustar}
+                    className="flex-1 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+                    Cancelar
+                  </button>
+                  <button onClick={guardarAjuste}
+                    className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
+                    ✅ Guardar
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
