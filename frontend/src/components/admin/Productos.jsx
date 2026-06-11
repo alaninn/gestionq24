@@ -477,6 +477,8 @@ const cargarCategorias = async () => {
     const ejemplos = [
       ['Coca Cola 500ml', '7790895000123', 'Bebidas Sin Alcohol', '800', '1500', '10', '2', 'Uni', '21', '50'],
       ['Leche La Serenísima 1L', '7794000012345', 'Lácteos', '400', '800', '20', '5', 'Uni', '10.5', '50'],
+      // Ejemplo sin IVA ni margen: el precio de venta se respeta tal cual está escrito
+      ['Pan casero (precio directo)', '', 'Panadería', '500', '900', '15', '3', 'Uni', '0', '0'],
     ];
     const ws = XLSX.utils.aoa_to_sheet([...columnas, ...ejemplos]);
     ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }];
