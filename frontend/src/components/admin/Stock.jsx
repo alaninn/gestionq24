@@ -51,19 +51,46 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   const stockBajo = Number(producto.stock) <= Number(producto.stock_minimo ?? 0);
 
+  // ---- MODO ORGANIZAR: fila minimalista ----
+  // Solo importa LEER el nombre y mover: handle ☰ + nombre a ancho completo
+  // + ícono 📍 que abre el selector de sección (sin stock ni categoría).
+  if (organizar) {
+    return (
+      <div ref={setNodeRef} style={style}
+        className={`flex items-center gap-1.5 rounded-xl border bg-white border-gray-200 px-2 py-1.5 ${isDragging ? 'shadow-lg z-10' : ''}`}>
+
+        <button {...attributes} {...listeners} style={{ touchAction: 'none' }}
+          title="Arrastrá para ordenar"
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1.5 py-2.5 text-lg leading-none flex-shrink-0 select-none">
+          ☰
+        </button>
+
+        <p className="flex-1 min-w-0 text-sm font-medium text-gray-800 leading-snug break-words"
+          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {producto.nombre}
+        </p>
+
+        {/* Mover de sección: solo un ícono; al tocarlo se abre el selector nativo */}
+        <div className="relative w-10 h-10 flex-shrink-0" title="Mover a otra sección">
+          <span className="absolute inset-0 flex items-center justify-center bg-blue-50 hover:bg-blue-100 rounded-xl text-lg">📍</span>
+          <select
+            value={producto.stock_categoria_id ?? ''}
+            onChange={(e) => onMover(producto, e.target.value === '' ? null : parseInt(e.target.value))}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+            <option value="">📦 Sin ubicación</option>
+            {secciones.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- MODO NORMAL: stock visible + botones de acción ----
   return (
     <div ref={setNodeRef} style={style}
-      className={`rounded-xl border px-3 py-2 ${stockBajo ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'} ${isDragging ? 'shadow-lg z-10' : ''}`}>
+      className={`rounded-xl border px-3 py-2 ${stockBajo ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
 
       <div className="flex items-center gap-2">
-        {organizar && (
-          <button {...attributes} {...listeners} style={{ touchAction: 'none' }}
-            title="Arrastrá para ordenar"
-            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1 py-2 text-lg leading-none flex-shrink-0 select-none">
-            ☰
-          </button>
-        )}
-
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800 truncate leading-tight">{producto.nombre}</p>
           <p className="text-[11px] text-gray-400 truncate">
@@ -75,39 +102,27 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
         <span className={`flex-shrink-0 text-sm font-bold px-2.5 py-1 rounded-lg ${stockBajo ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
           {producto.stock ?? 0}{producto.unidad ? ` ${producto.unidad}` : ''}
         </span>
-
-        {organizar && (
-          <select
-            value={producto.stock_categoria_id ?? ''}
-            onChange={(e) => onMover(producto, e.target.value === '' ? null : parseInt(e.target.value))}
-            className="text-xs border border-gray-300 rounded-lg px-1.5 py-2 max-w-[110px] bg-white flex-shrink-0">
-            <option value="">📦 Sin ubicación</option>
-            {secciones.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        )}
       </div>
 
-      {/* Botones de acción (solo en modo normal) */}
-      {!organizar && (
-        <div className="flex gap-1.5 mt-2">
-          <button onClick={() => onAjustar(producto)}
-            className="flex-1 py-1.5 bg-yellow-400 hover:bg-yellow-500 active:scale-95 text-yellow-900 rounded-lg text-sm font-bold transition-all">
-            Ajustar
-          </button>
-          <button onClick={() => onHistorial(producto)} title="Historial de stock"
-            className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm transition-colors">
-            🕒
-          </button>
-          <button onClick={() => onModificar(producto)} title="Modificar producto"
-            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors">
-            ✏️
-          </button>
-          <button onClick={() => onEliminar(producto)} title="Eliminar producto"
-            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg text-sm transition-colors">
-            🗑️
-          </button>
-        </div>
-      )}
+      {/* Botones de acción */}
+      <div className="flex gap-1.5 mt-2">
+        <button onClick={() => onAjustar(producto)}
+          className="flex-1 py-1.5 bg-yellow-400 hover:bg-yellow-500 active:scale-95 text-yellow-900 rounded-lg text-sm font-bold transition-all">
+          Ajustar
+        </button>
+        <button onClick={() => onHistorial(producto)} title="Historial de stock"
+          className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm transition-colors">
+          🕒
+        </button>
+        <button onClick={() => onModificar(producto)} title="Modificar producto"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors">
+          ✏️
+        </button>
+        <button onClick={() => onEliminar(producto)} title="Eliminar producto"
+          className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg text-sm transition-colors">
+          🗑️
+        </button>
+      </div>
     </div>
   );
 }
