@@ -14,9 +14,31 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.3.0';
+export const VERSION_ACTUAL = '2.4.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.4.0',
+    fecha: '2026-06-11',
+    titulo: 'Respaldo automático y mejoras de productos',
+    destacados: [
+      {
+        titulo: '⚠️ Filtro de stock bajo',
+        detalle: 'En Productos, el botón "Stock bajo" te muestra de un vistazo todos los productos que están en o por debajo de su stock mínimo, para saber qué reponer.',
+      },
+      {
+        titulo: '⧉ Duplicar producto',
+        detalle: 'El botón ⧉ en cada producto crea una copia precargada (ideal para variantes como 500ml / 1L). Solo cambiás lo que difiere y guardás.',
+      },
+    ],
+    cambios: [
+      { t: 'Productos: filtro rápido "Stock bajo" para ver qué hay que reponer.' },
+      { t: 'Productos: botón duplicar (⧉) para crear variantes sin cargar todo de nuevo.' },
+      { t: 'Respaldo automático diario de la base de datos en el servidor, con rotación de copias.', super: true },
+      { t: 'SuperAdmin: backups manuales, listado y descarga desde la API.', super: true },
+      { t: 'Los errores de pantalla ahora se reportan automáticamente a soporte (con negocio, usuario y detalle) para resolverlos sin pedirte capturas.' },
+    ],
+  },
   {
     version: '2.3.0',
     fecha: '2026-06-11',

@@ -123,6 +123,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos
 -- Modo de conexión ARCA: 'propio' (certificado del negocio) o 'delegado' (web service delegado al CUIT del proveedor)
 ALTER TABLE certificados_arca ADD COLUMN IF NOT EXISTS modo VARCHAR(20) DEFAULT 'propio';
 
+-- =============================================
+-- TABLA: errores_frontend
+-- Errores de pantalla reportados automáticamente por la app (ErrorBoundary)
+-- =============================================
+CREATE TABLE IF NOT EXISTS errores_frontend (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER,
+    usuario_id INTEGER,
+    mensaje TEXT NOT NULL,
+    stack TEXT,
+    url VARCHAR(500),
+    user_agent VARCHAR(300),
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_errores_frontend_fecha ON errores_frontend(fecha DESC);
+
 -- El código de producto debe ser único POR NEGOCIO, no global (multi-tenant).
 -- Quitamos el constraint global viejo y creamos un índice único por (negocio_id, codigo).
 ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_codigo_key;

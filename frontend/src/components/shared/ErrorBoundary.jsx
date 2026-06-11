@@ -19,6 +19,23 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, info) {
     // Log al cliente para diagnóstico (visible en consola del navegador)
     console.error('💥 Error de render capturado:', error, info?.componentStack);
+
+    // Reporte automático al servidor para que soporte se entere sin capturas
+    try {
+      const token = localStorage.getItem('token');
+      fetch('/api/salud/error-frontend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          mensaje: String(error?.message || error),
+          stack: String(info?.componentStack || error?.stack || '').slice(0, 4000),
+          url: window.location.href,
+        }),
+      }).catch(() => {});
+    } catch {}
   }
 
   recargar = () => {

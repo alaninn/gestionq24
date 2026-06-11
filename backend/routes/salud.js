@@ -6,7 +6,50 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const jwt = require('jsonwebtoken');
 const { verificarToken } = require('../middleware/auth');
+
+// -----------------------------------------------
+// POST /api/salud/error-frontend
+// Recibe errores de pantalla reportados automáticamente por el ErrorBoundary.
+// SIN token obligatorio (el error puede ocurrir antes del login); si hay token
+// se usa para asociar negocio/usuario. Protegido por el rate limit global.
+// -----------------------------------------------
+router.post('/error-frontend', async (req, res) => {
+    try {
+        const { mensaje, stack, url } = req.body || {};
+        if (!mensaje) return res.status(400).json({ ok: false });
+
+        // Identificar usuario/negocio si viene token (opcional)
+        let negocio_id = null, usuario_id = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader) {
+            try {
+                const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+                negocio_id = decoded.negocio_id || null;
+                usuario_id = decoded.id || null;
+            } catch {}
+        }
+
+        await db.query(`
+            INSERT INTO errores_frontend (negocio_id, usuario_id, mensaje, stack, url, user_agent)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+            negocio_id,
+            usuario_id,
+            String(mensaje).slice(0, 1000),
+            String(stack || '').slice(0, 4000),
+            String(url || '').slice(0, 500),
+            String(req.headers['user-agent'] || '').slice(0, 300),
+        ]);
+
+        console.error(`💥 Error frontend reportado [negocio ${negocio_id ?? '-'}]: ${String(mensaje).slice(0, 200)}`);
+        res.json({ ok: true });
+    } catch (error) {
+        // Nunca romper por el propio reporte de errores
+        res.json({ ok: false });
+    }
+});
 
 router.use(verificarToken);
 
