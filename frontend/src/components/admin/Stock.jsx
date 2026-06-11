@@ -7,13 +7,38 @@
 // =============================================
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 const SIN_UBICACION = 'sin';
+
+// Detecta cuánto espacio tapa el teclado del celular (Visual Viewport API).
+// Sirve para posicionar el panel de conteo PEGADO ENCIMA del teclado,
+// con los botones siempre visibles sin tener que cerrarlo.
+function useAlturaTeclado() {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const medir = () => {
+      setOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    };
+    vv.addEventListener('resize', medir);
+    vv.addEventListener('scroll', medir);
+    medir();
+    return () => {
+      vv.removeEventListener('resize', medir);
+      vv.removeEventListener('scroll', medir);
+    };
+  }, []);
+  return offset;
+}
+
+// Evita que tocar un botón le quite el foco al input (cerraría el teclado).
+// Así el flujo "tipear → Guardar y seguir → tipear" no se interrumpe nunca.
+const mantenerTeclado = (e) => e.preventDefault();
 
 // ---- Fila de producto ----
 // Modo normal: stock visible + botones Ajustar / Historial / Modificar / Eliminar
@@ -87,7 +112,6 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
 }
 
 function Stock() {
-  const navigate = useNavigate();
   const [productos, setProductos] = useState([]);
   const [secciones, setSecciones] = useState([]);
   const [categorias, setCategorias] = useState([]);           // categorías REALES de productos
@@ -114,7 +138,14 @@ function Stock() {
   const [historial, setHistorial] = useState([]);
   const [productoHistorial, setProductoHistorial] = useState(null);
 
+  // Modal de edición rápida del producto (sin salir del inventario)
+  const [mostrarEditar, setMostrarEditar] = useState(false);
+  const [productoEditar, setProductoEditar] = useState(null);
+  const [formEditar, setFormEditar] = useState({});
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const alturaTeclado = useAlturaTeclado();
 
   const cargarTodo = async () => {
     try {
@@ -262,7 +293,58 @@ function Stock() {
     }
   };
 
-  const modificarProducto = () => navigate('/admin/productos');
+  // ---- Edición rápida en el lugar (sin ir a la pantalla de Productos) ----
+  const modificarProducto = (producto) => {
+    setProductoEditar(producto);
+    setFormEditar({
+      nombre: producto.nombre || '',
+      codigo: producto.codigo || '',
+      categoria_id: producto.categoria_id || '',
+      precio_costo: producto.precio_costo ?? '',
+      precio_venta: producto.precio_venta ?? '',
+      stock_minimo: producto.stock_minimo ?? 0,
+      unidad: producto.unidad || 'Uni',
+    });
+    setMostrarEditar(true);
+  };
+
+  const guardarEdicion = async (e) => {
+    e.preventDefault();
+    if (!formEditar.nombre.trim() || !formEditar.precio_venta) {
+      avisoError('Nombre y precio de venta son obligatorios');
+      return;
+    }
+    try {
+      setGuardandoEdicion(true);
+      // Se envían TODOS los campos del producto: los editados desde el form
+      // y el resto tal como estaban (el PUT del backend actualiza todo).
+      const datos = {
+        codigo: formEditar.codigo,
+        nombre: formEditar.nombre,
+        categoria_id: formEditar.categoria_id || null,
+        precio_costo: formEditar.precio_costo || 0,
+        precio_venta: formEditar.precio_venta,
+        precio_mayorista: productoEditar.precio_mayorista || null,
+        stock: productoEditar.stock ?? 0,
+        stock_minimo: formEditar.stock_minimo || 0,
+        unidad: formEditar.unidad,
+        alicuota_iva: productoEditar.alicuota_iva ?? 0,
+        margen_ganancia: productoEditar.margen_ganancia || 0,
+      };
+      const res = await api.put(`/api/productos/${productoEditar.id}`, datos);
+      const catNombre = categorias.find(c => String(c.id) === String(formEditar.categoria_id))?.nombre || null;
+      setProductos(prev => prev.map(p => p.id === productoEditar.id
+        ? { ...p, ...res.data, categoria_nombre: catNombre }
+        : p));
+      setMostrarEditar(false);
+      setProductoEditar(null);
+      avisoOk(`✅ ${formEditar.nombre} actualizado`);
+    } catch (err) {
+      avisoError(err.response?.data?.error || 'Error al guardar el producto');
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
 
   const abrirHistorial = async (producto) => {
     try {
@@ -539,81 +621,177 @@ function Stock() {
         </div>
       )}
 
-      {/* ---- Modal AJUSTAR / CONTEO (flujo principal del inventario) ---- */}
+      {/* ---- Panel AJUSTAR / CONTEO ----
+           Compacto y SIEMPRE pegado encima del teclado del celular:
+           se ve el producto, el número y los botones sin cerrar el teclado. */}
       {mostrarAjustar && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 z-50" onClick={cerrarAjustar}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="fixed left-0 right-0 mx-auto w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-b-2xl shadow-2xl transition-[bottom] duration-150"
+            style={{ bottom: alturaTeclado }}>
 
-            {/* Encabezado: en conteo muestra sección y progreso */}
-            <div className={`p-4 border-b ${conteo ? 'bg-green-50' : 'bg-yellow-50'}`}>
-              {conteo ? (
-                <>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-green-700 uppercase tracking-wide">▶ Contando: {conteo.titulo}</span>
-                    <button onClick={cerrarAjustar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-                  </div>
-                  {/* Barra de progreso */}
-                  <div className="w-full bg-green-100 rounded-full h-1.5 mb-2">
-                    <div className="bg-green-500 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${((conteo.idx + 1) / conteo.ids.length) * 100}%` }} />
-                  </div>
-                  <p className="text-base font-bold text-gray-800 leading-tight">{productoAjustar?.nombre}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {conteo.idx + 1} de {conteo.ids.length} · stock actual: {productoAjustar?.stock ?? 0}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-gray-800">📋 Ajustar stock</h3>
-                    <button onClick={cerrarAjustar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-                  </div>
-                  <p className="text-sm text-gray-600 truncate">{productoAjustar?.nombre}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Stock actual: {productoAjustar?.stock ?? 0}</p>
-                </>
+            {/* Encabezado compacto: 1 línea + progreso */}
+            <div className={`px-3 pt-2 pb-1.5 ${conteo ? 'bg-green-50' : 'bg-yellow-50'} rounded-t-2xl`}>
+              <div className="flex items-center gap-2">
+                {conteo && (
+                  <span className="text-[11px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                    {conteo.idx + 1}/{conteo.ids.length}
+                  </span>
+                )}
+                <p className="flex-1 text-sm font-bold text-gray-800 truncate leading-tight">
+                  {productoAjustar?.nombre}
+                </p>
+                <span className="text-[11px] text-gray-400 flex-shrink-0">actual: {productoAjustar?.stock ?? 0}</span>
+                <button onClick={cerrarAjustar} onPointerDown={mantenerTeclado}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1 flex-shrink-0">×</button>
+              </div>
+              {conteo && (
+                <div className="w-full bg-green-100 rounded-full h-1 mt-1.5">
+                  <div className="bg-green-500 h-1 rounded-full transition-all duration-300"
+                    style={{ width: `${((conteo.idx + 1) / conteo.ids.length) * 100}%` }} />
+                </div>
               )}
             </div>
 
-            <div className="p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setNuevoStock(String(Math.max(0, (parseInt(nuevoStock) || 0) - 1)))}
-                  className="w-12 h-12 rounded-xl bg-red-100 hover:bg-red-200 active:scale-95 text-red-700 font-bold text-xl transition-all flex-shrink-0">−</button>
+            {/* Todo en UNA fila: −, número, +, acción principal */}
+            <div className="p-2.5 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <button onPointerDown={mantenerTeclado}
+                  onClick={() => setNuevoStock(String(Math.max(0, (parseInt(nuevoStock) || 0) - 1)))}
+                  className="w-11 h-12 rounded-xl bg-red-100 hover:bg-red-200 active:scale-95 text-red-700 font-bold text-xl transition-all flex-shrink-0">−</button>
                 <input
                   ref={inputAjustarRef}
                   type="number" inputMode="numeric" min="0"
                   value={nuevoStock}
                   onChange={(e) => setNuevoStock(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') guardarAjuste(); }}
-                  className={`flex-1 h-12 text-center text-2xl font-bold border-2 rounded-xl focus:outline-none ${conteo ? 'border-green-300 focus:border-green-500' : 'border-gray-300 focus:border-yellow-400'}`}
+                  className={`w-20 h-12 text-center text-2xl font-bold border-2 rounded-xl focus:outline-none flex-shrink-0 ${conteo ? 'border-green-300 focus:border-green-500' : 'border-gray-300 focus:border-yellow-400'}`}
                 />
-                <button onClick={() => setNuevoStock(String((parseInt(nuevoStock) || 0) + 1))}
-                  className="w-12 h-12 rounded-xl bg-green-100 hover:bg-green-200 active:scale-95 text-green-700 font-bold text-xl transition-all flex-shrink-0">+</button>
+                <button onPointerDown={mantenerTeclado}
+                  onClick={() => setNuevoStock(String((parseInt(nuevoStock) || 0) + 1))}
+                  className="w-11 h-12 rounded-xl bg-green-100 hover:bg-green-200 active:scale-95 text-green-700 font-bold text-xl transition-all flex-shrink-0">+</button>
+
+                <button onPointerDown={mantenerTeclado} onClick={guardarAjuste}
+                  className="flex-1 h-12 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white rounded-xl font-bold text-base transition-all shadow-md leading-tight">
+                  {conteo
+                    ? (conteo.idx + 1 >= conteo.ids.length ? '✅ Terminar' : 'Guardar ➞')
+                    : '✅ Guardar'}
+                </button>
               </div>
 
-              {conteo ? (
-                <div className="flex gap-2 pt-1">
-                  <button onClick={omitirProducto}
-                    className="px-4 py-3 border border-gray-300 rounded-xl text-gray-600 font-medium hover:bg-gray-50 transition-colors text-sm">
-                    Omitir ↷
+              {/* Fila secundaria mínima */}
+              <div className="flex items-center justify-between px-0.5">
+                {conteo ? (
+                  <button onPointerDown={mantenerTeclado} onClick={omitirProducto}
+                    className="text-sm text-gray-500 hover:text-gray-700 font-medium py-1 px-2 -ml-2">
+                    Omitir este producto ↷
                   </button>
-                  <button onClick={guardarAjuste}
-                    className="flex-1 py-3 bg-green-600 hover:bg-green-700 active:scale-[0.98] text-white rounded-xl font-bold text-lg transition-all shadow-md">
-                    {conteo.idx + 1 >= conteo.ids.length ? '✅ Guardar y terminar' : 'Guardar y seguir ➞'}
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2 pt-1">
-                  <button onClick={cerrarAjustar}
-                    className="flex-1 py-3 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+                ) : (
+                  <button onClick={cerrarAjustar} className="text-sm text-gray-500 hover:text-gray-700 font-medium py-1 px-2 -ml-2">
                     Cancelar
                   </button>
-                  <button onClick={guardarAjuste}
-                    className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
-                    ✅ Guardar
-                  </button>
-                </div>
-              )}
+                )}
+                {conteo && (
+                  <span className="text-[11px] text-gray-400 truncate max-w-[50%]">▶ {conteo.titulo}</span>
+                )}
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal edición rápida del producto */}
+      {mostrarEditar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
+              <h3 className="font-bold text-gray-800">✏️ Editar producto</h3>
+              <button onClick={() => setMostrarEditar(false)} className="text-2xl text-gray-400 hover:text-gray-600">×</button>
+            </div>
+
+            <form onSubmit={guardarEdicion} className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input type="text" value={formEditar.nombre} required
+                  onChange={(e) => setFormEditar(p => ({ ...p, nombre: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                  <input type="text" value={formEditar.codigo}
+                    onChange={(e) => setFormEditar(p => ({ ...p, codigo: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <select value={formEditar.categoria_id || ''}
+                    onChange={(e) => setFormEditar(p => ({ ...p, categoria_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+                    <option value="">Sin categoría</option>
+                    {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio costo</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+                    <input type="number" min="0" step="0.01" value={formEditar.precio_costo}
+                      onChange={(e) => setFormEditar(p => ({ ...p, precio_costo: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+                    <input type="number" min="0" step="0.01" required value={formEditar.precio_venta}
+                      onChange={(e) => setFormEditar(p => ({ ...p, precio_venta: e.target.value }))}
+                      className="w-full border-2 border-green-300 bg-green-50 rounded-xl pl-7 pr-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-green-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo (alerta)</label>
+                  <input type="number" min="0" value={formEditar.stock_minimo}
+                    onChange={(e) => setFormEditar(p => ({ ...p, stock_minimo: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                  <select value={formEditar.unidad}
+                    onChange={(e) => setFormEditar(p => ({ ...p, unidad: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+                    <option value="Uni">Unidad</option>
+                    <option value="Kg">Kilogramo</option>
+                    <option value="Lt">Litro</option>
+                    <option value="Mt">Metro</option>
+                  </select>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-400">
+                Para márgenes, IVA, mayorista o códigos alternativos, usá la pantalla Productos.
+              </p>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setMostrarEditar(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={guardandoEdicion}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50">
+                  {guardandoEdicion ? 'Guardando...' : '💾 Guardar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
