@@ -123,6 +123,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_codigos_unico ON producto_codigos
 -- Modo de conexión ARCA: 'propio' (certificado del negocio) o 'delegado' (web service delegado al CUIT del proveedor)
 ALTER TABLE certificados_arca ADD COLUMN IF NOT EXISTS modo VARCHAR(20) DEFAULT 'propio';
 
+-- Gastos: quién lo hizo y de dónde salió el dinero
+-- origen_dinero: 'caja' (caja del turno, afecta el cierre) | 'local' (dinero del local) | 'otro'
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS origen_dinero VARCHAR(20) DEFAULT 'caja';
+CREATE INDEX IF NOT EXISTS idx_gastos_turno ON gastos(turno_id);
+
+-- Índices para acelerar la búsqueda exacta por código de barras (scanner)
+CREATE INDEX IF NOT EXISTS idx_productos_codigo_lower ON productos (negocio_id, LOWER(codigo));
+CREATE INDEX IF NOT EXISTS idx_producto_codigos_lower ON producto_codigos (negocio_id, LOWER(codigo));
+
 -- =============================================
 -- TABLA: stock_categorias
 -- Secciones propias de la pantalla de Stock (góndolas, heladeras, depósito...)

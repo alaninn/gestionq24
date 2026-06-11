@@ -1024,7 +1024,9 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     const mercadopago = parseFloat(datos.total_mercadopago || 0);
     const transferencias = parseFloat(datos.total_transferencias || 0);
     const totalDeclarado = efectivoDeclarado + tarjetas + mercadopago + transferencias;
-    const totalSistema = (resumen?.totalVendido || 0) + efectivoInicio;
+    // Los gastos pagados con dinero de la caja reducen lo que debe haber al cierre
+    const gastosCaja = parseFloat(resumen?.gastosCaja || 0);
+    const totalSistema = (resumen?.totalVendido || 0) + efectivoInicio - gastosCaja;
     const diferencia = totalDeclarado - totalSistema;
 
     const nombreNegocio = config?.nombre_negocio || 'Mi Negocio';
@@ -1071,6 +1073,8 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
         <div class="fila"><span>Para siguiente turno</span><span>${fmt(efectivoSiguiente)}</span></div>
         <div class="separador"></div>
         <div class="fila"><span>Total ventas</span><span>${fmt(resumen?.totalVendido || 0)}</span></div>
+        ${gastosCaja > 0 ? `<div class="fila"><span>Gastos de caja</span><span>-${fmt(gastosCaja)}</span></div>` : ''}
+        <div class="fila"><span>Total esperado</span><span>${fmt(totalSistema)}</span></div>
         <div class="fila"><span>Total declarado</span><span>${fmt(totalDeclarado)}</span></div>
         <div class="fila"><span>Diferencia</span><span>${fmt(diferencia)}</span></div>
         <div class="separador"></div>
@@ -1112,8 +1116,12 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
 
       // Calcular diferencias
       if (resumen) {
+        // Gastos pagados con dinero de la caja: reducen el efectivo esperado
+        const gastosCaja = parseFloat(resumen.gastosCaja || 0);
         const efectivoDeclaro = parseFloat(datos.efectivo_retirado || 0) + parseFloat(datos.dinero_siguiente || 0);
-        const efectivoSistema = resumen.porMetodo?.efectivo || 0;
+        // El efectivo declarado incluye el inicio de caja, por eso el esperado
+        // es: inicio + ventas en efectivo − gastos de caja
+        const efectivoSistema = (resumen.porMetodo?.efectivo || 0) + parseFloat(turno.inicio_caja || 0) - gastosCaja;
         const tarjetasDeclaro = parseFloat(datos.total_tarjetas || 0);
         const tarjetasSistema = (resumen.porMetodo?.tarjeta || 0);
         const mpDeclaro = parseFloat(datos.total_mercadopago || 0);
@@ -1122,7 +1130,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
         const transfSistema = (resumen.porMetodo?.transferencia || 0);
 
         const totalDeclaro = efectivoDeclaro + tarjetasDeclaro + mpDeclaro + transfDeclaro;
-        const totalSistema = (resumen.totalVendido || 0) + parseFloat(turno.inicio_caja || 0);
+        const totalSistema = (resumen.totalVendido || 0) + parseFloat(turno.inicio_caja || 0) - gastosCaja;
         const diferencia = totalDeclaro - totalSistema;
 
         setResultadoCierre({
@@ -1290,6 +1298,17 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                         <p className="text-xs text-gray-400">Dinero en caja</p>
                       </div>
                     </div>
+
+                    {/* Gastos pagados con la caja: bajan el efectivo esperado */}
+                    {parseFloat(resumen.gastosCaja || 0) > 0 && (
+                      <div className="bg-red-50 rounded-xl p-3 border border-red-200 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-red-700">💸 Gastos pagados con la caja</p>
+                          <p className="text-xs text-red-400">Se descuentan del efectivo esperado</p>
+                        </div>
+                        <p className="text-xl font-bold text-red-600">−{fmt(resumen.gastosCaja)}</p>
+                      </div>
+                    )}
 
                     {/* Detalles expandibles de ingresos */}
                     {ingresosExpandido && (
@@ -1787,7 +1806,8 @@ function POS() {
   const [config, setConfig] = useState(null);
   const [productos, setProductos] = useState([]);
   const [buscar, setBuscar] = useState('');
-  const [ordenar, setOrdenar] = useState('nombre');
+  // 'relevancia' respeta el orden del servidor: lo que EMPIEZA con lo buscado primero
+  const [ordenar, setOrdenar] = useState('relevancia');
   const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
   const [mostrarModalFiados, setMostrarModalFiados] = useState(false);
   const [mostrarModalVenta, setMostrarModalVenta] = useState(false);
@@ -1917,7 +1937,7 @@ useEffect(() => {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/api/productos?buscar=${terminoBuscado}`);
+        const res = await api.get(`/api/productos?buscar=${encodeURIComponent(terminoBuscado)}&rapida=1`);
         // Solo actualizar si el término no cambió mientras esperábamos la respuesta
         if (terminoBuscado === buscar.trim()) {
           const resultados = res.data;
@@ -2023,14 +2043,16 @@ useEffect(() => {
   };
 
   const cargarProductos = async () => {
-    try { const res = await api.get(`/api/productos?buscar=${buscar}`); setProductos(res.data); } catch { }
+    try { const res = await api.get(`/api/productos?buscar=${encodeURIComponent(buscar)}&rapida=1`); setProductos(res.data); } catch { }
   };
 
-  const productosOrdenados = [...productos].sort((a, b) => {
-    if (ordenar === 'precio_asc') return a.precio_venta - b.precio_venta;
-    if (ordenar === 'precio_desc') return b.precio_venta - a.precio_venta;
-    return a.nombre.localeCompare(b.nombre, 'es');
-  });
+  const productosOrdenados = ordenar === 'relevancia'
+    ? productos // orden del servidor: prefijo primero ("leche" → "Leche..." antes que "...dulce de leche")
+    : [...productos].sort((a, b) => {
+        if (ordenar === 'precio_asc') return a.precio_venta - b.precio_venta;
+        if (ordenar === 'precio_desc') return b.precio_venta - a.precio_venta;
+        return a.nombre.localeCompare(b.nombre, 'es');
+      });
 
   const agregarPestana = () => {
     const nuevaId = Date.now();
@@ -2644,7 +2666,7 @@ const imprimirTicketDesdeModal = () => {
             <div className="px-3 py-2 flex gap-1.5 items-center justify-between" style={{ borderBottom: oscuro ? '0.5px solid rgba(255,255,255,0.08)' : '1px solid #cbd5e1' }}>
               <div className="flex gap-1.5 items-center">
                 <span className="text-xs" style={{ color: oscuro ? 'rgba(255,255,255,0.3)' : '#64748b' }}>Orden:</span>
-                {[{ id: 'nombre', label: 'A-Z' }, { id: 'precio_asc', label: '$ ↑' }, { id: 'precio_desc', label: '$ ↓' }].map(o => (
+                {[{ id: 'relevancia', label: '🎯' }, { id: 'nombre', label: 'A-Z' }, { id: 'precio_asc', label: '$ ↑' }, { id: 'precio_desc', label: '$ ↓' }].map(o => (
                   <button key={o.id} onClick={() => setOrdenar(o.id)}
                     style={ordenar === o.id ? { backgroundColor: 'var(--color-primario)' } : {}}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${ordenar === o.id ? 'text-white' : oscuro ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
@@ -2970,7 +2992,8 @@ const imprimirTicketDesdeModal = () => {
 
       {/* ---- MODALES ---- */}
       {mostrarModalGasto && (
-        <ModalGasto onCerrar={() => { setMostrarModalGasto(false); inputBuscarRef.current?.focus(); }}
+        <ModalGasto turno={turno}
+          onCerrar={() => { setMostrarModalGasto(false); inputBuscarRef.current?.focus(); }}
           onGuardado={() => setMostrarModalGasto(false)} />
       )}
       {mostrarModalVenta && (

@@ -23,9 +23,10 @@ router.get('/', verificarPermiso('gastos', 'ver'), async (req, res) => {
         if (proveedor_id) { where += ` AND g.proveedor_id = $${contador}`; valores.push(proveedor_id); contador++; }
 
         const consulta = `
-            SELECT g.*, p.nombre AS proveedor_nombre
+            SELECT g.*, p.nombre AS proveedor_nombre, u.nombre AS usuario_nombre
             FROM gastos g
             LEFT JOIN proveedores p ON p.id = g.proveedor_id AND p.negocio_id = g.negocio_id
+            LEFT JOIN usuarios u ON u.id = g.usuario_id
             ${where}
             ORDER BY g.fecha DESC
         `;
@@ -91,9 +92,13 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
 
         const { registrar_nueva_factura, total_factura, pago_independiente } = req.body;
 
+        // origen_dinero: 'caja' (afecta el cierre del turno) | 'local' | 'otro'
+        const origenDinero = ['caja', 'local', 'otro'].includes(req.body.origen_dinero)
+            ? req.body.origen_dinero : 'caja';
+
         const resultado = await db.query(`
-            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago, registrar_nueva_factura, total_factura)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *
+            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago, registrar_nueva_factura, total_factura, usuario_id, origen_dinero)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *
         `, [
             descripcion || '',
             montoNumerico,
@@ -116,7 +121,9 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             tipo_pago_proveedor || null,
             estado_pago || 'pagado',
             registrar_nueva_factura || false,
-            total_factura || null
+            total_factura || null,
+            req.usuario?.id || null,   // quién registró el gasto (del token, no editable)
+            origenDinero
         ]);
 
         // Si es pago a proveedor, actualizar saldo
@@ -229,12 +236,16 @@ router.put('/:id', verificarPermiso('gastos', 'editar'), async (req, res) => {
             }
         }
 
+        const origenDinero = ['caja', 'local', 'otro'].includes(req.body.origen_dinero)
+            ? req.body.origen_dinero : null;
+
         const resultado = await db.query(`
             UPDATE gastos
             SET descripcion=$1, monto=$2, categoria=$3, turno_id=$4, tipo=$5, metodo_pago=$6,
-                proveedor_id=$7, recibo_url=$8, fecha=$9, es_compra=$10, tipo_documento=$11, tipo_comprobante=$12, condicion_iva_proveedor=$13, numero_boleta=$14,
+                proveedor_id=$7, recibo_url=$8, fecha=COALESCE($9, fecha), es_compra=$10, tipo_documento=$11, tipo_comprobante=$12, condicion_iva_proveedor=$13, numero_boleta=$14,
                 iva_incluido=$15, porcentaje_iva=$16, monto_iva=$17, productos_json=$18,
-                tipo_pago_proveedor=$19, estado_pago=$20
+                tipo_pago_proveedor=$19, estado_pago=$20,
+                origen_dinero=COALESCE($23, origen_dinero)
             WHERE id=$21 AND negocio_id=$22
             RETURNING *
         `, [
@@ -259,7 +270,8 @@ router.put('/:id', verificarPermiso('gastos', 'editar'), async (req, res) => {
             tipo_pago_proveedor || null,
             estado_pago || 'pagado',
             req.params.id,
-            negocio_id
+            negocio_id,
+            origenDinero
         ]);
 
         if (resultado.rows.length === 0) {

@@ -14,9 +14,33 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.5.2';
+export const VERSION_ACTUAL = '2.6.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.6.0',
+    fecha: '2026-06-11',
+    titulo: 'Búsqueda inteligente y gastos que cierran la caja',
+    destacados: [
+      {
+        titulo: '🔍 Búsqueda del POS mejorada',
+        detalle: 'Los resultados ahora se ordenan por relevancia: si buscás "leche", primero aparecen las leches y después lo que contiene la palabra (como el alfajor de dulce de leche). Las búsquedas combinadas tipo "coca 2.25" siguen funcionando igual. Además es más rápida.',
+      },
+      {
+        titulo: '🧰 Gastos con origen del dinero',
+        detalle: 'Al cargar un gasto ahora elegís de dónde salió la plata: "Caja del turno" (se descuenta del efectivo esperado en el cierre), "Dinero del local" u "Otro" (no afectan la caja). Así el cierre de caja te da bien aunque hayas pagado algo durante el turno.',
+      },
+    ],
+    cambios: [
+      { t: 'POS: resultados de búsqueda por relevancia (lo que empieza con lo buscado va primero); podés volver a A-Z o por precio con los chips de orden.' },
+      { t: 'POS: búsqueda más rápida (menos datos por consulta e índices nuevos para el lector de códigos).' },
+      { t: 'Gastos: selector "¿De dónde sale el dinero?" (caja del turno / dinero del local / otro).' },
+      { t: 'Cierre de caja: los gastos pagados con la caja se descuentan del efectivo esperado, se muestran en el resumen y en el ticket impreso.' },
+      { t: 'Gastos: ahora se registra qué usuario hizo cada gasto (antes figuraba siempre Admin).' },
+      { t: 'Gastos: botón Editar para corregir un gasto (monto, descripción, categoría, método y origen).' },
+      { t: 'Gastos: el historial muestra el origen del dinero de cada gasto.' },
+    ],
+  },
   {
     version: '2.5.2',
     fecha: '2026-06-11',
