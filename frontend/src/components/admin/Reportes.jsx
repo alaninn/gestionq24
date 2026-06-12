@@ -333,7 +333,7 @@ const calcularFechas = () => {
               </div>
 
               {/* Desglose por método de pago */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div className="bg-white rounded-xl p-4 shadow border-l-4 border-sky-400">
                   <p className="text-gray-500 text-xs">🏦 Transferencias</p>
                   <p className="text-lg font-bold text-gray-800 mt-1">{fmt(historial.porMetodo?.transferencia)}</p>

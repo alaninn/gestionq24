@@ -445,10 +445,12 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
   setNumeroDocumento,
   denominacionComprador,
   setDenominacionComprador,
+  condicionIvaReceptor,
+  setCondicionIvaReceptor,
   tiposComprobante,
   setTiposComprobante,
-  onConfirmar, 
-  onCerrar 
+  onConfirmar,
+  onCerrar
 }, ref) {
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [efectivoEntregado, setEfectivoEntregado] = useState('');
@@ -729,6 +731,21 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
                           placeholder="Ej: Juan Pérez"
                         />
                       </div>
+                      {tipoDocumento === 80 && ![1, 2, 3].includes(tipoComprobante) && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Condición IVA del comprador</label>
+                          <select
+                            value={condicionIvaReceptor || 6}
+                            onChange={(e) => setCondicionIvaReceptor(parseInt(e.target.value))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                          >
+                            <option value={6}>Responsable Monotributo</option>
+                            <option value={4}>IVA Exento</option>
+                            <option value={15}>IVA No Alcanzado</option>
+                            <option value={13}>Monotributista Social</option>
+                          </select>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1043,16 +1060,20 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
         <title>Cierre de Caja</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 80mm; max-width: 80mm; padding: 4mm; color: #000; background: #fff; }
+          body { font-family: 'Courier New', Courier, monospace; font-size: 14px; font-weight: bold; width: 80mm; max-width: 80mm; padding: 3mm; color: #000; background: #fff; }
           .center { text-align: center; }
           .right { text-align: right; }
-          .bold { font-weight: bold; }
-          .grande { font-size: 16px; }
-          .small { font-size: 10px; }
+          .bold { font-weight: 900; }
+          .grande { font-size: 18px; font-weight: 900; }
+          .small { font-size: 12px; }
           .separador { border-top: 1px dashed #000; margin: 4px 0; }
           .separador-doble { border-top: 2px solid #000; margin: 4px 0; }
           .fila { display: flex; justify-content: space-between; margin: 4px 0; }
-          .fila-small { display: flex; justify-content: space-between; margin: 2px 0; font-size: 10px; }
+          .fila-small { display: flex; justify-content: space-between; margin: 2px 0; font-size: 12px; }
+          @media print {
+            body { width: 80mm; }
+            @page { size: 80mm auto; margin: 0; }
+          }
         </style>
       </head>
       <body>
@@ -1838,6 +1859,8 @@ function POS() {
   const [tipoDocumento, setTipoDocumento] = useState(99);
   const [numeroDocumento, setNumeroDocumento] = useState('');
   const [denominacionComprador, setDenominacionComprador] = useState('');
+  // Condición IVA del receptor (RG 5616): 0 = automático según tipo de doc/comprobante
+  const [condicionIvaReceptor, setCondicionIvaReceptor] = useState(0);
  const [tiposComprobante, setTiposComprobante] = useState([]);
   const [ultimoComprobante, setUltimoComprobante] = useState(null);
   const [mostrarComprobanteElectronico, setMostrarComprobanteElectronico] = useState(false);
@@ -1904,6 +1927,7 @@ function POS() {
     setTipoDocumento(99);
     setNumeroDocumento('');
     setDenominacionComprador('');
+    setCondicionIvaReceptor(0);
     setTiposComprobante([]);
     if (!mantenerComprobante) setUltimoComprobante(null);
   };
@@ -2271,6 +2295,9 @@ useEffect(() => {
             tipo_documento: tipoDocumento,
             numero_documento: numeroDocumento || null,
             denominacion_comprador: denominacionComprador || null,
+            // Condición IVA receptor (RG 5616): A → RI; CUIT → lo elegido (def. monotributo); resto → consumidor final
+            condicion_iva_receptor: [1, 2, 3].includes(tipoComprobante) ? 1
+              : (tipoDocumento === 80 ? (condicionIvaReceptor || 6) : 5),
             importe_total: parseFloat(totalFinal),
 // Factura C (monotributista): IVA = 0, neto = total
 // Factura A/B (responsable inscripto): IVA = 21%
@@ -3015,6 +3042,8 @@ const imprimirTicketDesdeModal = () => {
           setNumeroDocumento={setNumeroDocumento}
           denominacionComprador={denominacionComprador}
           setDenominacionComprador={setDenominacionComprador}
+          condicionIvaReceptor={condicionIvaReceptor}
+          setCondicionIvaReceptor={setCondicionIvaReceptor}
           tiposComprobante={tiposComprobante}
           setTiposComprobante={setTiposComprobante}
           onConfirmar={confirmarVenta}

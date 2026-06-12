@@ -804,9 +804,59 @@ const exportarExcel = async () => {
         </div>
       )}
 
-      {/* Tabla */}
+      {/* Lista: tarjetas en celular, tabla en pantallas grandes */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto">
+
+        {/* Vista móvil: tarjetas con las mismas funciones */}
+        <div className="sm:hidden divide-y divide-gray-100">
+          {cargando ? (
+            <div className="text-center py-8 text-gray-400">Cargando...</div>
+          ) : productosOrdenados.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">No se encontraron productos</div>
+          ) : (
+            productosOrdenados.map(producto => (
+              <div key={producto.id} className={`p-3 ${seleccionados.includes(producto.id) ? 'bg-red-50' : ''}`}>
+                <div className="flex items-start gap-3">
+                  <input type="checkbox" checked={seleccionados.includes(producto.id)}
+                    onChange={() => toggleSeleccion(producto.id)}
+                    className="w-5 h-5 mt-0.5 text-red-600 rounded flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-800 leading-snug">{producto.nombre}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {producto.codigo || 'sin código'}{producto.categoria_nombre ? ` · ${producto.categoria_nombre}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-2 pl-8">
+                  <div className="flex items-center gap-3 text-sm">
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase">Venta</p>
+                      <CeldaEditable producto={producto} campo="precio_venta" formatear={formatearPeso} alinear="left" celdaEditando={celdaEditando} iniciarEdicion={iniciarEdicion} guardarEdicionInline={guardarEdicionInline} cancelarEdicion={cancelarEdicion} inputRef={inputRef} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase">Stock</p>
+                      <CeldaEditable producto={producto} campo="stock"
+                        formatear={(val) => (
+                          <span className={`font-medium ${Number(val) <= producto.stock_minimo ? 'text-red-600' : 'text-green-600'}`}>
+                            {val} {producto.unidad}
+                          </span>
+                        )}
+                        alinear="left" celdaEditando={celdaEditando} iniciarEdicion={iniciarEdicion} guardarEdicionInline={guardarEdicionInline} cancelarEdicion={cancelarEdicion} inputRef={inputRef} />
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    <button onClick={() => abrirFormularioEditar(producto)} className="bg-blue-100 active:bg-blue-200 text-blue-700 px-2.5 py-1.5 rounded-lg text-xs font-medium">✏️</button>
+                    <button onClick={() => duplicarProducto(producto)} title="Duplicar" className="bg-purple-100 active:bg-purple-200 text-purple-700 px-2.5 py-1.5 rounded-lg text-xs font-medium">⧉</button>
+                    <button onClick={() => eliminarProducto(producto.id, producto.nombre)} className="bg-red-100 active:bg-red-200 text-red-700 px-2.5 py-1.5 rounded-lg text-xs font-medium">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Vista escritorio: tabla completa */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -869,14 +919,15 @@ const exportarExcel = async () => {
               )}
             </tbody>
           </table>
+        </div>
 
-                {/* Paginación */}
+        {/* Paginación (compartida por ambas vistas) */}
         {totalPaginas > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 border-t bg-gray-50">
             <p className="text-sm text-gray-500">
               Mostrando {((paginaActual - 1) * LIMITE) + 1}–{Math.min(paginaActual * LIMITE, totalProductos)} de {totalProductos} productos
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-center">
               <button onClick={() => cargarProductos(paginaActual - 1)}
                 disabled={paginaActual === 1}
                 className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
@@ -907,9 +958,6 @@ const exportarExcel = async () => {
             </div>
           </div>
         )}
-
-
-        </div>
       </div>
 
       {/* Modal */}

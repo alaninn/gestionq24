@@ -14,9 +14,26 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.7.0';
+export const VERSION_ACTUAL = '2.7.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.7.1',
+    fecha: '2026-06-11',
+    titulo: 'Facturación según estándares ARCA, tickets más legibles y mejoras para celular',
+    destacados: [
+      {
+        titulo: '🧾 Facturación electrónica al día con ARCA',
+        detalle: 'Los comprobantes ahora informan la Condición frente al IVA del receptor (RG 5616, obligatoria). Al facturar con CUIT podés elegir la condición del comprador (Monotributista, Exento, etc.). La factura B impresa ahora muestra "IVA Contenido" según la Ley de Transparencia Fiscal (27.743) en vez de discriminar el IVA como una factura A.',
+      },
+    ],
+    cambios: [
+      { t: 'Tickets de impresión: letra más grande y clara en el comprobante electrónico y el cierre de caja, y tamaño de página correcto para impresoras térmicas (respeta el ancho configurado, sin márgenes de A4).' },
+      { t: 'Productos en celular: nueva vista de tarjetas con edición rápida de precio y stock, selección múltiple y todas las acciones (editar, duplicar, borrar). En pantalla grande sigue la tabla completa.' },
+      { t: 'Control de caja en celular: el historial de cierres se ve como tarjetas (tocá una para ver el detalle).' },
+      { t: 'Ajustes de diseño móvil en Reportes y Proveedores.' },
+    ],
+  },
   {
     version: '2.7.0',
     fecha: '2026-06-11',

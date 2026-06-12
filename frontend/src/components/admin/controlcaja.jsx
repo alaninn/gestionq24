@@ -497,7 +497,36 @@ function ControlCaja() {
                 <p>No hay cierres de caja en este período</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Vista móvil: tarjetas por turno */}
+              <div className="sm:hidden divide-y divide-gray-100">
+                {datos.turnos.map(turno => (
+                  <div key={turno.id} className="p-3" onClick={() => setTurnoSeleccionado(turno)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{fmtFecha(turno.fecha_apertura)}</p>
+                        <p className="text-xs text-gray-400">
+                          {turno.fecha_cierre ? `Cierre: ${fmtFecha(turno.fecha_cierre)}` : 'Turno en curso'} · {turno.total_ventas} venta(s)
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-green-600">{fmt(turno.total_facturado)}</p>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          turno.estado === 'abierto' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>{turno.estado}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 mt-1.5 text-xs text-gray-500">
+                      <span>💵 {fmt(turno.ventas_efectivo)}</span>
+                      <span>📱 {fmt(parseFloat(turno.ventas_tarjeta || 0) + parseFloat(turno.ventas_mp || 0) + parseFloat(turno.ventas_transferencia || 0))}</span>
+                      <span className="text-red-500">💸 {fmt(turno.total_gastos)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Vista escritorio: tabla completa */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
@@ -552,6 +581,7 @@ function ControlCaja() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </>

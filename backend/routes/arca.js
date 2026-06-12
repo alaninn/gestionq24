@@ -350,7 +350,8 @@ router.post('/emitir', verificarToken, soloAdmin, async (req, res) => {
             denominacion_comprador,
             importe_total,
             importe_neto,
-            importe_iva
+            importe_iva,
+            condicion_iva_receptor
         } = req.body;
 
         if (!tipo_comprobante || !importe_total) {
@@ -367,7 +368,8 @@ router.post('/emitir', verificarToken, soloAdmin, async (req, res) => {
             denominacion_comprador,
             importe_total,
             importe_neto,
-            importe_iva
+            importe_iva,
+            condicion_iva_receptor
         });
 
         if (resultado.exito) {
