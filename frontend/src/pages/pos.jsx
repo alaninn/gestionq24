@@ -2717,10 +2717,28 @@ const imprimirTicketDesdeModal = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
+          {/* Caja actual: click → cambiar de caja (sin cerrarla) */}
+          <button
+            onClick={async () => {
+              const tieneCarrito = pestanas.some(p => p.carrito.length > 0);
+              const aviso = `Estás trabajando en la caja "${turno?.nombre || 'Caja'}".\n\n¿Querés cambiar de caja?\nLa caja NO se cierra: queda abierta para los demás usuarios.` +
+                (tieneCarrito ? '\n\n⚠️ Tenés productos sin cobrar en el carrito.' : '');
+              if (!window.confirm(aviso)) return;
+              try {
+                await api.post(`/api/turnos/${turno.id}/salir`);
+                setTurno(null);
+                setCargandoTurno(true);
+                verificarTurno(); // recarga cajas fijas y abiertas → aparece el selector
+              } catch (err) {
+                alert(err.response?.data?.error || 'Error al salir de la caja');
+              }
+            }}
+            title="Estás en esta caja — tocá para cambiar de caja (no se cierra)"
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl px-3 py-2 transition-colors">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
             <span className="text-sm font-medium text-gray-300">{turno?.nombre || 'Caja'}</span>
-          </div>
+            <span className="text-[10px] text-gray-500">⇄</span>
+          </button>
 
           {/* Modo claro/oscuro rápido — preferencia local */}
           <button
