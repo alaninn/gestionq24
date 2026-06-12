@@ -211,12 +211,13 @@ function Proveedores() {
   };
 
   const eliminarGasto = async (gastoId) => {
-    if (!window.confirm('¿Eliminar este gasto?')) return;
+    if (!window.confirm('¿Eliminar este movimiento?\n\nSi era una compra a crédito o un pago, los saldos del proveedor se ajustan automáticamente.')) return;
     try {
       await api.delete(`/api/gastos/${gastoId}`);
-      setExito('Gasto eliminado');
+      setExito('Movimiento eliminado y saldos ajustados');
       await verDetalle(proveedorSeleccionado);
-      setTimeout(() => setExito(''), 2000);
+      cargarProveedores(); // refrescar saldos en el listado
+      setTimeout(() => setExito(''), 2500);
     } catch (err) {
       setError('Error al eliminar gasto');
     }
@@ -240,13 +241,29 @@ function Proveedores() {
     setError('');
 
     try {
-      if (!formPago.monto || formPago.monto <= 0) {
+      const monto = parseFloat(formPago.monto);
+      if (!monto || monto <= 0) {
         setError('El monto debe ser mayor a 0');
         return;
       }
 
-      const tipoPago = tipoPagoContext === 'pago_a_cuenta' ? 'pago_deuda' : tipoPagoContext === 'cobro_deuda' ? 'cobro_deuda' : 'ajuste_credito';
-      const descripcionPago = formPago.descripcion || (tipoPago === 'pago_deuda' ? 'Pago a cuenta de deuda' : tipoPago === 'cobro_deuda' ? 'Cobro de deuda' : 'Pago nuevo / crédito');
+      // Validar contra el saldo correspondiente para no descuadrar cuentas
+      const tipoPago = tipoPagoContext === 'cobro_deuda' ? 'cobro_deuda' : 'pago_deuda';
+      const saldoCorrespondiente = tipoPago === 'cobro_deuda'
+        ? Number(proveedorSeleccionado.saldo_deuda || 0)
+        : Number(proveedorSeleccionado.saldo_a_favor || 0);
+      if (saldoCorrespondiente <= 0) {
+        setError(tipoPago === 'cobro_deuda'
+          ? 'Este proveedor no nos debe nada para cobrar'
+          : 'No le debemos nada a este proveedor. Las deudas se generan registrando compras a crédito desde Gastos.');
+        return;
+      }
+      if (monto > saldoCorrespondiente) {
+        setError(`El monto no puede superar el saldo de ${formatearPeso(saldoCorrespondiente)}`);
+        return;
+      }
+
+      const descripcionPago = formPago.descripcion || (tipoPago === 'pago_deuda' ? 'Pago de deuda al proveedor' : 'Cobro de deuda del proveedor');
 
       await api.post(`/api/proveedores/${proveedorSeleccionado.id}/pago`, {
         monto: parseFloat(formPago.monto),
@@ -944,18 +961,17 @@ function Proveedores() {
               </button>
             </div>
 
-            <div className="p-4 flex flex-col gap-4 flex-1 overflow-hidden">
-              <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-3 border border-gray-200">
+            <div className="p-4 flex flex-col gap-3 flex-1 overflow-hidden">
+              {/* Filtros */}
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 flex-shrink-0">
                 <div className="flex flex-wrap gap-2 items-center text-sm">
-                  <span className="font-semibold text-gray-700">Filtrar por período:</span>
-
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap">
                     {[
-                      { key: 'todos', label: 'Todos', icon: '📅' },
-                      { key: 'hoy', label: 'Hoy', icon: '📆' },
-                      { key: 'semana', label: 'Esta Semana', icon: '📊' },
-                      { key: 'mes', label: 'Este Mes', icon: '🗓️' }
-                    ].map(({ key, label, icon }) => (
+                      { key: 'todos', label: 'Todos' },
+                      { key: 'hoy', label: 'Hoy' },
+                      { key: 'semana', label: 'Semana' },
+                      { key: 'mes', label: 'Mes' }
+                    ].map(({ key, label }) => (
                       <button
                         key={key}
                         onClick={() => {
@@ -963,139 +979,106 @@ function Proveedores() {
                           setFiltrosHistorial(nuevosFiltros);
                           verDetalle(proveedorSeleccionado, nuevosFiltros);
                         }}
-                        className={`px-2 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 flex items-center gap-1 ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                           filtrosHistorial.periodo === key
-                            ? 'bg-blue-500 text-white shadow-md'
+                            ? 'bg-slate-800 text-white'
                             : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
                         }`}
                       >
-                        {icon} {label}
+                        {label}
                       </button>
                     ))}
                   </div>
 
-                  <div className="flex gap-2 items-center ml-auto">
+                  <div className="flex gap-2 items-center ml-auto flex-wrap">
                     <input
                       type="date"
                       value={filtrosHistorial.fechaDesde}
                       onChange={(e) => setFiltrosHistorial(p => ({ ...p, fechaDesde: e.target.value, periodo: 'personalizado' }))}
-                      className="border rounded-lg px-2 py-1 text-xs"
-                      placeholder="Desde"
+                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
                     />
                     <span className="text-gray-400 text-xs">→</span>
                     <input
                       type="date"
                       value={filtrosHistorial.fechaHasta}
                       onChange={(e) => setFiltrosHistorial(p => ({ ...p, fechaHasta: e.target.value, periodo: 'personalizado' }))}
-                      className="border rounded-lg px-2 py-1 text-xs"
-                      placeholder="Hasta"
+                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
                     />
                     <button
                       onClick={() => verDetalle(proveedorSeleccionado)}
-                      className="bg-green-500 text-white px-3 py-2 rounded text-sm hover:bg-green-600 transition-colors font-medium"
+                      className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
                     >
-                      🔍 Aplicar
+                      Aplicar
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div>
+              {/* Total del período visible */}
+              {Array.isArray(proveedorSeleccionado.movimientos) && proveedorSeleccionado.movimientos.length > 0 && (
+                <div className="flex items-center justify-between px-1 flex-shrink-0">
+                  <span className="text-xs text-gray-500">{proveedorSeleccionado.movimientos.length} movimiento(s) en el período</span>
+                  <span className="text-sm font-bold text-gray-800 tabular-nums">
+                    Total: {formatearPeso(proveedorSeleccionado.movimientos.reduce((a, m) => a + Number(m.monto || 0), 0))}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {Array.isArray(proveedorSeleccionado.movimientos) && proveedorSeleccionado.movimientos.length > 0 ? (
-                  proveedorSeleccionado.movimientos.map((mov) => (
-                    <div key={mov.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all duration-200 group">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-semibold text-gray-800 text-sm">{mov.descripcion}</p>
-                          {(() => {
-                            // Logica inteligente para tipo de movimiento
-                            if ((mov.tipo === 'pago_proveedor' || mov.es_compra) && mov.registrar_nueva_factura) {
-                              const monto = Number(mov.monto);
-                              const totalFactura = Number(mov.total_factura);
-                              
-                              if (monto >= totalFactura) {
-                                return <span className="text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">✅ PAGO TOTAL FACTURA</span>
-                              }
-                              if (monto < totalFactura && monto > 0) {
-                                return <span className="text-[10px] px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">⚠️ PAGO PARCIAL FACTURA</span>
-                              }
-                              if (monto === 0) {
-                                return <span className="text-[10px] px-2 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">🧾 NUEVA FACTURA (DEUDA)</span>
-                              }
-                            }
-                            if (mov.tipo === 'pago_proveedor' && !mov.total_factura && !mov.registrar_nueva_factura) {
-                              return <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 text-blue-700 border border-blue-200">💸 PAGO A CUENTA DEUDA</span>
-                            }
-                            if (mov.es_compra) {
-                              if (mov.tipo_comprobante === 'factura_a' || mov.tipo_comprobante === 'factura_b' || mov.tipo_comprobante === 'factura_c') {
-                                return <span className="text-[10px] px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">🧾 COMPRA CON FACTURA</span>
-                              }
-                              return <span className="text-[10px] px-2 py-1 rounded-full bg-teal-100 text-teal-700 border border-teal-200">🛒 COMPRA SIN FACTURA</span>
-                            }
-                            return <span className={`text-[10px] px-2 py-1 rounded-full ${mov.tipo === 'pago_proveedor' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}>
-                              {mov.tipo === 'pago_proveedor' ? '💰 Pago Proveedor' : '📄 Gasto General'}
-                            </span>
-                          })()}
-                        </div>
-                        <p className="text-xs text-gray-500 flex items-center gap-1">📅 {formatearFecha(mov.fecha)}</p>
-                        {mov.total_factura && Number(mov.total_factura) > 0 && (
-                          <p className="text-[10px] text-gray-400 mt-1">
-                            Factura total: {formatearPeso(mov.total_factura)} | Pagado: {formatearPeso(mov.monto)} | Deuda restante: {formatearPeso(Number(mov.total_factura) - Number(mov.monto))}
+                  proveedorSeleccionado.movimientos.map((mov) => {
+                    // Etiqueta del tipo de movimiento (sobria)
+                    let etiqueta = '📄 Gasto';
+                    if (mov.es_compra) {
+                      const deudaRestante = Number(mov.total_factura || 0) - Number(mov.monto || 0);
+                      etiqueta = deudaRestante > 0 ? '🛒 Compra a crédito' : '🛒 Compra';
+                    } else if (mov.tipo === 'pago_proveedor') {
+                      etiqueta = '💸 Pago/Cobro';
+                    }
+                    return (
+                    <div key={mov.id} className="bg-white rounded-xl border border-gray-200 px-3.5 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-800 text-sm truncate">{mov.descripcion || 'Sin descripción'}</p>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200 whitespace-nowrap">{etiqueta}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {formatearFecha(mov.fecha)} · {(mov.metodo_pago || '').replace('_', ' ')}
                           </p>
-                        )}
+                          {Number(mov.total_factura) > 0 && Number(mov.total_factura) > Number(mov.monto) && (
+                            <p className="text-[11px] text-amber-700 mt-1">
+                              Total {formatearPeso(mov.total_factura)} · pagado {formatearPeso(mov.monto)} · resta {formatearPeso(Number(mov.total_factura) - Number(mov.monto))}
+                            </p>
+                          )}
+                        </div>
+                        <p className="font-bold text-gray-800 tabular-nums flex-shrink-0">{formatearPeso(mov.monto)}</p>
                       </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <p className="font-bold text-gray-800 text-lg">{formatearPeso(mov.monto)}</p>
-                            <p className="text-[11px] text-gray-500 capitalize">💳 {mov.metodo_pago}</p>
-                          </div>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            {mov.recibo_url && (
-                              <>
-                                <button
-                                  onClick={() => descargarBoleta(mov.recibo_url, mov.id)}
-                                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 rounded hover:bg-indigo-50"
-                                  title="Descargar boleta"
-                                >
-                                  💾
-                                </button>
-                                <a
-                                  href={mov.recibo_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-2 rounded hover:bg-blue-50"
-                                  title="Ver boleta"
-                                >
-                                  👁️
-                                </a>
-                              </>
-                            )}
-                            <button
-                              onClick={() => {
-                                setMostrarModalHistorial(false);
-                                editarGasto(mov);
-                              }}
-                              className="text-sm text-orange-600 hover:text-orange-800 font-medium px-3 py-2 rounded hover:bg-orange-50"
-                              title="Editar gasto"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => eliminarGasto(mov.id)}
-                              className="text-sm text-red-600 hover:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50"
-                              title="Eliminar gasto"
-                            >
-                              🗑️
-                            </button>
-                          </div>
+                      {/* Acciones siempre visibles (en celular no hay hover) */}
+                      <div className="flex gap-1.5 mt-2 justify-end">
+                        {mov.recibo_url && (
+                          <a href={mov.recibo_url} target="_blank" rel="noreferrer" title="Ver boleta"
+                            className="text-xs text-slate-600 border border-gray-200 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors">
+                            👁️ Boleta
+                          </a>
+                        )}
+                        <button onClick={() => { setMostrarModalHistorial(false); editarGasto(mov); }} title="Editar"
+                          className="text-xs text-slate-600 border border-gray-200 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors">
+                          ✏️ Editar
+                        </button>
+                        <button onClick={() => eliminarGasto(mov.id)} title="Eliminar"
+                          className="text-xs text-red-500 border border-red-100 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors">
+                          🗑️
+                        </button>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="text-center py-8 text-gray-500">
                     <div className="text-3xl mb-2">📭</div>
                     <p className="text-base font-medium">No hay movimientos en este período</p>
-                    <p className="text-sm">Prueba cambiando filtros de fecha</p>
+                    <p className="text-sm">Las compras y gastos asignados a este proveedor aparecen acá</p>
                   </div>
                 )}
               </div>
@@ -1104,173 +1087,166 @@ function Proveedores() {
         </div>
       )}
 
-      {/* MODAL REGISTRAR PAGO */}
-      {mostrarModalPago && proveedorSeleccionado && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className={`flex items-center justify-between p-5 border-b ${tipoPagoContext === 'cobro_deuda' ? 'bg-green-50' : 'bg-red-50'}`}>
+      {/* MODAL REGISTRAR PAGO / COBRO */}
+      {mostrarModalPago && proveedorSeleccionado && (() => {
+        const esCobro = tipoPagoContext === 'cobro_deuda';
+        const saldoActual = esCobro
+          ? Number(proveedorSeleccionado.saldo_deuda || 0)
+          : Number(proveedorSeleccionado.saldo_a_favor || 0);
+        const montoNum = parseFloat(formPago.monto) || 0;
+        const montoValido = montoNum > 0 && montoNum <= saldoActual;
+        return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setMostrarModalPago(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-gray-800">
-                  {tipoPagoContext === 'cobro_deuda' ? '📥 Registrar Cobro' : '💳 Registrar Pago'}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {tipoPagoContext === 'cobro_deuda'
-                    ? `${proveedorSeleccionado?.nombre} nos debe ${formatearPeso(proveedorSeleccionado?.saldo_deuda)}`
-                    : `Le debemos ${formatearPeso(proveedorSeleccionado?.saldo_a_favor)} a ${proveedorSeleccionado?.nombre}`
-                  }
-                </p>
+                <h3 className="text-lg font-bold">{esCobro ? '📥 Registrar cobro' : '💵 Registrar pago'}</h3>
+                <p className="text-slate-400 text-xs mt-0.5">{proveedorSeleccionado.nombre}</p>
               </div>
-              <button
-                onClick={() => setMostrarModalPago(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-              >
-                ×
-              </button>
+              <button onClick={() => setMostrarModalPago(false)}
+                className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
             </div>
 
             <form onSubmit={registrarPago} className="p-5 space-y-4">
               {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  ❌ {error}
-                </div>
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">❌ {error}</div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de pago *</label>
-                <select
-                  value={tipoPagoContext}
-                  onChange={(e) => setTipoPagoContext(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="pago_a_cuenta">Pago a cuenta (nosotros pagamos deuda)</option>
-                  <option value="cobro_deuda">Cobro de deuda (ellos nos pagaron)</option>
-                  <option value="pago_nuevo">Pago nuevo / anticipo</option>
-                </select>
+              {/* Tipo de operación: dos opciones claras */}
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button"
+                  onClick={() => { setTipoPagoContext('pago_a_cuenta'); setFormPago(p => ({ ...p, monto: '' })); setError(''); }}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${!esCobro ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <p className="text-sm font-bold text-gray-800">Le pagamos</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Saldamos deuda nuestra</p>
+                  <p className={`text-sm font-bold tabular-nums mt-1 ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                    {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
+                  </p>
+                </button>
+                <button type="button"
+                  onClick={() => { setTipoPagoContext('cobro_deuda'); setFormPago(p => ({ ...p, monto: '' })); setError(''); }}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${esCobro ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <p className="text-sm font-bold text-gray-800">Nos paga</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Cobramos lo que nos debe</p>
+                  <p className={`text-sm font-bold tabular-nums mt-1 ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                    {formatearPeso(proveedorSeleccionado.saldo_deuda)}
+                  </p>
+                </button>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Documento / boleta (opcional)</label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={manejarArchivoBoleta}
-                  className="w-full text-sm text-gray-600"
-                />
-                {boletaPreview && (
-                  <div className="mt-2 border rounded-lg p-3 bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{esImagen(boletaPreview) ? '🖼️' : '📄'}</span>
-                        <span className="text-sm text-gray-600">
-                          Archivo cargado: {esImagen(boletaPreview) ? 'Imagen' : 'PDF'}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <a
-                          href={boletaPreview}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          👁️ Ver
-                        </a>
-                        <button
-                          onClick={() => {
-                            setBoletaPreview('');
-                            setFormPago(p => ({ ...p, recibo_url: '' }));
-                            // Limpiar el input file
-                            const input = document.querySelector('input[type="file"]');
-                            if (input) input.value = '';
-                          }}
-                          className="text-xs text-red-600 hover:text-red-800 font-medium"
-                        >
-                          ❌ Quitar
+              {saldoActual <= 0 ? (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-sm">
+                  {esCobro
+                    ? 'Este proveedor no nos debe nada por cobrar.'
+                    : 'No le debemos nada. Las deudas se generan registrando compras a crédito desde Gastos → Compra a proveedor.'}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-sm font-medium text-gray-700">Monto *</label>
+                      <div className="flex gap-1.5">
+                        <button type="button"
+                          onClick={() => setFormPago(p => ({ ...p, monto: String(saldoActual) }))}
+                          className="text-xs px-2.5 py-1 border border-gray-300 hover:bg-gray-100 text-gray-600 rounded-lg font-medium transition-colors">
+                          Total ({formatearPeso(saldoActual)})
+                        </button>
+                        <button type="button"
+                          onClick={() => setFormPago(p => ({ ...p, monto: (saldoActual / 2).toFixed(0) }))}
+                          className="text-xs px-2.5 py-1 border border-gray-300 hover:bg-gray-100 text-gray-600 rounded-lg font-medium transition-colors">
+                          50%
                         </button>
                       </div>
                     </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                      <input type="number" value={formPago.monto}
+                        onChange={(e) => setFormPago(p => ({ ...p, monto: e.target.value }))}
+                        required min="0" step="0.01" autoFocus
+                        className={`w-full border rounded-lg pl-7 pr-3 py-2.5 text-lg focus:outline-none focus:ring-2 ${montoNum > saldoActual ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-slate-500'}`}
+                        placeholder="0" />
+                    </div>
+                    {montoNum > saldoActual && (
+                      <p className="text-xs text-red-600 mt-1">No puede superar el saldo de {formatearPeso(saldoActual)}</p>
+                    )}
+                    {montoValido && montoNum < saldoActual && (
+                      <p className="text-xs text-gray-400 mt-1">Quedará un saldo de {formatearPeso(saldoActual - montoNum)}</p>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Monto *</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFormPago(p => ({ ...p, monto: tipoPagoContext === 'cobro_deuda' ? proveedorSeleccionado?.saldo_deuda : proveedorSeleccionado?.saldo_a_favor }))}
-                      className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded font-medium transition-colors"
-                    >
-                      💯 Pago total
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormPago(p => ({ ...p, monto: '' }))}
-                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded font-medium transition-colors"
-                    >
-                      ✏️ Parcial
-                    </button>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'efectivo', label: '💵 Efectivo' },
+                        { id: 'transferencia', label: '🏦 Transferencia' },
+                        { id: 'mercadopago', label: '📱 Mercado Pago' },
+                        { id: 'tarjeta', label: '💳 Tarjeta' },
+                      ].map(m => (
+                        <button key={m.id} type="button"
+                          onClick={() => setFormPago(p => ({ ...p, metodo_pago: m.id }))}
+                          className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
+                            formPago.metodo_pago === m.id
+                              ? 'bg-slate-800 border-slate-800 text-white'
+                              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}>
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    value={formPago.monto}
-                    onChange={(e) => setFormPago(p => ({ ...p, monto: e.target.value }))}
-                    required
-                    min="0"
-                    step="0.01"
-                    autoFocus
-                    className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Método de Pago</label>
-                <select
-                  value={formPago.metodo_pago}
-                  onChange={(e) => setFormPago(p => ({ ...p, metodo_pago: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="efectivo">💵 Efectivo</option>
-                  <option value="tarjeta">💳 Tarjeta</option>
-                  <option value="transferencia">🏦 Transferencia</option>
-                </select>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nota (opcional)</label>
+                    <input type="text" value={formPago.descripcion}
+                      onChange={(e) => setFormPago(p => ({ ...p, descripcion: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                      placeholder="Ej: Factura #001, pago parcial..." />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
-                <input
-                  type="text"
-                  value={formPago.descripcion}
-                  onChange={(e) => setFormPago(p => ({ ...p, descripcion: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  placeholder="Ej: Factura #001, Pago parcial..."
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Comprobante / boleta (opcional)</label>
+                    <input type="file" accept="image/*,.pdf" onChange={manejarArchivoBoleta}
+                      className="w-full text-sm text-gray-600" />
+                    {boletaPreview && (
+                      <div className="mt-2 border rounded-lg px-3 py-2 bg-gray-50 flex items-center justify-between">
+                        <span className="text-sm text-gray-600 flex items-center gap-2">
+                          {esImagen(boletaPreview) ? '🖼️' : '📄'} Archivo cargado
+                        </span>
+                        <div className="flex gap-3">
+                          <a href={boletaPreview} target="_blank" rel="noreferrer"
+                            className="text-xs text-slate-600 hover:text-slate-900 font-medium">Ver</a>
+                          <button type="button"
+                            onClick={() => {
+                              setBoletaPreview('');
+                              setFormPago(p => ({ ...p, recibo_url: '' }));
+                              const input = document.querySelector('input[type="file"]');
+                              if (input) input.value = '';
+                            }}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium">Quitar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setMostrarModalPago(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setMostrarModalPago(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium transition-colors">
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  ✅ Registrar
+                <button type="submit" disabled={!montoValido}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-colors">
+                  {esCobro ? '📥 Confirmar cobro' : '💵 Confirmar pago'}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* MODAL EDITAR GASTO */}
       {mostrarEditarGasto && gastoSeleccionado && (

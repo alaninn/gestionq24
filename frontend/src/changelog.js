@@ -14,9 +14,26 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.8.2';
+export const VERSION_ACTUAL = '2.8.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.8.3',
+    fecha: '2026-06-12',
+    titulo: 'Proveedores: saldos corregidos y modales renovados',
+    destacados: [
+      {
+        titulo: '🛒 Corregido: las compras a crédito ahora generan la deuda',
+        detalle: 'Una compra a crédito o con pago parcial registrada desde Gastos no estaba sumando la deuda al proveedor (quedaba en cero). Ahora la deuda se calcula bien (total de la compra menos lo pagado) y aparece en "Le debemos". Además, al eliminar una compra o un pago, los saldos del proveedor se revierten automáticamente.',
+      },
+    ],
+    cambios: [
+      { t: 'Modal de pago a proveedor renovado: dos opciones claras (Le pagamos / Nos paga) con el saldo visible en cada una, validación para no pagar más de lo adeudado, botones Total y 50%, Mercado Pago como método, y aviso de cuánto queda pendiente.' },
+      { t: 'Se quitó la opción "Pago nuevo / anticipo" que descuadraba los saldos.' },
+      { t: 'Historial del proveedor: ahora la lista tiene scroll (antes se cortaba), los botones de ver boleta / editar / eliminar están siempre visibles (en celular no aparecían), etiquetas más claras y total del período filtrado.' },
+      { t: 'Corregido: el botón "Quitar" de la boleta enviaba el formulario por error.' },
+    ],
+  },
   {
     version: '2.8.2',
     fecha: '2026-06-12',

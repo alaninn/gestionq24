@@ -153,13 +153,23 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             }
         }
 
-        // Si es compra con deuda, se suma a saldo de deuda del proveedor
-        if (proveedor_id && es_compra && (estado_pago === 'deuda' || estado_pago === 'pendiente')) {
-            await db.query(`
-                UPDATE proveedores
-                SET saldo_deuda = saldo_deuda + $1
-                WHERE id = $2 AND negocio_id = $3
-            `, [montoNumerico, proveedor_id, negocio_id]);
+        // Compra asignada a proveedor: la deuda que genera es el total de la
+        // compra menos lo pagado. Se suma a saldo_a_favor ("le debemos"),
+        // igual que el resto del circuito de proveedores.
+        // (En compras, `monto` = lo PAGADO y `total_factura` = total de la compra.)
+        if (proveedor_id && es_compra) {
+            const totalCompra = Number(total_factura) > 0 ? Number(total_factura) : montoNumerico;
+            let deudaGenerada = 0;
+            if (estado_pago === 'deuda' || estado_pago === 'pendiente') deudaGenerada = totalCompra;
+            else if (estado_pago === 'parcial') deudaGenerada = Math.max(0, totalCompra - montoNumerico);
+
+            if (deudaGenerada > 0) {
+                await db.query(`
+                    UPDATE proveedores
+                    SET saldo_a_favor = saldo_a_favor + $1, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $2 AND negocio_id = $3
+                `, [deudaGenerada, proveedor_id, negocio_id]);
+            }
         }
 
         res.status(201).json(resultado.rows[0]);
@@ -173,9 +183,47 @@ router.delete('/:id', verificarPermiso('gastos', 'eliminar'), async (req, res) =
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const g = await db.query('SELECT * FROM gastos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
+        if (g.rows.length === 0) return res.status(404).json({ error: 'Gasto no encontrado' });
+        const gasto = g.rows[0];
+
+        // Revertir el efecto del gasto en los saldos del proveedor (si aplica)
+        if (gasto.proveedor_id) {
+            const monto = Number(gasto.monto) || 0;
+            if (gasto.es_compra) {
+                // La compra había generado deuda nuestra → la descontamos
+                const totalCompra = Number(gasto.total_factura) > 0 ? Number(gasto.total_factura) : monto;
+                let deudaGenerada = 0;
+                if (gasto.estado_pago === 'deuda' || gasto.estado_pago === 'pendiente') deudaGenerada = totalCompra;
+                else if (gasto.estado_pago === 'parcial') deudaGenerada = Math.max(0, totalCompra - monto);
+                if (deudaGenerada > 0) {
+                    await db.query(`
+                        UPDATE proveedores SET saldo_a_favor = GREATEST(0, saldo_a_favor - $1), updated_at = CURRENT_TIMESTAMP
+                        WHERE id = $2 AND negocio_id = $3
+                    `, [deudaGenerada, gasto.proveedor_id, negocio_id]);
+                }
+            } else if (gasto.tipo === 'pago_proveedor' && monto > 0) {
+                // Un pago había bajado un saldo → lo restauramos.
+                // (Solo si sabemos de qué tipo fue; los registros viejos sin tipo no se tocan.)
+                if (gasto.tipo_pago_proveedor === 'cobro_deuda') {
+                    await db.query(`
+                        UPDATE proveedores SET saldo_deuda = saldo_deuda + $1, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = $2 AND negocio_id = $3
+                    `, [monto, gasto.proveedor_id, negocio_id]);
+                } else if (gasto.tipo_pago_proveedor === 'pago_deuda' || gasto.tipo_pago_proveedor === 'a_cuenta') {
+                    await db.query(`
+                        UPDATE proveedores SET saldo_a_favor = saldo_a_favor + $1, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = $2 AND negocio_id = $3
+                    `, [monto, gasto.proveedor_id, negocio_id]);
+                }
+            }
+        }
+
         await db.query('DELETE FROM gastos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
         res.json({ mensaje: 'Gasto eliminado correctamente' });
     } catch (error) {
+        console.error('Error al eliminar gasto:', error);
         res.status(500).json({ error: 'Error al eliminar gasto' });
     }
 });

@@ -321,11 +321,12 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
 
         const proveedorData = proveedor.rows[0];
 
-        // Crear el gasto como pago a proveedor
+        // Crear el gasto como pago a proveedor. Se guarda el tipo de pago
+        // (pago_deuda / cobro_deuda) para poder revertir saldos si se elimina.
         const gasto = await db.query(`
-            INSERT INTO gastos 
-            (monto, metodo_pago, tipo, descripcion, fecha, proveedor_id, negocio_id, recibo_url)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7)
+            INSERT INTO gastos
+            (monto, metodo_pago, tipo, descripcion, fecha, proveedor_id, negocio_id, recibo_url, tipo_pago_proveedor, usuario_id, origen_dinero)
+            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, 'local')
             RETURNING *
         `, [
             monto,
@@ -334,7 +335,9 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
             descripcion || 'Pago a proveedor',
             req.params.id,
             negocio_id,
-            recibo_url || null
+            recibo_url || null,
+            tipo_pago || 'pago_deuda',
+            req.usuario?.id || null
         ]);
 
         // Actualizar saldos del proveedor
