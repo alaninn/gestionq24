@@ -14,9 +14,24 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.7.1';
+export const VERSION_ACTUAL = '2.7.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.7.2',
+    fecha: '2026-06-12',
+    titulo: 'Todos los usuarios pueden facturar + detalle de ventas en el Dashboard',
+    destacados: [
+      {
+        titulo: '🧾 Facturación para todos los usuarios',
+        detalle: 'Los cajeros y cualquier usuario que venda ahora pueden emitir factura electrónica desde el POS (antes solo los admins podían, y la factura fallaba en silencio: la venta quedaba como efectivo sin facturar). Además, si la factura falla por cualquier motivo, el POS ahora lo avisa con un cartel bien visible.',
+      },
+    ],
+    cambios: [
+      { t: 'Dashboard: dentro del detalle de ventas (al tocar una tarjeta), ahora podés tocar cada venta para ver qué productos se vendieron, con cantidades y subtotales.' },
+      { t: 'Si ARCA aprueba la factura pero falla el guardado local, el comprobante ya no se pierde (reintento automático).' },
+    ],
+  },
   {
     version: '2.7.1',
     fecha: '2026-06-11',

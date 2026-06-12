@@ -53,6 +53,23 @@ function Dashboard() {
   const [ventasDiaFecha, setVentasDiaFecha] = useState(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
 
+  // Click en una venta del detalle → ver qué se vendió
+  const [ventaExpandida, setVentaExpandida] = useState(null);
+  const [itemsPorVenta, setItemsPorVenta] = useState({});
+
+  const toggleVenta = async (ventaId) => {
+    if (ventaExpandida === ventaId) { setVentaExpandida(null); return; }
+    setVentaExpandida(ventaId);
+    if (itemsPorVenta[ventaId]) return; // ya cargados
+    try {
+      const res = await api.get(`/api/ventas/${ventaId}`);
+      setItemsPorVenta(prev => ({ ...prev, [ventaId]: res.data.items || [] }));
+    } catch (err) {
+      console.error('Error:', err);
+      setItemsPorVenta(prev => ({ ...prev, [ventaId]: [] }));
+    }
+  };
+
   // El botón "atrás" del celular cierra los modales en vez de salir
   useCerrarConAtras(!!detalleCard, () => setDetalleCard(null));
   useCerrarConAtras(mostrarStockBajo, () => setMostrarStockBajo(false));
@@ -783,18 +800,40 @@ if (error) return (
                 ) : (
                   <div className="space-y-1.5">
                     {ventasFiltradas.map(v => (
-                      <div key={v.id} className="flex items-center gap-3 bg-white/[0.05] hover:bg-white/[0.09] rounded-xl px-3 py-2.5 transition-colors">
-                        <span className="text-slate-400 text-xs tabular-nums w-12">
-                          {new Date(v.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-slate-200 text-sm">Venta #{v.id}</p>
-                          <p className="text-slate-500 text-[11px]">{v.cantidad_items} ítem(s){v.metodo_pago ? ` · ${v.metodo_pago.replace('_', ' ')}` : ''}</p>
+                      <div key={v.id} className="bg-white/[0.05] hover:bg-white/[0.09] rounded-xl overflow-hidden transition-colors">
+                        <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer" onClick={() => toggleVenta(v.id)}>
+                          <span className="text-slate-400 text-xs tabular-nums w-12">
+                            {new Date(v.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-slate-200 text-sm">Venta #{v.id}</p>
+                            <p className="text-slate-500 text-[11px]">{v.cantidad_items} ítem(s){v.metodo_pago ? ` · ${v.metodo_pago.replace('_', ' ')}` : ''}</p>
+                          </div>
+                          {v.tipo_facturacion === 'electronica' && (
+                            <span className="text-[10px] bg-amber-400/15 text-amber-300 border border-amber-400/25 px-2 py-0.5 rounded-full flex-shrink-0">🧾 ARCA</span>
+                          )}
+                          <span className="text-white font-semibold text-sm tabular-nums flex-shrink-0">{fmt(v.total)}</span>
+                          <span className={`text-slate-500 text-xs transition-transform ${ventaExpandida === v.id ? 'rotate-180' : ''}`}>▾</span>
                         </div>
-                        {v.tipo_facturacion === 'electronica' && (
-                          <span className="text-[10px] bg-amber-400/15 text-amber-300 border border-amber-400/25 px-2 py-0.5 rounded-full flex-shrink-0">🧾 ARCA</span>
+                        {ventaExpandida === v.id && (
+                          <div className="px-3 pb-2.5 pl-[60px]">
+                            {!itemsPorVenta[v.id] ? (
+                              <p className="text-slate-500 text-xs py-1">Cargando productos...</p>
+                            ) : itemsPorVenta[v.id].length === 0 ? (
+                              <p className="text-slate-500 text-xs py-1">Sin detalle de productos</p>
+                            ) : (
+                              <div className="space-y-1 border-t border-white/10 pt-2">
+                                {itemsPorVenta[v.id].map((item, i) => (
+                                  <div key={i} className="flex items-center gap-2 text-xs">
+                                    <span className="text-emerald-400/80 tabular-nums w-8 text-right flex-shrink-0">{parseFloat(item.cantidad)}×</span>
+                                    <span className="text-slate-300 flex-1 truncate">{item.nombre_producto}</span>
+                                    <span className="text-slate-400 tabular-nums flex-shrink-0">{fmt(item.subtotal)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         )}
-                        <span className="text-white font-semibold text-sm tabular-nums flex-shrink-0">{fmt(v.total)}</span>
                       </div>
                     ))}
                   </div>

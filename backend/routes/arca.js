@@ -336,7 +336,9 @@ router.get('/tipos-documento', verificarToken, async (req, res) => {
 // =============================================
 // EMITIR COMPROBANTE ELECTRÓNICO
 // =============================================
-router.post('/emitir', verificarToken, soloAdmin, async (req, res) => {
+// Cualquier usuario logueado puede emitir (los cajeros facturan sus ventas);
+// la configuración de certificados sí queda solo para admins.
+router.post('/emitir', verificarToken, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
