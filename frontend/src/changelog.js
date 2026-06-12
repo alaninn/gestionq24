@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.8.1';
+export const VERSION_ACTUAL = '2.8.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.8.2',
+    fecha: '2026-06-12',
+    titulo: 'Proveedores: vista de lista y mejoras generales',
+    cambios: [
+      { t: 'Proveedores: nuevo botón para elegir cómo ver el listado — 🗂️ Tarjetas o 📋 Lista (tabla compacta con saldos, contacto, último movimiento y acciones). El sistema recuerda tu elección.' },
+      { t: 'Proveedores: el botón "atrás" del celular ahora cierra los modales (detalle, pago, edición de gasto) en vez de salir de la pantalla.' },
+      { t: 'Proveedores: corregida la búsqueda que disparaba consultas duplicadas en cada tecla.' },
+      { t: 'Se revisó todo el circuito de proveedores: crear, editar, detalle con estadísticas, asignación de gastos y compras, pagos/cobros con actualización de saldos, archivar, reactivar y eliminar definitivo.' },
+    ],
+  },
   {
     version: '2.8.1',
     fecha: '2026-06-12',
