@@ -77,7 +77,7 @@ export default function ResumenFiscal() {
 
       // Compras con factura (en blanco)
       const resCompras = await api.get(
-        `/api/gastos?es_compra=1&fecha_desde=${fechaDesde}&fecha_hasta=${fechaHasta}`
+        `/api/gastos?con_factura=1&fecha_desde=${fechaDesde}&fecha_hasta=${fechaHasta}`
       );
       const todasCompras = Array.isArray(resCompras.data) ? resCompras.data : [];
       const comprasBlanco = todasCompras.filter(c =>

@@ -452,27 +452,19 @@ function Proveedores() {
         </div>
       </div>
 
-      {/* Tarjetas estadísticas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow border-l-4 border-indigo-500">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Proveedores</p>
-          <p className="text-3xl font-bold text-gray-800">{total}</p>
-          <p className="text-sm text-gray-500 mt-1">activos en vista</p>
+      {/* Indicadores */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl p-3.5 shadow border-l-4 border-slate-700">
+          <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Proveedores</p>
+          <p className="text-xl font-bold text-gray-800 tabular-nums">{total}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow border-l-4 border-red-500">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Deuda total</p>
-          <p className="text-3xl font-bold text-red-600">{formatearPeso(deuda)}</p>
-          <p className="text-sm text-gray-500 mt-1">monto pendiente</p>
+        <div className="bg-white rounded-xl p-3.5 shadow border-l-4 border-red-400">
+          <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Les debemos</p>
+          <p className="text-xl font-bold text-red-600 tabular-nums">{formatearPeso(favor)}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow border-l-4 border-blue-500">
-          <p className="text-xs uppercase tracking-wider text-gray-500">A favor</p>
-          <p className="text-3xl font-bold text-blue-600">{formatearPeso(favor)}</p>
-          <p className="text-sm text-gray-500 mt-1">saldo a favor</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow border-l-4 border-emerald-500">
-          <p className="text-xs uppercase tracking-wider text-gray-500">Saldo Neto</p>
-          <p className={`text-3xl font-bold ${cuentaNeta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatearPeso(cuentaNeta)}</p>
-          <p className="text-sm text-gray-500 mt-1">(favor - deuda)</p>
+        <div className="bg-white rounded-xl p-3.5 shadow border-l-4 border-emerald-400">
+          <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Nos deben</p>
+          <p className="text-xl font-bold text-emerald-600 tabular-nums">{formatearPeso(deuda)}</p>
         </div>
       </div>
 
@@ -579,82 +571,60 @@ function Proveedores() {
           </div>
         </div>
       ) : (
-        /* ---- VISTA TARJETAS ---- */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {proveedores.map((prov) => (
-            <div key={prov.id} className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden border-l-4 border-green-500">
-              <div className="p-4">
-                {/* Nombre y estado */}
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-bold text-gray-800">{prov.nombre}</h3>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    prov.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                  }`}>
-                    {prov.activo ? '✓ Activo' : '⊘ Inactivo'}
-                  </span>
-                </div>
-
-                {/* Datos de contacto */}
-                {prov.telefono && <p className="text-sm text-gray-600">📱 {prov.telefono}</p>}
-                {prov.email && <p className="text-sm text-gray-600">📧 {prov.email}</p>}
-                {prov.direccion && <p className="text-sm text-gray-600">📍 {prov.direccion}</p>}
-
-                {/* SALDOS */}
-                <div className="mt-4 pt-4 border-t space-y-2">
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    {prov.created_at && <span>Alta: {formatearFecha(prov.created_at)}</span>}
-                    {prov.updated_at && <span>Últ. mov: {formatearFecha(prov.updated_at)}</span>}
+        /* ---- VISTA TARJETAS (compactas) ---- */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {proveedores.map((prov) => {
+            const leDebemos = Number(prov.saldo_a_favor) > 0;
+            const nosDebe = Number(prov.saldo_deuda) > 0;
+            return (
+              <div key={prov.id} onClick={() => verDetalle(prov)}
+                className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-slate-400 hover:shadow-md transition-all cursor-pointer p-3.5">
+                {/* Nombre + estado */}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 bg-slate-100 text-slate-700 rounded-lg flex items-center justify-center font-bold flex-shrink-0">
+                    {prov.nombre.charAt(0).toUpperCase()}
                   </div>
-
-                  {Number(prov.saldo_deuda) > 0 ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); verDetalle(prov).then(() => { setTipoPagoContext('cobro_deuda'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }); }}
-                      className="w-full flex justify-between items-center px-3 py-2 rounded-lg bg-green-50 hover:bg-green-100 border border-green-200 transition-colors cursor-pointer"
-                    >
-                      <span className="text-sm text-gray-600">✅ Nos debe a nosotros</span>
-                      <span className="font-bold text-green-600 flex items-center gap-1">{formatearPeso(prov.saldo_deuda)} <span className="text-xs">→</span></span>
-                    </button>
-                  ) : (
-                    <div className="flex justify-between items-center px-3 py-2 rounded-lg bg-gray-50">
-                      <span className="text-sm text-gray-600">✅ Nos debe a nosotros:</span>
-                      <span className="font-bold text-gray-700">{formatearPeso(prov.saldo_deuda)}</span>
-                    </div>
-                  )}
-
-                  {Number(prov.saldo_a_favor) > 0 ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); verDetalle(prov).then(() => { setTipoPagoContext('pago_a_cuenta'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }); }}
-                      className="w-full flex justify-between items-center px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
-                    >
-                      <span className="text-sm text-gray-600">⚠️ Nosotros le debemos</span>
-                      <span className="font-bold text-red-600 flex items-center gap-1">{formatearPeso(prov.saldo_a_favor)} <span className="text-xs">→</span></span>
-                    </button>
-                  ) : (
-                    <div className="flex justify-between items-center px-3 py-2 rounded-lg bg-gray-50">
-                      <span className="text-sm text-gray-600">⚠️ Nosotros le debemos:</span>
-                      <span className="font-bold text-gray-700">{formatearPeso(prov.saldo_a_favor)}</span>
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-800 truncate">{prov.nombre}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{prov.telefono || prov.email || 'Sin contacto'}</p>
+                  </div>
+                  {!prov.activo && (
+                    <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full flex-shrink-0">Archivado</span>
                   )}
                 </div>
 
-                {/* BOTONES */}
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => verDetalle(prov)}
-                    className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Ver Detalle
+                {/* Saldos en una línea */}
+                <div className="flex gap-2 mt-3">
+                  <div className={`flex-1 rounded-lg px-2.5 py-1.5 border ${leDebemos ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'}`}>
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Le debemos</p>
+                    <p className={`text-sm font-bold tabular-nums ${leDebemos ? 'text-red-600' : 'text-gray-300'}`}>{formatearPeso(prov.saldo_a_favor)}</p>
+                  </div>
+                  <div className={`flex-1 rounded-lg px-2.5 py-1.5 border ${nosDebe ? 'border-emerald-200 bg-emerald-50' : 'border-gray-100 bg-gray-50'}`}>
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Nos debe</p>
+                    <p className={`text-sm font-bold tabular-nums ${nosDebe ? 'text-emerald-600' : 'text-gray-300'}`}>{formatearPeso(prov.saldo_deuda)}</p>
+                  </div>
+                </div>
+
+                {/* Acciones discretas */}
+                <div className="flex gap-1.5 mt-2.5" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => verDetalle(prov)}
+                    className="flex-1 py-1.5 text-xs font-semibold text-slate-700 border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
+                    Ver ficha
                   </button>
-                  <button
-                    onClick={() => abrirModalEditar(prov)}
-                    className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Editar
+                  <button onClick={() => abrirModalEditar(prov)}
+                    className="px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
+                    ✏️
                   </button>
+                  {(leDebemos || nosDebe) && (
+                    <button onClick={() => abrirPagoDesdeListado(prov, leDebemos ? 'pago_a_cuenta' : 'cobro_deuda')}
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors">
+                      💵
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1062,7 +1032,7 @@ function Proveedores() {
                             👁️ Boleta
                           </a>
                         )}
-                        <button onClick={() => { setMostrarModalHistorial(false); editarGasto(mov); }} title="Editar"
+                        <button onClick={() => editarGasto(mov)} title="Editar"
                           className="text-xs text-slate-600 border border-gray-200 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors">
                           ✏️ Editar
                         </button>
@@ -1248,9 +1218,9 @@ function Proveedores() {
         );
       })()}
 
-      {/* MODAL EDITAR GASTO */}
+      {/* MODAL EDITAR GASTO (se abre ENCIMA del historial) */}
       {mostrarEditarGasto && gastoSeleccionado && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b">
               <h3 className="text-lg font-bold text-gray-800">✏️ Editar Gasto</h3>

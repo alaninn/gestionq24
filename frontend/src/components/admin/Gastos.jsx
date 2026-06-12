@@ -18,8 +18,6 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
   const [formulario, setFormulario] = useState({
     descripcion: '',
     monto: '',
-    categoria: '',
-    tipo: 'variable',
     metodo_pago: 'efectivo',
     // De dónde sale el dinero: 'caja' descuenta del cierre del turno;
     // 'local' (plata del negocio) y 'otro' no afectan la caja.
@@ -27,67 +25,38 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
     proveedor_id: '',
     tipo_pago_proveedor: 'a_cuenta',
     recibo_url: '',
-    es_compra: false,
-    tipo_documento: 'sin_boleta',
-    iva_incluido: false,
-    porcentaje_iva: '0',
-    productos_texto: '',
+    // Dato fiscal: '' = gasto X (sin comprobante fiscal); 'factura_a' = en
+    // blanco con Factura A → suma IVA crédito al Resumen Fiscal.
+    tipo_comprobante: '',
     registrar_factura: false,
     total_factura: '',
-    pago_independiente: false,
     fecha: new Date().toISOString().split('T')[0]
   });
   const [proveedores, setProveedores] = useState([]);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const categorias = [
-    'Insumos',
-    'Servicios',
-    'Limpieza',
-    'Sueldos',
-    'Alquiler',
-    'Mantenimiento',
-    'Transporte',
-    'Impuestos',
-    'Otro',
-  ];
-
   // Cargar proveedores cuando se abre el modal
   useEffect(() => {
     cargarProveedores();
   }, []);
 
-  useEffect(() => {
-    if (modoCompra) {
-      setFormulario(p => ({ ...p, es_compra: true, tipo: 'compra', categoria: 'Compras' }));
-    }
-  }, [modoCompra]);
-
   const proveedorSeleccionado = proveedores.find(p => String(p.id) === String(formulario.proveedor_id));
-  
-  // Debug: mostrar datos del proveedor seleccionado
-  useEffect(() => {
-    if (proveedorSeleccionado) {
-      console.log('🔍 Proveedor seleccionado:', {
-        id: proveedorSeleccionado.id,
-        nombre: proveedorSeleccionado.nombre,
-        saldo_deuda: proveedorSeleccionado.saldo_deuda,
-        saldo_a_favor: proveedorSeleccionado.saldo_a_favor,
-        proveedor_id_formulario: formulario.proveedor_id
-      });
-    }
-  }, [proveedorSeleccionado, formulario.proveedor_id]);
-  
+
   const cargarProveedores = async () => {
     try {
       const res = await api.get('/api/proveedores');
-      console.log('📥 Proveedores cargados:', res.data);
       setProveedores(res.data);
     } catch (err) {
       console.error('Error al cargar proveedores:', err);
     }
   };
+
+  // IVA contenido cuando es Factura A (precio con IVA incluido)
+  const esFacturaA = formulario.tipo_comprobante === 'factura_a';
+  const ivaContenido = esFacturaA
+    ? Number(((Number(formulario.monto) || 0) * 21 / 121).toFixed(2))
+    : 0;
 
   const convertirArchivoADataURL = async (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -99,99 +68,56 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
   const guardar = async (e) => {
     e.preventDefault();
     setError('');
-    setGuardando(true);
 
-    try {
-      const ivaPct = Number(formulario.porcentaje_iva || 0);
-      const esCompra = formulario.es_compra;
-      const incluyeIva = formulario.iva_incluido;
-      const monto = Number(formulario.monto || 0);
-      let montoIva = 0;
-      if (ivaPct > 0) {
-        if (incluyeIva) {
-          montoIva = Number((monto * ivaPct / (100 + ivaPct)).toFixed(2));
-        } else {
-          montoIva = Number((monto * ivaPct / 100).toFixed(2));
-        }
+    const esPagoProveedor = tabActiva === 'proveedor';
+    const monto = Number(formulario.monto || 0);
+
+    // Validaciones
+    if (esPagoProveedor) {
+      if (!formulario.proveedor_id) { setError('Elegí el proveedor'); return; }
+      if (monto <= 0 && !(formulario.registrar_factura && Number(formulario.total_factura) > 0)) {
+        setError('Cargá el monto a pagar (o registrá la factura recibida)');
+        return;
       }
+    } else {
+      if (monto <= 0) { setError('El monto debe ser mayor a 0'); return; }
+      if (!formulario.descripcion.trim()) { setError('Contá brevemente qué se pagó en la descripción'); return; }
+    }
 
-      const esPagoProveedor = tabActiva === 'proveedor';
-      
+    setGuardando(true);
+    try {
       const datosEnvio = {
         descripcion: formulario.descripcion,
-        monto: formulario.monto,
-        categoria: esPagoProveedor ? 'Proveedores' : (esCompra ? 'Compras' : formulario.categoria),
-        tipo: esCompra ? 'compra' : (esPagoProveedor ? 'pago_proveedor' : formulario.tipo),
+        monto: formulario.monto || 0,
+        categoria: esPagoProveedor ? 'Proveedores' : null,
+        tipo: esPagoProveedor ? 'pago_proveedor' : 'variable',
         metodo_pago: formulario.metodo_pago,
         turno_id: turno?.id || null,
         origen_dinero: formulario.origen_dinero,
-        proveedor_id: formulario.proveedor_id || null,
-        tipo_pago_proveedor: formulario.tipo_pago_proveedor,
-        es_compra: esCompra,
-        tipo_documento: formulario.tipo_documento,
-        iva_incluido: incluyeIva,
-        porcentaje_iva: ivaPct,
-        monto_iva: montoIva,
-        productos_json: formulario.productos_texto ? formulario.productos_texto.split('\n').map(item => item.trim()).filter(Boolean) : null,
+        proveedor_id: esPagoProveedor ? formulario.proveedor_id : null,
+        tipo_pago_proveedor: esPagoProveedor ? formulario.tipo_pago_proveedor : null,
         recibo_url: formulario.recibo_url,
-        registrar_nueva_factura: formulario.registrar_factura || false,
-        total_factura: formulario.total_factura || null,
-        pago_independiente: formulario.pago_independiente
+        // Dato fiscal: Factura A "en blanco" suma IVA crédito al Resumen Fiscal
+        tipo_comprobante: esFacturaA ? 'factura_a' : null,
+        tipo_documento: esFacturaA ? 'factura' : 'sin_boleta',
+        iva_incluido: esFacturaA,
+        porcentaje_iva: esFacturaA ? 21 : 0,
+        registrar_nueva_factura: esPagoProveedor && formulario.registrar_factura && Number(formulario.total_factura) > 0,
+        total_factura: esPagoProveedor && formulario.registrar_factura ? (formulario.total_factura || null) : null,
       };
 
-      if (esPagoProveedor && formulario.proveedor_id) {
-        datosEnvio.tipo = 'pago_proveedor';
-        datosEnvio.proveedor_id = formulario.proveedor_id;
-        
-        // Logica para registrar nueva factura
-        if (formulario.registrar_factura && formulario.total_factura) {
-          // Si es factura nueva, primero sumamos el total a la deuda y luego restamos lo que se paga
-          datosEnvio.registrar_nueva_factura = true;
-          datosEnvio.total_factura = formulario.total_factura;
-          console.log('✅ Toggle activado - registrar_nueva_factura:', datosEnvio.registrar_nueva_factura, 'total_factura:', datosEnvio.total_factura);
+      // Descripción por defecto para pagos a proveedor
+      if (esPagoProveedor && !datosEnvio.descripcion) {
+        const totalFactura = Number(formulario.total_factura || 0);
+        if (formulario.registrar_factura && totalFactura > 0) {
+          datosEnvio.descripcion = monto >= totalFactura ? 'Pago total de factura'
+            : monto > 0 ? 'Pago parcial de factura' : 'Registro de factura (sin pago)';
         } else {
-          console.log('❌ Toggle NO activado - registrar_factura:', formulario.registrar_factura, 'total_factura:', formulario.total_factura);
-        }
-        
-        // Si es pago independiente no modificamos la deuda
-        if (formulario.pago_independiente) {
-          datosEnvio.tipo = 'variable';
-          datosEnvio.descripcion = formulario.descripcion || 'Pago independiente';
-        } else {
-          // Determinar descripción basada en el monto pagado vs total de factura
-          const montoPago = Number(formulario.monto || 0);
-          const totalFactura = Number(formulario.total_factura || 0);
-          
-          console.log('📊 Calculando descripción - montoPago:', montoPago, 'totalFactura:', totalFactura, 'registrar_factura:', formulario.registrar_factura);
-          
-          if (formulario.registrar_factura && totalFactura > 0) {
-            // Hay una nueva factura registrada
-            if (montoPago >= totalFactura) {
-              datosEnvio.descripcion = formulario.descripcion || 'Pago total de factura';
-              console.log('✅ PAGO TOTAL - descripción:', datosEnvio.descripcion);
-            } else if (montoPago > 0) {
-              datosEnvio.descripcion = formulario.descripcion || 'Pago parcial de factura';
-              console.log('⚠️ PAGO PARCIAL - descripción:', datosEnvio.descripcion);
-            } else {
-              datosEnvio.descripcion = formulario.descripcion || 'Registro de factura (sin pago)';
-              console.log('📝 SIN PAGO - descripción:', datosEnvio.descripcion);
-            }
-          } else {
-            // Pago sin nueva factura
-            if (formulario.tipo_pago_proveedor === 'a_cuenta') {
-              datosEnvio.descripcion = formulario.descripcion || 'Pago a cuenta de deuda';
-              console.log('💸 PAGO A CUENTA - descripción:', datosEnvio.descripcion);
-            } else {
-              datosEnvio.descripcion = formulario.descripcion || 'Pago nuevo/anticipo';
-              console.log('💰 PAGO NUEVO - descripción:', datosEnvio.descripcion);
-            }
-          }
+          datosEnvio.descripcion = 'Pago a cuenta de deuda';
         }
       }
 
       await api.post('/api/gastos', datosEnvio);
-      // Recargar proveedores para actualizar deudas
-      await cargarProveedores();
       if (onGuardado) onGuardado();
       onCerrar();
     } catch (err) {
@@ -243,70 +169,41 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
 
           {tabActiva === 'gasto' && (
             <>
-              {/* Monto */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Monto + fecha */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">MONTO *</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={formulario.monto}
-                      onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
-                      required min="0" step="0.01"
-                      autoFocus
-                      className="w-full border border-gray-300 rounded-lg pl-3 pr-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg"
-                      placeholder="$0,00"
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    value={formulario.monto}
+                    onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
+                    required min="0" step="0.01"
+                    autoFocus
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg"
+                    placeholder="$0,00"
+                  />
                 </div>
-                
-                <div>
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-blue-50 border-blue-200">
-                    <div>
-                      <p className="text-sm font-medium text-blue-700">Gasto fijo</p>
-                      <p className="text-xs text-blue-500">Se repite mensualmente</p>
-                    </div>
-                    <div 
-                      className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 cursor-pointer ${
-                        formulario.tipo === 'fijo' ? 'bg-blue-500' : 'bg-gray-300'
-                      }`}
-                      onClick={() => setFormulario(p => ({
-                        ...p,
-                        tipo: p.tipo === 'fijo' ? 'variable' : 'fijo'
-                      }))}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        formulario.tipo === 'fijo' ? 'translate-x-6' : 'translate-x-0'
-                      }`} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">CATEGORÍA *</label>
-                  <select
-                    value={formulario.categoria}
-                    onChange={(e) => setFormulario(p => ({ ...p, categoria: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                  >
-                    <option value="">Seleccionar...</option>
-                    {categorias.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">FECHA</label>
                   <input
                     type="date"
                     value={formulario.fecha}
                     onChange={(e) => setFormulario(p => ({ ...p, fecha: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                 </div>
+              </div>
+
+              {/* Descripción: acá el usuario aclara qué se pagó */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">DESCRIPCIÓN *</label>
+                <textarea
+                  value={formulario.descripcion}
+                  onChange={(e) => setFormulario(p => ({ ...p, descripcion: e.target.value }))}
+                  rows={2} required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                  placeholder="¿Qué se pagó? Ej: hielo, sodas, flete, luz..."
+                />
               </div>
 
               <div>
@@ -319,6 +216,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                   <option value="efectivo">💵 Efectivo</option>
                   <option value="tarjeta">💳 Tarjeta</option>
                   <option value="transferencia">🏦 Transferencia</option>
+                  <option value="mercadopago">📱 Mercado Pago</option>
                 </select>
               </div>
 
@@ -354,28 +252,28 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 )}
               </div>
 
+              {/* Dato fiscal: gasto X o en blanco con Factura A (suma IVA crédito) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">DESCRIPCIÓN</label>
-                <textarea
-                  value={formulario.descripcion}
-                  onChange={(e) => setFormulario(p => ({ ...p, descripcion: e.target.value }))}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                  placeholder="Detalles opcionales..."
-                />
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-blue-700 mb-1">📋 Datos fiscales</p>
-                <select
-                  value={formulario.tipo_documento}
-                  onChange={(e) => setFormulario(p => ({ ...p, tipo_documento: e.target.value }))}
-                  className="w-full border border-blue-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
-                >
-                  <option value="sin_boleta">Sin comprobante</option>
-                  <option value="boleta">Boleta</option>
-                  <option value="factura">Factura</option>
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">DATO FISCAL</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button"
+                    onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: '' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <p className="text-sm font-bold text-gray-800">Gasto X</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
+                  </button>
+                  <button type="button"
+                    onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">En blanco · suma IVA crédito</p>
+                  </button>
+                </div>
+                {esFacturaA && (
+                  <p className="text-xs text-blue-700 mt-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    El monto se toma con IVA incluido. IVA contenido: <b>${ivaContenido.toLocaleString('es-AR')}</b> — va al Resumen Fiscal como crédito.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -496,8 +394,35 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                       <option value="efectivo">💵 Efectivo</option>
                       <option value="tarjeta">💳 Tarjeta</option>
                       <option value="transferencia">🏦 Transferencia</option>
+                      <option value="mercadopago">📱 Mercado Pago</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* De dónde sale el dinero (igual que en gasto común) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">¿DE DÓNDE SALE EL DINERO?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'caja', label: '🧰 Caja del turno', desc: 'Descuenta del cierre', soloConTurno: true },
+                    { id: 'local', label: '🏪 Dinero del local', desc: 'No afecta la caja' },
+                    { id: 'otro', label: '📱 MP del local', desc: 'No afecta la caja' },
+                  ].map(o => {
+                    const deshabilitado = o.soloConTurno && !turno;
+                    return (
+                      <button key={o.id} type="button" disabled={deshabilitado}
+                        onClick={() => setFormulario(p => ({ ...p, origen_dinero: o.id }))}
+                        className={`p-2 rounded-lg border-2 text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                          formulario.origen_dinero === o.id
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}>
+                        <p className="text-xs font-semibold text-gray-800 leading-tight">{o.label}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{o.desc}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -512,31 +437,29 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 />
               </div>
 
-              {/* Toggle pago independiente - TEMPORALMENTE COMENTADO
-              <div
-                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                  formulario.pago_independiente
-                    ? 'bg-gray-50 border-gray-300'
-                    : 'bg-gray-50 border-gray-200'
-                }`}
-                onClick={() => setFormulario(p => ({
-                  ...p,
-                  pago_independiente: !p.pago_independiente
-                }))}
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Pago independiente</p>
-                  <p className="text-xs text-gray-500">No cancela compras ni afecta la deuda del proveedor</p>
+              {/* Dato fiscal del pago: X o en blanco con Factura A (suma IVA crédito) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">DATO FISCAL</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button"
+                    onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: '' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <p className="text-sm font-bold text-gray-800">Gasto X</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
+                  </button>
+                  <button type="button"
+                    onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">En blanco · suma IVA crédito</p>
+                  </button>
                 </div>
-                <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${
-                  formulario.pago_independiente ? 'bg-gray-500' : 'bg-gray-300'
-                }`}>
-                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    formulario.pago_independiente ? 'translate-x-6' : 'translate-x-0'
-                  }`} />
-                </div>
+                {esFacturaA && (
+                  <p className="text-xs text-blue-700 mt-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    El monto pagado se toma con IVA incluido. IVA contenido: <b>${ivaContenido.toLocaleString('es-AR')}</b> — va al Resumen Fiscal como crédito.
+                  </p>
+                )}
               </div>
-              */}
             </>
           )}
 
@@ -619,46 +542,39 @@ function Gastos() {
   });
   const [fechaHastaLibro, setFechaHastaLibro] = useState(new Date().toISOString().split('T')[0]);
 
-  // ---- FILTROS ----
-  // periodoFiltro: 'hoy', 'mes', 'personalizado'
+  // ---- FILTROS (como el Dashboard: hoy / por día / por mes / rango / todo) ----
   const [periodoFiltro, setPeriodoFiltro] = useState('hoy');
   const [tipoFiltro, setTipoFiltro] = useState('todos');
+  const hoyISO = () => {
+    const hoy = new Date();
+    const offset = hoy.getTimezoneOffset() * 60000;
+    return new Date(hoy - offset).toISOString().split('T')[0];
+  };
+  const [diaSeleccionado, setDiaSeleccionado] = useState(hoyISO());
   const [mesSeleccionado, setMesSeleccionado] = useState(() => {
     const hoy = new Date();
     return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [rangoDesde, setRangoDesde] = useState(hoyISO());
+  const [rangoHasta, setRangoHasta] = useState(hoyISO());
 
-  // Calculamos las fechas según el período seleccionado
+  // Calculamos las fechas según el período seleccionado (null = sin límite)
   const calcularFechas = () => {
-    const hoy = new Date();
-    const offset = hoy.getTimezoneOffset() * 60000;
-      const local = new Date(hoy - offset);
-      const hoyStr = local.toISOString().split('T')[0];
-
-    if (periodoFiltro === 'hoy') {
-      // Solo el día de hoy
-      return { desde: hoyStr, hasta: hoyStr };
-    }
-
+    const hoyStr = hoyISO();
+    if (periodoFiltro === 'hoy') return { desde: hoyStr, hasta: hoyStr };
+    if (periodoFiltro === 'dia') return { desde: diaSeleccionado, hasta: diaSeleccionado };
     if (periodoFiltro === 'mes') {
-      // Mes actual completo
-      const primerDia = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
-      return { desde: primerDia, hasta: hoyStr };
-    }
-
-    if (periodoFiltro === 'personalizado') {
-      // Mes elegido por el usuario
       const [anio, mes] = mesSeleccionado.split('-');
-      const primerDia = `${anio}-${mes}-01`;
       const ultimoDia = new Date(anio, mes, 0).getDate();
-      const ultimoDiaStr = `${anio}-${mes}-${ultimoDia}`;
-      return { desde: primerDia, hasta: ultimoDiaStr };
+      return { desde: `${anio}-${mes}-01`, hasta: `${anio}-${mes}-${ultimoDia}` };
     }
+    if (periodoFiltro === 'rango') return { desde: rangoDesde, hasta: rangoHasta };
+    return { desde: null, hasta: null }; // 'todo'
   };
 
   useEffect(() => {
     cargarGastos();
-  }, [periodoFiltro, tipoFiltro, mesSeleccionado]);
+  }, [periodoFiltro, tipoFiltro, mesSeleccionado, diaSeleccionado, rangoDesde, rangoHasta]);
 
   useEffect(() => {
     if (modo === 'libro_iva') {
@@ -704,7 +620,7 @@ function Gastos() {
       const ventas = Array.isArray(ventasResp.data.ventas) ? ventasResp.data.ventas : [];
       const ventasArca = ventas.filter(v => v.tipo_facturacion === 'electronica' || v.comprobante_electronico_id != null);
 
-      const comprasResp = await api.get(`/api/gastos?es_compra=1&fecha_desde=${fechaDesdeLibro}&fecha_hasta=${fechaHastaLibro}`);
+      const comprasResp = await api.get(`/api/gastos?con_factura=1&fecha_desde=${fechaDesdeLibro}&fecha_hasta=${fechaHastaLibro}`);
       const compras = Array.isArray(comprasResp.data) ? comprasResp.data : [];
       const comprasBlanco = compras.filter(c => c.tipo_comprobante === 'factura_a' || c.tipo_comprobante === 'factura_b' || c.tipo_comprobante === 'factura_c');
 
@@ -756,9 +672,11 @@ function Gastos() {
     try {
       setCargando(true);
       const { desde, hasta } = calcularFechas();
-      const res = await api.get(
-        `/api/gastos?fecha_desde=${desde}&fecha_hasta=${hasta}&tipo=${tipoFiltro}`
-      );
+      const params = new URLSearchParams();
+      if (desde) params.append('fecha_desde', desde);
+      if (hasta) params.append('fecha_hasta', hasta);
+      if (tipoFiltro !== 'todos') params.append('tipo', tipoFiltro);
+      const res = await api.get(`/api/gastos?${params.toString()}`);
       setGastos(res.data);
     } catch (err) {
       console.error('Error:', err);
@@ -839,7 +757,8 @@ function Gastos() {
         numero_boleta: compra.numero_boleta || null,
         estado_pago: compra.estado_pago || 'pagado',
         iva_incluido: compra.tipo_comprobante === 'factura_a',
-        porcentaje_iva: 21,
+        // Solo la Factura A genera IVA crédito; el resto no debe calcular IVA
+        porcentaje_iva: compra.tipo_comprobante === 'factura_a' ? 21 : 0,
         productos_json: compraProductos.map(item => ({
           id: item.id,
           codigo: item.codigo,
@@ -982,20 +901,20 @@ function Gastos() {
     const precioUnit = Number(item.costo || 0); // Usar costo como precio de compra
     const alicuota = Number(item.alicuota || compra.porcentaje_iva || 0);
 
+    // El precio cargado SIEMPRE es lo que se paga (IVA incluido si lo hay).
+    // Solo la Factura A discrimina el IVA para el crédito fiscal; el resto
+    // no agrega nada encima del precio.
     let netoUnit = precioUnit;
     let ivaUnit = 0;
 
     if (compra.tipo_comprobante === 'factura_a') {
       netoUnit = alicuota > 0 ? precioUnit / (1 + alicuota / 100) : precioUnit;
       ivaUnit = precioUnit - netoUnit;
-    } else {
-      ivaUnit = netoUnit * (alicuota / 100);
     }
 
     const totalNeto = netoUnit * cantidad;
     const totalIva = ivaUnit * cantidad;
-    const total = (compra.tipo_comprobante === 'factura_a'
-      ? precioUnit : precioUnit + ivaUnit) * cantidad;
+    const total = precioUnit * cantidad;
 
     return {
       netoUnit: Number(netoUnit.toFixed(2)),
@@ -1015,11 +934,13 @@ function Gastos() {
 
   // ---- CÁLCULOS ----
   const totalGastos = gastos.reduce((acc, g) => acc + parseFloat(g.monto), 0);
-  const totalFijos = gastos.filter(g => g.tipo === 'fijo').reduce((acc, g) => acc + parseFloat(g.monto), 0);
-  const totalVariables = gastos.filter(g => g.tipo === 'variable').reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  // "Gastos" = todo lo que no es compra ni pago a proveedor (incluye fijos viejos)
+  const esGastoComun = (g) => g.tipo !== 'compra' && g.tipo !== 'pago_proveedor' && !g.es_compra;
+  const totalVariables = gastos.filter(esGastoComun).reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  const cantidadVariables = gastos.filter(esGastoComun).length;
+  const totalCompras = gastos.filter(g => g.es_compra || g.tipo === 'compra').reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  const cantidadCompras = gastos.filter(g => g.es_compra || g.tipo === 'compra').length;
   const totalPagosProveedores = gastos.filter(g => g.tipo === 'pago_proveedor').reduce((acc, g) => acc + parseFloat(g.monto), 0);
-  const cantidadFijos = gastos.filter(g => g.tipo === 'fijo').length;
-  const cantidadVariables = gastos.filter(g => g.tipo === 'variable').length;
   const cantidadPagosProveedores = gastos.filter(g => g.tipo === 'pago_proveedor').length;
 
   const totalVentasLibro = libroVentas.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
@@ -1052,8 +973,22 @@ function Gastos() {
   const iconoMetodo = (metodo) => {
     if (metodo === 'tarjeta') return '💳';
     if (metodo === 'transferencia') return '🏦';
+    if (metodo === 'mercadopago') return '📱';
     return '💵';
   };
+
+  // Helpers de presentación del libro diario
+  const etiquetaTipoGasto = (g) => {
+    if (g.es_compra || g.tipo === 'compra') return { emoji: '🛒', label: 'Compra', clase: 'bg-teal-100 text-teal-700' };
+    if (g.tipo === 'pago_proveedor') return { emoji: '🧾', label: 'Pago proveedor', clase: 'bg-emerald-100 text-emerald-700' };
+    return { emoji: '💸', label: 'Gasto', clase: 'bg-orange-100 text-orange-700' };
+  };
+  const etiquetaOrigen = (origen) => {
+    if (origen === 'local') return '🏪 Local';
+    if (origen === 'otro') return '📱 MP local';
+    return '🧰 Caja';
+  };
+  const esEnBlanco = (g) => ['factura_a', 'factura_b', 'factura_c'].includes(g.tipo_comprobante);
 
   return (
     <div className="space-y-4">
@@ -1073,9 +1008,10 @@ function Gastos() {
           </button>
           <button
             onClick={() => setModo('compra')}
-            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            title="Cargar una boleta completa a mano: productos, precios, IVA y proveedor"
+            className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
-            + Nuevo Gasto AVANZADO
+            📑 Gasto avanzado
           </button>
         </div>
       </div>
@@ -1494,197 +1430,177 @@ function Gastos() {
       {modo === 'gastos' && (
         <>
           {/* ---- TARJETAS DE RESUMEN ---- */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-xl p-4 shadow border-l-4 border-slate-700">
+              <p className="text-gray-400 text-[11px] font-semibold uppercase tracking-wide">Total del período</p>
+              <p className="text-2xl font-bold text-gray-800 mt-0.5 tabular-nums">{formatearPeso(totalGastos)}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{gastos.length} movimiento(s)</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow border-l-4 border-red-400">
+              <p className="text-gray-400 text-[11px] font-semibold uppercase tracking-wide">💸 Gastos</p>
+              <p className="text-xl font-bold text-red-600 mt-0.5 tabular-nums">{formatearPeso(totalVariables)}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{cantidadVariables} gasto(s)</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow border-l-4 border-blue-400">
+              <p className="text-gray-400 text-[11px] font-semibold uppercase tracking-wide">🛒 Compras</p>
+              <p className="text-xl font-bold text-blue-600 mt-0.5 tabular-nums">{formatearPeso(totalCompras)}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{cantidadCompras} compra(s)</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow border-l-4 border-emerald-400">
+              <p className="text-gray-400 text-[11px] font-semibold uppercase tracking-wide">🧾 Pagos a proveedores</p>
+              <p className="text-xl font-bold text-emerald-600 mt-0.5 tabular-nums">{formatearPeso(totalPagosProveedores)}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{cantidadPagosProveedores} pago(s)</p>
+            </div>
+          </div>
 
-        {/* Total */}
-        <div className="bg-red-500 text-white rounded-xl p-5 shadow">
-          <p className="text-red-100 text-sm font-medium uppercase">TOTAL</p>
-          <p className="text-3xl font-bold mt-1">{formatearPeso(totalGastos)}</p>
-          <p className="text-red-100 text-sm mt-1">{gastos.length} gastos</p>
-        </div>
-
-        {/* Fijos */}
-        <div className="bg-white rounded-xl p-5 shadow border-l-4 border-blue-500">
-          <p className="text-gray-500 text-sm font-medium uppercase">FIJOS</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">{formatearPeso(totalFijos)}</p>
-          <p className="text-gray-400 text-sm mt-1">{cantidadFijos} gastos</p>
-        </div>
-
-        {/* Variables */}
-        <div className="bg-white rounded-xl p-5 shadow border-l-4 border-orange-500">
-          <p className="text-gray-500 text-sm font-medium uppercase">VARIABLES</p>
-          <p className="text-2xl font-bold text-orange-600 mt-1">{formatearPeso(totalVariables)}</p>
-          <p className="text-gray-400 text-sm mt-1">{cantidadVariables} gastos</p>
-        </div>
-
-        {/* Pagos a proveedores */}
-        <div className="bg-white rounded-xl p-5 shadow border-l-4 border-green-500">
-          <p className="text-gray-500 text-sm font-medium uppercase">PAGOS PROVEEDORES</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">{formatearPeso(totalPagosProveedores)}</p>
-          <p className="text-gray-400 text-sm mt-1">{cantidadPagosProveedores} pagos</p>
-        </div>
-
-      </div>
-
-      {/* ---- FILTROS ---- */}
+      {/* ---- FILTROS (como el Dashboard) ---- */}
       <div className="bg-white rounded-xl p-4 shadow flex gap-3 flex-wrap items-center">
 
-        {/* Filtros de período */}
-        <div className="flex gap-2">
-          {/* Botón HOY */}
-          <button
-            onClick={() => setPeriodoFiltro('hoy')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              periodoFiltro === 'hoy'
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Hoy
-          </button>
-
-          {/* Botón ESTE MES */}
-          <button
-            onClick={() => setPeriodoFiltro('mes')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              periodoFiltro === 'mes'
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Este mes
-          </button>
-
-          {/* Botón PERSONALIZADO */}
-          <button
-            onClick={() => setPeriodoFiltro('personalizado')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              periodoFiltro === 'personalizado'
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Otro mes
-          </button>
+        {/* Período */}
+        <div className="flex gap-1.5 flex-wrap">
+          {[
+            { id: 'hoy', label: 'Hoy' },
+            { id: 'dia', label: 'Por día' },
+            { id: 'mes', label: 'Por mes' },
+            { id: 'rango', label: 'Rango' },
+            { id: 'todo', label: 'Todo' },
+          ].map(f => (
+            <button key={f.id}
+              onClick={() => setPeriodoFiltro(f.id)}
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                periodoFiltro === f.id
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {f.label}
+            </button>
+          ))}
         </div>
 
-        {/* Selector de mes (solo visible cuando eligió personalizado) */}
-        {periodoFiltro === 'personalizado' && (
-          <input
-            type="month"
-            value={mesSeleccionado}
+        {/* Selector según período */}
+        {periodoFiltro === 'dia' && (
+          <input type="date" value={diaSeleccionado}
+            onChange={(e) => setDiaSeleccionado(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+        )}
+        {periodoFiltro === 'mes' && (
+          <input type="month" value={mesSeleccionado}
             onChange={(e) => setMesSeleccionado(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
-          />
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+        )}
+        {periodoFiltro === 'rango' && (
+          <div className="flex gap-2 items-center flex-wrap">
+            <input type="date" value={rangoDesde}
+              onChange={(e) => setRangoDesde(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+            <span className="text-gray-400 text-sm">hasta</span>
+            <input type="date" value={rangoHasta}
+              onChange={(e) => setRangoHasta(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+          </div>
         )}
 
-        {/* Separador */}
-        <div className="w-px h-8 bg-gray-200 mx-1" />
+        <div className="w-px h-8 bg-gray-200 mx-1 hidden sm:block" />
 
-        {/* Filtro por tipo */}
-        <div className="flex gap-2">
-          {['todos', 'fijo', 'variable'].map(tipo => (
-            <button
-              key={tipo}
-              onClick={() => setTipoFiltro(tipo)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
-                tipoFiltro === tipo
-                  ? 'bg-gray-800 text-white'
+        {/* Tipo de movimiento */}
+        <div className="flex gap-1.5 flex-wrap">
+          {[
+            { id: 'todos', label: 'Todos' },
+            { id: 'variable', label: '💸 Gastos' },
+            { id: 'compra', label: '🛒 Compras' },
+            { id: 'pago_proveedor', label: '🧾 Pagos prov.' },
+          ].map(t => (
+            <button key={t.id}
+              onClick={() => setTipoFiltro(t.id)}
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                tipoFiltro === t.id
+                  ? 'bg-gray-700 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {tipo === 'todos' ? 'Todos' : tipo === 'fijo' ? 'Fijos' : 'Variables'}
+              }`}>
+              {t.label}
             </button>
           ))}
         </div>
 
       </div>
 
-      {/* ---- TABLA DE GASTOS ---- */}
+      {/* ---- LIBRO DIARIO DE GASTOS ---- */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
+
+        {/* Vista móvil: tarjetas */}
+        <div className="sm:hidden divide-y divide-gray-100">
+          {cargando ? (
+            <p className="text-center py-8 text-gray-400">Cargando gastos...</p>
+          ) : gastos.length === 0 ? (
+            <p className="text-center py-10 text-gray-400">💸 No hay movimientos en este período</p>
+          ) : (
+            gastos.map(gasto => (
+              <div key={gasto.id} className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 leading-snug">
+                      {etiquetaTipoGasto(gasto).emoji} {gasto.descripcion || etiquetaTipoGasto(gasto).label}
+                      {gasto.recibo_url && ' 📎'}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {formatearFecha(gasto.fecha)}
+                      {gasto.proveedor_nombre ? ` · ${gasto.proveedor_nombre}` : ''}
+                      {' · '}{gasto.usuario_nombre || 'Admin'}
+                    </p>
+                  </div>
+                  <p className="font-bold text-red-600 tabular-nums flex-shrink-0">{formatearPeso(gasto.monto)}</p>
+                </div>
+                <div className="flex items-center justify-between mt-1.5">
+                  <div className="flex gap-1.5 flex-wrap">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{etiquetaOrigen(gasto.origen_dinero)}</span>
+                    {esEnBlanco(gasto) && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">🧾 Factura A</span>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => abrirEditarGasto(gasto)} className="text-xs bg-blue-100 active:bg-blue-200 text-blue-700 px-2 py-1 rounded">✏️</button>
+                    <button onClick={() => eliminarGasto(gasto.id)} className="text-xs bg-red-100 active:bg-red-200 text-red-700 px-2 py-1 rounded">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Vista escritorio: tabla */}
+        <div className="hidden sm:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Fecha</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Proveedor</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Categoría</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Tipo Gasto</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Comprobante</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Método Pago</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Usuario</th>
-              <th className="text-left px-4 py-3 text-gray-600 font-medium">Descripción</th>
-              <th className="text-center px-4 py-3 text-gray-600 font-medium">Adjunto</th>
-              <th className="text-right px-4 py-3 text-gray-600 font-medium">Monto</th>
-              <th className="text-center px-4 py-3 text-gray-600 font-medium">Acción</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Fecha</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Descripción</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Tipo</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Proveedor</th>
+              <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Fiscal</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Pago</th>
+              <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Usuario</th>
+              <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Monto</th>
+              <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="11" className="text-center py-8 text-gray-400">Cargando gastos...</td></tr>
+              <tr><td colSpan="9" className="text-center py-8 text-gray-400">Cargando gastos...</td></tr>
             ) : gastos.length === 0 ? (
               <tr>
-                <td colSpan="11" className="text-center py-12 text-gray-400">
+                <td colSpan="9" className="text-center py-12 text-gray-400">
                   <p className="text-4xl mb-2">💸</p>
-                  <p>No hay gastos en este período</p>
+                  <p>No hay movimientos en este período</p>
                 </td>
               </tr>
             ) : (
-gastos.map(gasto => (
+              gastos.map(gasto => (
                 <tr key={gasto.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 text-sm whitespace-nowrap">
                     {formatearFecha(gasto.fecha)}
                   </td>
-                  <td className="px-4 py-3 text-gray-700 text-sm">
-                    {gasto.proveedor_nombre ? (
-                      <span className="font-medium text-gray-800">{gasto.proveedor_nombre}</span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">
-                    {gasto.categoria || <span className="text-gray-400">-</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                      gasto.tipo === 'fijo'
-                        ? 'bg-blue-100 text-blue-700'
-                        : gasto.tipo === 'pago_proveedor'
-                          ? 'bg-green-100 text-green-700'
-                          : gasto.tipo === 'compra'
-                            ? 'bg-teal-100 text-teal-700'
-                            : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {gasto.tipo === 'fijo' ? '📌 Fijo' : gasto.tipo === 'pago_proveedor' ? '🧾 Pago Proveedor' : gasto.tipo === 'compra' ? '🛒 Compra' : '📄 Variable'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-700 text-sm">
-                    {gasto.tipo_documento ? gasto.tipo_documento.replace('_', ' ').toUpperCase() : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-sm">
-                    <div>{iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}</div>
-                    <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                      (gasto.origen_dinero || 'caja') === 'caja'
-                        ? 'bg-amber-100 text-amber-700'
-                        : gasto.origen_dinero === 'local'
-                          ? 'bg-sky-100 text-sky-700'
-                          : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {(gasto.origen_dinero || 'caja') === 'caja' ? '🧰 Caja' : gasto.origen_dinero === 'local' ? '🏪 Local' : '📱 MP local'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                        {(gasto.usuario_nombre || 'A').charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-gray-600 text-sm">{gasto.usuario_nombre || 'Admin'}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-sm">
-                    {gasto.descripcion || <span className="text-gray-400">-</span>}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {gasto.recibo_url ? (
+                  <td className="px-4 py-3 text-gray-700 text-sm max-w-[260px]">
+                    <span className="block truncate">{gasto.descripcion || <span className="text-gray-400">-</span>}</span>
+                    {gasto.recibo_url && (
                       <button
                         onClick={() => {
                           const link = document.createElement('a');
@@ -1693,16 +1609,35 @@ gastos.map(gasto => (
                           link.target = '_blank';
                           link.click();
                         }}
-                        className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-                        title="Descargar boleta"
-                      >
-                        📎 {gasto.recibo_url.includes('data:image') ? '🖼️' : '📄'}
+                        className="text-[11px] text-indigo-600 hover:text-indigo-800"
+                        title="Descargar adjunto">
+                        📎 ver adjunto
                       </button>
-                    ) : (
-                      <span className="text-gray-300">-</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-red-600">
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${etiquetaTipoGasto(gasto).clase}`}>
+                      {etiquetaTipoGasto(gasto).emoji} {etiquetaTipoGasto(gasto).label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 text-sm">
+                    {gasto.proveedor_nombre || <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {esEnBlanco(gasto) ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold whitespace-nowrap" title="En blanco: suma IVA crédito al Resumen Fiscal">🧾 Fact. A</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">X</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                    <div>{iconoMetodo(gasto.metodo_pago)} {gasto.metodo_pago}</div>
+                    <span className="text-[10px] text-gray-400">{etiquetaOrigen(gasto.origen_dinero)}</span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                    {gasto.usuario_nombre || 'Admin'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-red-600 tabular-nums whitespace-nowrap">
                     {formatearPeso(gasto.monto)}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -1724,6 +1659,7 @@ gastos.map(gasto => (
             )}
           </tbody>
         </table>
+        </div>
       </div>
       </>
       )}
