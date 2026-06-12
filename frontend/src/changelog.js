@@ -14,9 +14,29 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.7.2';
+export const VERSION_ACTUAL = '2.8.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.8.0',
+    fecha: '2026-06-12',
+    titulo: 'Cajas fijas por turno y cierre con responsable',
+    destacados: [
+      {
+        titulo: '🏪 Cajas fijas del local',
+        detalle: 'Desde Control de Caja ahora se crean las cajas fijas del negocio (ej: Mañana, Tarde, Trasnoche). Al entrar al POS, el usuario ve esas cajas con su estado: si está cerrada la abre con su efectivo inicial, y si ya está abierta se une. También puede crear una caja eventual para un caso particular. Una caja fija no se puede abrir dos veces a la vez.',
+      },
+      {
+        titulo: '🔐 Cierre de caja con responsable y cambio de turno',
+        detalle: 'Cada cierre registra qué usuario lo hizo (se ve en Control de Caja y en el detalle del cierre). Al finalizar el turno, la sesión se cierra automáticamente para que el usuario del turno siguiente ingrese con su propia cuenta y abra su caja.',
+      },
+    ],
+    cambios: [
+      { t: 'Control de Caja: el historial ahora muestra el nombre de la caja y quién la cerró.' },
+      { t: 'POS: si la venta rápida (F1) está desactivada por el administrador, ahora avisa "Función desactivada por el administrador" en vez de no hacer nada.' },
+      { t: 'Dashboard: se quitó el widget "Estado del sistema" (duplicaba información y consumía recursos; las alertas importantes siguen en el panel de soporte).' },
+    ],
+  },
   {
     version: '2.7.2',
     fecha: '2026-06-12',

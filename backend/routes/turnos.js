@@ -2,6 +2,89 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 
+// =============================================
+// CAJAS FIJAS del local (Mañana, Tarde, Trasnoche...)
+// Se administran desde Control de Cajas; cualquier usuario las ve al abrir.
+// =============================================
+
+// GET cajas fijas (con estado: si tienen un turno abierto ahora)
+router.get('/cajas-fijas', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const resultado = await db.query(`
+            SELECT cd.id, cd.nombre, cd.orden,
+                   t.id AS turno_abierto_id,
+                   t.fecha_apertura AS turno_abierto_desde
+            FROM cajas_definidas cd
+            LEFT JOIN turnos t ON t.caja_definida_id = cd.id
+                AND t.estado = 'abierto' AND t.negocio_id = cd.negocio_id
+            WHERE cd.negocio_id = $1 AND cd.activa = TRUE
+            ORDER BY cd.orden ASC, cd.id ASC
+        `, [negocio_id]);
+
+        res.json(resultado.rows);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener cajas fijas' });
+    }
+});
+
+// POST crear caja fija (solo admin, desde Control de Cajas)
+router.post('/cajas-fijas', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        if (!['admin', 'superadmin'].includes(req.usuario?.rol)) {
+            return res.status(403).json({ error: 'Solo el administrador puede crear cajas fijas' });
+        }
+        const nombre = (req.body.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
+
+        const existe = await db.query(
+            'SELECT id FROM cajas_definidas WHERE negocio_id = $1 AND activa = TRUE AND LOWER(nombre) = LOWER($2)',
+            [negocio_id, nombre]
+        );
+        if (existe.rows.length > 0) {
+            return res.status(400).json({ error: `Ya existe una caja fija llamada "${nombre}"` });
+        }
+
+        const maxOrden = await db.query(
+            'SELECT COALESCE(MAX(orden), 0) AS max FROM cajas_definidas WHERE negocio_id = $1',
+            [negocio_id]
+        );
+        const resultado = await db.query(
+            'INSERT INTO cajas_definidas (negocio_id, nombre, orden) VALUES ($1, $2, $3) RETURNING *',
+            [negocio_id, nombre, parseInt(maxOrden.rows[0].max) + 1]
+        );
+        res.status(201).json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al crear la caja fija' });
+    }
+});
+
+// DELETE desactivar caja fija (solo admin) — no borra historial de turnos
+router.delete('/cajas-fijas/:id', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        if (!['admin', 'superadmin'].includes(req.usuario?.rol)) {
+            return res.status(403).json({ error: 'Solo el administrador puede eliminar cajas fijas' });
+        }
+        const r = await db.query(
+            'UPDATE cajas_definidas SET activa = FALSE WHERE id = $1 AND negocio_id = $2 RETURNING id',
+            [req.params.id, negocio_id]
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Caja fija no encontrada' });
+        res.json({ mensaje: 'Caja fija eliminada' });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al eliminar la caja fija' });
+    }
+});
+
 // GET turno actual del usuario
 router.get('/actual', async (req, res) => {
     try {
@@ -75,7 +158,7 @@ router.post('/abrir', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const usuario_id = req.usuario.id;
-        const { inicio_caja, nombre } = req.body;
+        const { inicio_caja, nombre, caja_definida_id } = req.body;
 
         // Verificamos que el usuario no esté ya en una caja abierta
         const yaEnCaja = await db.query(`
@@ -85,17 +168,41 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         `, [negocio_id, usuario_id]);
 
         if (yaEnCaja.rows.length > 0) {
-            return res.status(400).json({ 
-                error: `Ya estás en la caja "${yaEnCaja.rows[0].nombre}"` 
+            return res.status(400).json({
+                error: `Ya estás en la caja "${yaEnCaja.rows[0].nombre}"`
             });
+        }
+
+        // Si abre una caja FIJA: usar su nombre y evitar que se abra dos veces
+        let nombreFinal = nombre || 'Caja Principal';
+        let cajaDefinidaId = null;
+        if (caja_definida_id) {
+            const cf = await db.query(
+                'SELECT * FROM cajas_definidas WHERE id = $1 AND negocio_id = $2 AND activa = TRUE',
+                [caja_definida_id, negocio_id]
+            );
+            if (cf.rows.length === 0) {
+                return res.status(404).json({ error: 'La caja fija no existe' });
+            }
+            const abierta = await db.query(
+                "SELECT id FROM turnos WHERE caja_definida_id = $1 AND estado = 'abierto' AND negocio_id = $2",
+                [caja_definida_id, negocio_id]
+            );
+            if (abierta.rows.length > 0) {
+                return res.status(400).json({
+                    error: `La caja "${cf.rows[0].nombre}" ya está abierta. Unite a ella en vez de abrirla de nuevo.`
+                });
+            }
+            nombreFinal = cf.rows[0].nombre;
+            cajaDefinidaId = cf.rows[0].id;
         }
 
         // Creamos la nueva caja
         const turno = await db.query(`
-            INSERT INTO turnos (inicio_caja, estado, negocio_id, nombre, usuario_id)
-            VALUES ($1, 'abierto', $2, $3, $4)
+            INSERT INTO turnos (inicio_caja, estado, negocio_id, nombre, usuario_id, caja_definida_id)
+            VALUES ($1, 'abierto', $2, $3, $4, $5)
             RETURNING *
-        `, [inicio_caja || 0, negocio_id, nombre || 'Caja Principal', usuario_id]);
+        `, [inicio_caja || 0, negocio_id, nombreFinal, usuario_id, cajaDefinidaId]);
 
         // Agregamos al usuario a la caja
         await db.query(`
@@ -170,7 +277,8 @@ router.put('/:id/cerrar', async (req, res) => {
                 total_tarjetas = $3,
                 total_mercadopago = $4,
                 total_transferencias = $5,
-                comentarios = $6
+                comentarios = $6,
+                usuario_cierre_id = $9
             WHERE id = $7 AND negocio_id = $8
             RETURNING *
         `, [
@@ -180,7 +288,8 @@ router.put('/:id/cerrar', async (req, res) => {
             total_mercadopago || 0,
             total_transferencias || 0,
             comentarios || '',
-            id, negocio_id
+            id, negocio_id,
+            req.usuario?.id || null
         ]);
 
         if (resultado.rows.length === 0) {

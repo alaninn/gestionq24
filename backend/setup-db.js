@@ -154,6 +154,25 @@ ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_orden INTEGER DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_productos_stock_cat ON productos(negocio_id, stock_categoria_id, stock_orden);
 
 -- =============================================
+-- TABLA: cajas_definidas
+-- Cajas FIJAS del local (Mañana, Tarde, Trasnoche...) que se crean desde
+-- Control de Cajas. Los usuarios las abren/cierran según su turno.
+-- =============================================
+CREATE TABLE IF NOT EXISTS cajas_definidas (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    nombre VARCHAR(100) NOT NULL,
+    orden INTEGER DEFAULT 0,
+    activa BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cajas_definidas_negocio ON cajas_definidas(negocio_id, activa);
+
+-- Quién cerró cada caja + de qué caja fija proviene el turno
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS usuario_cierre_id INTEGER;
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS caja_definida_id INTEGER;
+
+-- =============================================
 -- TABLA: planes_config
 -- Límites y funciones de cada plan, editables desde el panel de superadmin.
 -- Si está vacía, el middleware usa los valores por defecto hardcodeados.

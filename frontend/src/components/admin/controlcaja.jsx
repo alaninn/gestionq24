@@ -78,13 +78,19 @@ function ModalDetalleCierre({ turno, onCerrar }) {
         {/* Encabezado */}
         <div className="bg-gradient-to-r from-green-600 via-green-500 to-emerald-600 text-white p-6 flex items-center justify-between flex-shrink-0 shadow-lg">
           <div>
-            <h3 className="text-xl font-bold">🏦 Detalle de Cierre</h3>
-            <div className="flex items-center gap-3 text-green-100 text-sm mt-2">
+            <h3 className="text-xl font-bold">🏦 Detalle de Cierre{turno.nombre ? ` — ${turno.nombre}` : ''}</h3>
+            <div className="flex items-center gap-3 text-green-100 text-sm mt-2 flex-wrap">
               <span>Apertura: {fmtFecha(turno.fecha_apertura)}</span>
               {turno.fecha_cierre && (
                 <>
                   <span>•</span>
                   <span>Cierre: {fmtFecha(turno.fecha_cierre)}</span>
+                </>
+              )}
+              {turno.usuario_cierre_nombre && (
+                <>
+                  <span>•</span>
+                  <span>👤 Cerró: {turno.usuario_cierre_nombre}</span>
                 </>
               )}
               <span>•</span>
@@ -425,6 +431,48 @@ function ControlCaja() {
     return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // Cajas FIJAS del local (Mañana, Tarde, Trasnoche...)
+  const [cajasFijas, setCajasFijas] = useState([]);
+  const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
+  const [creandoCaja, setCreandoCaja] = useState(false);
+  const [errorCajas, setErrorCajas] = useState('');
+
+  const cargarCajasFijas = async () => {
+    try {
+      const res = await api.get('/api/turnos/cajas-fijas');
+      setCajasFijas(res.data);
+    } catch { }
+  };
+
+  const crearCajaFija = async (e) => {
+    e.preventDefault();
+    if (!nuevaCajaNombre.trim()) return;
+    try {
+      setCreandoCaja(true);
+      setErrorCajas('');
+      await api.post('/api/turnos/cajas-fijas', { nombre: nuevaCajaNombre.trim() });
+      setNuevaCajaNombre('');
+      cargarCajasFijas();
+    } catch (err) {
+      setErrorCajas(err.response?.data?.error || 'Error al crear la caja');
+      setTimeout(() => setErrorCajas(''), 4000);
+    } finally {
+      setCreandoCaja(false);
+    }
+  };
+
+  const eliminarCajaFija = async (caja) => {
+    if (!window.confirm(`¿Eliminar la caja fija "${caja.nombre}"?\n\nEl historial de cierres no se pierde; solo deja de aparecer como opción al abrir caja.`)) return;
+    try {
+      await api.delete(`/api/turnos/cajas-fijas/${caja.id}`);
+      cargarCajasFijas();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al eliminar la caja');
+    }
+  };
+
+  useEffect(() => { cargarCajasFijas(); }, []);
+
   useEffect(() => {
     cargarDatos();
   }, [mesSeleccionado]);
@@ -459,6 +507,41 @@ function ControlCaja() {
         <input type="month" value={mesSeleccionado}
           onChange={(e) => setMesSeleccionado(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+      </div>
+
+      {/* Cajas fijas del local */}
+      <div className="bg-white rounded-xl shadow p-4 sm:p-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h3 className="font-semibold text-gray-700">🏪 Cajas del local</h3>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">
+          Cajas fijas que los usuarios abren y cierran según su turno (ej: Mañana, Tarde, Trasnoche). Aparecen siempre al entrar al POS.
+        </p>
+        {errorCajas && <p className="text-sm text-red-600 mb-2">❌ {errorCajas}</p>}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {cajasFijas.length === 0 && (
+            <p className="text-sm text-gray-400">No hay cajas fijas todavía. Creá las de tus turnos 👇</p>
+          )}
+          {cajasFijas.map(c => (
+            <span key={c.id} className={`inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full text-sm font-medium border ${
+              c.turno_abierto_id ? 'bg-green-50 border-green-300 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'
+            }`}>
+              {c.turno_abierto_id ? '🔓' : '🔒'} {c.nombre}
+              {c.turno_abierto_id && <span className="text-[10px] bg-green-200 text-green-800 px-1.5 py-0.5 rounded-full">abierta</span>}
+              <button onClick={() => eliminarCajaFija(c)} title="Eliminar caja fija"
+                className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors">×</button>
+            </span>
+          ))}
+        </div>
+        <form onSubmit={crearCajaFija} className="flex gap-2 flex-wrap">
+          <input type="text" value={nuevaCajaNombre} onChange={(e) => setNuevaCajaNombre(e.target.value)}
+            placeholder="Nombre de la caja (ej: Mañana)"
+            className="flex-1 min-w-44 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <button type="submit" disabled={creandoCaja || !nuevaCajaNombre.trim()}
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+            ➕ Crear caja fija
+          </button>
+        </form>
       </div>
 
       {cargando ? (
@@ -504,9 +587,10 @@ function ControlCaja() {
                   <div key={turno.id} className="p-3" onClick={() => setTurnoSeleccionado(turno)}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800">{fmtFecha(turno.fecha_apertura)}</p>
+                        <p className="text-sm font-medium text-gray-800">{turno.nombre ? `${turno.nombre} · ` : ''}{fmtFecha(turno.fecha_apertura)}</p>
                         <p className="text-xs text-gray-400">
                           {turno.fecha_cierre ? `Cierre: ${fmtFecha(turno.fecha_cierre)}` : 'Turno en curso'} · {turno.total_ventas} venta(s)
+                          {turno.usuario_cierre_nombre ? ` · cerró ${turno.usuario_cierre_nombre}` : ''}
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -530,6 +614,7 @@ function ControlCaja() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
+                      <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Caja</th>
                       <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Apertura</th>
                       <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Cierre</th>
                       <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Ventas</th>
@@ -544,9 +629,13 @@ function ControlCaja() {
                   <tbody className="divide-y divide-gray-100">
                     {datos.turnos.map(turno => (
                       <tr key={turno.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800">{turno.nombre || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{fmtFecha(turno.fecha_apertura)}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {turno.fecha_cierre ? fmtFecha(turno.fecha_cierre) : '-'}
+                          {turno.usuario_cierre_nombre && (
+                            <span className="block text-[11px] text-gray-400">por {turno.usuario_cierre_nombre}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center font-medium text-gray-700">{turno.total_ventas}</td>
                         <td className="px-4 py-3 text-right font-bold text-green-600">{fmt(turno.total_facturado)}</td>
