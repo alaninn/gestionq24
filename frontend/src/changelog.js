@@ -14,9 +14,24 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.8.0';
+export const VERSION_ACTUAL = '2.8.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.8.1',
+    fecha: '2026-06-12',
+    titulo: 'Historial completo por cliente en Cuentas Corrientes',
+    destacados: [
+      {
+        titulo: '📊 Ficha completa del cliente',
+        detalle: 'En Cuentas Corrientes, cada cliente tiene ahora un historial completo (botón 📊): cuánto gastó en total, cantidad de compras y ticket promedio, deuda actual, fiado histórico, pagos realizados y desde cuándo es cliente. Incluye el gasto mes a mes (tocás un mes y filtra las compras), lo que más compra, y la lista de todas sus compras — tocá una para ver los productos.',
+      },
+    ],
+    cambios: [
+      { t: 'POS: botón 🔄 junto al modo oscuro que recarga la pantalla limpiando caché (equivale a Ctrl+Shift+R) para destrabarse ante cualquier problema.' },
+      { t: 'POS: la píldora con el nombre de la caja ahora es un botón para cambiar de caja sin cerrarla (la caja queda abierta para los demás).' },
+    ],
+  },
   {
     version: '2.8.0',
     fecha: '2026-06-12',
