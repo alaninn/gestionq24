@@ -34,6 +34,89 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Historial COMPLETO de compras del cliente + estadísticas de interés.
+// ?mes=YYYY-MM filtra la lista de compras a ese mes (las stats son siempre globales).
+router.get('/:id/historial', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const cliente_id = req.params.id;
+        const { mes } = req.query;
+
+        // Estadísticas globales del cliente
+        const stats = await db.query(`
+            SELECT
+                COUNT(*) AS total_compras,
+                COALESCE(SUM(total), 0) AS total_gastado,
+                COALESCE(AVG(total), 0) AS ticket_promedio,
+                MIN(fecha) AS primera_compra,
+                MAX(fecha) AS ultima_compra,
+                COALESCE(SUM(CASE WHEN es_fiado THEN total END), 0) AS total_fiado,
+                COUNT(CASE WHEN es_fiado THEN 1 END) AS compras_fiadas
+            FROM ventas
+            WHERE cliente_id = $1 AND negocio_id = $2
+        `, [cliente_id, negocio_id]);
+
+        // Gastado por mes (últimos 12 meses con movimiento)
+        const porMes = await db.query(`
+            SELECT TO_CHAR(fecha, 'YYYY-MM') AS mes,
+                   COUNT(*) AS compras,
+                   COALESCE(SUM(total), 0) AS total
+            FROM ventas
+            WHERE cliente_id = $1 AND negocio_id = $2
+            GROUP BY TO_CHAR(fecha, 'YYYY-MM')
+            ORDER BY mes DESC
+            LIMIT 12
+        `, [cliente_id, negocio_id]);
+
+        // Qué productos compra más este cliente
+        const topProductos = await db.query(`
+            SELECT vi.nombre_producto,
+                   SUM(vi.cantidad) AS cantidad,
+                   SUM(vi.subtotal) AS total
+            FROM venta_items vi
+            JOIN ventas v ON v.id = vi.venta_id
+            WHERE v.cliente_id = $1 AND v.negocio_id = $2
+            GROUP BY vi.nombre_producto
+            ORDER BY cantidad DESC
+            LIMIT 5
+        `, [cliente_id, negocio_id]);
+
+        // Total pagado de deudas
+        const pagos = await db.query(
+            'SELECT COALESCE(SUM(monto), 0) AS total_pagado, COUNT(*) AS cantidad FROM pagos_deuda WHERE cliente_id = $1',
+            [cliente_id]
+        );
+
+        // Lista de compras (todas, no solo fiadas), opcionalmente de un mes
+        let consultaVentas = `
+            SELECT v.id, v.fecha, v.total, v.metodo_pago, v.es_fiado, v.tipo_facturacion,
+                   COUNT(vi.id) AS items
+            FROM ventas v
+            LEFT JOIN venta_items vi ON vi.venta_id = v.id
+            WHERE v.cliente_id = $1 AND v.negocio_id = $2
+        `;
+        const valores = [cliente_id, negocio_id];
+        if (mes) {
+            consultaVentas += ` AND TO_CHAR(v.fecha, 'YYYY-MM') = $3`;
+            valores.push(mes);
+        }
+        consultaVentas += ' GROUP BY v.id ORDER BY v.fecha DESC LIMIT 200';
+        const ventas = await db.query(consultaVentas, valores);
+
+        res.json({
+            stats: stats.rows[0],
+            porMes: porMes.rows,
+            topProductos: topProductos.rows,
+            pagos: pagos.rows[0],
+            ventas: ventas.rows,
+        });
+    } catch (error) {
+        console.error('Error historial cliente:', error);
+        res.status(500).json({ error: 'Error al obtener el historial del cliente' });
+    }
+});
+
 router.post('/', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;

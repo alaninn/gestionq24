@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
@@ -15,6 +16,249 @@ const fmtFecha = (f) => new Date(f).toLocaleDateString('es-AR', {
   hour: '2-digit', minute: '2-digit'
 });
 
+const fmtFechaCorta = (f) => new Date(f).toLocaleDateString('es-AR', {
+  day: '2-digit', month: '2-digit', year: 'numeric'
+});
+
+const ETIQUETA_MES = (m) => {
+  const [anio, mes] = m.split('-');
+  const nombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  return `${nombres[parseInt(mes) - 1]} ${anio.slice(2)}`;
+};
+
+// =============================================
+// MODAL: Historial completo de compras del cliente
+// =============================================
+function ModalHistorialCliente({ cliente, onCerrar }) {
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [mesFiltro, setMesFiltro] = useState(''); // '' = todas
+  const [ventaExpandida, setVentaExpandida] = useState(null);
+  const [itemsPorVenta, setItemsPorVenta] = useState({});
+
+  useCerrarConAtras(true, onCerrar);
+
+  const cargar = async (mes = mesFiltro) => {
+    try {
+      setCargando(true);
+      const res = await api.get(`/api/clientes/${cliente.id}/historial${mes ? `?mes=${mes}` : ''}`);
+      setDatos(res.data);
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => { cargar(''); }, [cliente.id]);
+
+  const cambiarMes = (mes) => {
+    setMesFiltro(mes);
+    setVentaExpandida(null);
+    cargar(mes);
+  };
+
+  const toggleVenta = async (ventaId) => {
+    if (ventaExpandida === ventaId) { setVentaExpandida(null); return; }
+    setVentaExpandida(ventaId);
+    if (itemsPorVenta[ventaId]) return;
+    try {
+      const res = await api.get(`/api/ventas/${ventaId}`);
+      setItemsPorVenta(prev => ({ ...prev, [ventaId]: res.data.items || [] }));
+    } catch {
+      setItemsPorVenta(prev => ({ ...prev, [ventaId]: [] }));
+    }
+  };
+
+  const stats = datos?.stats;
+  const totalMesFiltrado = datos?.ventas?.reduce((a, v) => a + parseFloat(v.total), 0) || 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3"
+      onClick={onCerrar}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}>
+
+        {/* Encabezado */}
+        <div className="p-5 bg-gradient-to-r from-green-600 to-emerald-600 text-white flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 bg-white/20 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
+              {cliente.nombre.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold truncate">{cliente.nombre}</h3>
+              <p className="text-green-100 text-xs">
+                {cliente.telefono || 'Sin teléfono'}
+                {stats?.primera_compra && ` · Cliente desde ${fmtFechaCorta(stats.primera_compra)}`}
+              </p>
+            </div>
+          </div>
+          <button onClick={onCerrar} className="text-green-200 hover:text-white text-3xl leading-none flex-shrink-0">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {cargando && !datos ? (
+            <div className="text-center py-16 text-gray-400">Cargando historial...</div>
+          ) : !datos ? (
+            <div className="text-center py-16 text-gray-400">No se pudo cargar el historial</div>
+          ) : (
+            <div className="p-4 space-y-4">
+
+              {/* Estadísticas de interés */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                  <p className="text-[11px] text-green-700 font-semibold uppercase">💰 Gastado total</p>
+                  <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(stats.total_gastado)}</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-[11px] text-blue-700 font-semibold uppercase">🛒 Compras</p>
+                  <p className="text-lg font-bold text-gray-800 tabular-nums">{stats.total_compras}</p>
+                  <p className="text-[11px] text-gray-400">ticket prom. {fmt(stats.ticket_promedio)}</p>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                  <p className="text-[11px] text-red-700 font-semibold uppercase">💳 Deuda actual</p>
+                  <p className="text-lg font-bold text-red-600 tabular-nums">{fmt(cliente.saldo_deuda)}</p>
+                </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                  <p className="text-[11px] text-orange-700 font-semibold uppercase">📝 Fiado histórico</p>
+                  <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(stats.total_fiado)}</p>
+                  <p className="text-[11px] text-gray-400">{stats.compras_fiadas} compra(s) fiada(s)</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <p className="text-[11px] text-emerald-700 font-semibold uppercase">✅ Pagos de deuda</p>
+                  <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(datos.pagos?.total_pagado)}</p>
+                  <p className="text-[11px] text-gray-400">{datos.pagos?.cantidad || 0} pago(s)</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-[11px] text-gray-500 font-semibold uppercase">🕒 Última compra</p>
+                  <p className="text-sm font-bold text-gray-800">
+                    {stats.ultima_compra ? fmtFechaCorta(stats.ultima_compra) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Gastado por mes */}
+              {datos.porMes.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">📅 Gastado por mes</p>
+                  <div className="space-y-1.5">
+                    {datos.porMes.map(m => {
+                      const max = Math.max(...datos.porMes.map(x => parseFloat(x.total)));
+                      const pct = max > 0 ? (parseFloat(m.total) / max) * 100 : 0;
+                      return (
+                        <button key={m.mes} onClick={() => cambiarMes(mesFiltro === m.mes ? '' : m.mes)}
+                          className={`w-full flex items-center gap-2 text-left group ${mesFiltro === m.mes ? 'opacity-100' : 'opacity-90 hover:opacity-100'}`}>
+                          <span className={`text-xs w-14 flex-shrink-0 ${mesFiltro === m.mes ? 'font-bold text-green-700' : 'text-gray-500'}`}>
+                            {ETIQUETA_MES(m.mes)}
+                          </span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                            <div className={`h-full rounded-full flex items-center justify-end pr-2 transition-all ${mesFiltro === m.mes ? 'bg-green-600' : 'bg-green-400 group-hover:bg-green-500'}`}
+                              style={{ width: `${Math.max(pct, 12)}%` }}>
+                              <span className="text-white text-[10px] font-semibold tabular-nums">{fmt(m.total)}</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-gray-400 w-12 text-right flex-shrink-0">{m.compras} c.</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-2">💡 Tocá un mes para filtrar las compras de abajo</p>
+                </div>
+              )}
+
+              {/* Lo que más compra */}
+              {datos.topProductos.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">🏆 Lo que más compra</p>
+                  <div className="space-y-1">
+                    {datos.topProductos.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="text-green-600 font-bold w-5 text-right">{i + 1}.</span>
+                        <span className="text-gray-700 flex-1 truncate">{p.nombre_producto}</span>
+                        <span className="text-gray-400 text-xs tabular-nums">{parseFloat(p.cantidad)} u.</span>
+                        <span className="text-gray-800 font-semibold text-xs tabular-nums w-20 text-right">{fmt(p.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de compras */}
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50 border-b flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                    🧾 Compras {mesFiltro ? `de ${ETIQUETA_MES(mesFiltro)}` : '(todas)'} · {datos.ventas.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {mesFiltro && (
+                      <button onClick={() => cambiarMes('')}
+                        className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-600 px-2 py-1 rounded-lg transition-colors">
+                        ✕ Quitar filtro
+                      </button>
+                    )}
+                    <span className="text-sm font-bold text-green-700 tabular-nums">{fmt(totalMesFiltrado)}</span>
+                  </div>
+                </div>
+                {cargando ? (
+                  <p className="text-center text-gray-400 text-sm py-6">Cargando...</p>
+                ) : datos.ventas.length === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-6">Sin compras{mesFiltro ? ' en este mes' : ''}</p>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {datos.ventas.map(v => (
+                      <div key={v.id}>
+                        <div className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => toggleVenta(v.id)}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-800">
+                              Venta #{v.id}
+                              {v.es_fiado && <span className="ml-1.5 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">FIADO</span>}
+                              {v.tipo_facturacion === 'electronica' && <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">🧾 ARCA</span>}
+                            </p>
+                            <p className="text-[11px] text-gray-400">{fmtFecha(v.fecha)} · {v.items} ítem(s) · {(v.metodo_pago || '').replace('_', ' ')}</p>
+                          </div>
+                          <span className="font-bold text-gray-800 text-sm tabular-nums">{fmt(v.total)}</span>
+                          <span className={`text-gray-400 text-xs transition-transform ${ventaExpandida === v.id ? 'rotate-180' : ''}`}>▾</span>
+                        </div>
+                        {ventaExpandida === v.id && (
+                          <div className="px-3 pb-2.5 pl-6 bg-gray-50/60">
+                            {!itemsPorVenta[v.id] ? (
+                              <p className="text-gray-400 text-xs py-1">Cargando productos...</p>
+                            ) : itemsPorVenta[v.id].length === 0 ? (
+                              <p className="text-gray-400 text-xs py-1">Sin detalle de productos</p>
+                            ) : (
+                              <div className="space-y-1 pt-1.5">
+                                {itemsPorVenta[v.id].map((item, i) => (
+                                  <div key={i} className="flex items-center gap-2 text-xs">
+                                    <span className="text-green-600 tabular-nums w-8 text-right flex-shrink-0">{parseFloat(item.cantidad)}×</span>
+                                    <span className="text-gray-600 flex-1 truncate">{item.nombre_producto}</span>
+                                    <span className="text-gray-500 tabular-nums">{fmt(item.subtotal)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 border-t bg-gray-50 flex-shrink-0">
+          <button onClick={onCerrar}
+            className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-semibold text-sm transition-colors">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CuentasCorrientes() {
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -23,6 +267,7 @@ function CuentasCorrientes() {
   const [detalleCliente, setDetalleCliente] = useState(null);
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
   const [mostrarModalPago, setMostrarModalPago] = useState(false);
+  const [clienteHistorial, setClienteHistorial] = useState(null); // cliente del modal de historial
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
 
@@ -215,14 +460,21 @@ const registrarPago = async (e) => {
                         </span>
                       </td>
                   <td className="px-4 py-3 text-center">
-                        {parseFloat(cliente.saldo_deuda) > 0 ? (
-                          <button onClick={(e) => { e.stopPropagation(); verDetalle(cliente); setMostrarModalPago(true); }}
-                            className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded text-sm transition-colors">
-                            💵 Cobrar
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button onClick={(e) => { e.stopPropagation(); setClienteHistorial(cliente); }}
+                            title="Ver historial completo de compras"
+                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2.5 py-1 rounded text-sm transition-colors">
+                            📊
                           </button>
-                        ) : (
-                          <span className="text-green-500 text-xs font-medium">✅ Sin deuda</span>
-                        )}
+                          {parseFloat(cliente.saldo_deuda) > 0 ? (
+                            <button onClick={(e) => { e.stopPropagation(); verDetalle(cliente); setMostrarModalPago(true); }}
+                              className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded text-sm transition-colors">
+                              💵 Cobrar
+                            </button>
+                          ) : (
+                            <span className="text-green-500 text-xs font-medium">✅ Sin deuda</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -256,6 +508,11 @@ const registrarPago = async (e) => {
               <button onClick={() => setMostrarModalPago(true)}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">
                 💵 Registrar Pago
+              </button>
+              <button onClick={() => setClienteHistorial(detalleCliente)}
+                title="Historial completo de compras"
+                className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-2 rounded-lg text-sm transition-colors">
+                📊
               </button>
               <button onClick={() => eliminarCliente(detalleCliente.id, detalleCliente.nombre)}
                 className="bg-red-100 hover:bg-red-200 text-red-600 px-3 py-2 rounded-lg text-sm transition-colors">
@@ -307,6 +564,11 @@ const registrarPago = async (e) => {
           </div>
         )}
       </div>
+
+      {/* Modal historial completo del cliente */}
+      {clienteHistorial && (
+        <ModalHistorialCliente cliente={clienteHistorial} onCerrar={() => setClienteHistorial(null)} />
+      )}
 
       {/* Modal nuevo cliente */}
       {mostrarModalNuevo && (
