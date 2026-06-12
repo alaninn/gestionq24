@@ -741,209 +741,185 @@ function Proveedores() {
         </div>
       )}
 
-      {/* MODAL DETALLE */}
+      {/* MODAL DETALLE — ficha profesional del proveedor */}
       {mostrarDetalle && proveedorSeleccionado && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
-          <div className="bg-white rounded-xl shadow-[0_15px_40px_rgba(30,41,59,0.35)] w-full max-w-6xl max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">📋 Detalle - {proveedorSeleccionado.nombre}</h3>
-                <p className="text-sm text-gray-500">Historial, saldos y estadísticas de gastos</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3"
+          onClick={() => setMostrarDetalle(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Encabezado sobrio */}
+            <div className="bg-slate-800 text-white px-5 py-4 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 bg-white/10 border border-white/15 rounded-xl flex items-center justify-center font-bold text-lg flex-shrink-0">
+                  {proveedorSeleccionado.nombre.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold truncate">{proveedorSeleccionado.nombre}</h3>
+                    {!proveedorSeleccionado.activo && (
+                      <span className="text-[10px] bg-yellow-400/20 text-yellow-300 border border-yellow-400/30 px-2 py-0.5 rounded-full flex-shrink-0">Archivado</span>
+                    )}
+                  </div>
+                  <p className="text-slate-400 text-xs truncate">
+                    {[proveedorSeleccionado.telefono, proveedorSeleccionado.email, proveedorSeleccionado.direccion].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setMostrarInfoProveedor(!mostrarInfoProveedor)}
-                  className="text-xs px-2 py-1 rounded-md border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                  title="Ver datos del proveedor"
-                >
-                  {mostrarInfoProveedor ? 'Ocultar info' : 'Info proveedor'}
-                </button>
-                <button
-                  onClick={() => setMostrarDetalle(false)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-                  aria-label="Cerrar"
-                >
-                  ×
-                </button>
-              </div>
+              <button onClick={() => setMostrarDetalle(false)}
+                className="text-slate-400 hover:text-white text-3xl leading-none flex-shrink-0 ml-3">×</button>
             </div>
 
-            <div className="p-5 space-y-4 flex flex-col flex-1 overflow-y-auto">
-              {/* Información del proveedor compacta (condicional) */}
-              {mostrarInfoProveedor && (
-                <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm text-sm">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-gray-700">
-                    <div>
-                      <p className="text-gray-500 uppercase tracking-wide text-xs">Teléfono</p>
-                      <p className="font-semibold">{proveedorSeleccionado.telefono || '-'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 uppercase tracking-wide text-xs">Email</p>
-                      <p className="font-semibold">{proveedorSeleccionado.email || '-'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 uppercase tracking-wide text-xs">Dirección</p>
-                      <p className="font-semibold">{proveedorSeleccionado.direccion || '-'}</p>
-                    </div>
-                  </div>
-                  <p className="text-gray-500 text-xs mt-2">Notas</p>
-                  <p className="text-gray-700 truncate">{proveedorSeleccionado.notas || '-'}</p>
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-            {/* Estadísticas mejoradas */}
-              {proveedorSeleccionado.estadisticas && (
-                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-3 border border-blue-100">
-                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2 text-sm">
-                    📊 Estadísticas de Gastos
-                  </h4>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3 shadow text-center">
-                      <p className="text-[10px] text-blue-100 uppercase font-semibold mb-1">Cant. Pagos</p>
-                      <p className="text-xl font-bold text-white">{proveedorSeleccionado.estadisticas.total_gastos}</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3 shadow text-center">
-                      <p className="text-[10px] text-green-100 uppercase font-semibold mb-1">Monto Total</p>
-                      <p className="text-sm font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.total_monto)}</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3 shadow text-center">
-                      <p className="text-[10px] text-purple-100 uppercase font-semibold mb-1">Promedio</p>
-                      <p className="text-sm font-bold text-white">{formatearPeso(proveedorSeleccionado.estadisticas.promedio_gasto)}</p>
-                    </div>
-                    <div
-                      onClick={() => setMostrarDetalleUltimoGasto(true)}
-                      className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-3 shadow cursor-pointer text-center hover:brightness-110 transition-all"
-                    >
-                      <p className="text-[10px] text-orange-100 uppercase font-semibold mb-1">Último Pago</p>
-                      <p className="text-[11px] font-bold text-white">{proveedorSeleccionado.movimientos?.[0] ? formatearFecha(proveedorSeleccionado.movimientos[0].fecha) : '-'}</p>
-                      <p className="text-[10px] text-white/80 mt-0.5">ver detalle</p>
-                    </div>
-                  </div>
-
-                  {/* Gastos por mes compacto */}
-                  {proveedorSeleccionado.estadisticas_por_mes && proveedorSeleccionado.estadisticas_por_mes.length > 0 && (
-                    <div className="border-t border-blue-200 pt-2">
-                      <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">📈 Gastos por mes</h5>
-                      <div className="h-16 flex items-end gap-2 px-4">
-                        {estadisticasMes.slice(0, 6).reverse().map((mes, index) => {
-                          const totalMes = Number(mes.total) || 0;
-                          const porcentaje = maxGastoMes > 0 ? (totalMes / maxGastoMes) * 100 : 0;
-                          return (
-                            <div key={index} className="flex flex-col items-center justify-end h-full" style={{ width: '40px', minWidth: '40px' }} title={`${new Date(mes.mes).toLocaleDateString('es-ES', { month: 'short' })}: ${formatearPeso(mes.total)}`}>
-                              <div className="w-full bg-blue-200 rounded-t overflow-hidden" style={{ height: `${Math.max(10, porcentaje)}%` }}>
-                                <div className="h-full bg-gradient-to-t from-blue-600 to-blue-400"></div>
-                              </div>
-                              <p className="text-[9px] text-gray-500 mt-0.5 whitespace-nowrap">
-                                {new Date(mes.mes).toLocaleDateString('es-ES', { month: 'short' })}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+              {/* Saldos: lo más importante, arriba */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border border-gray-200 rounded-xl p-3.5">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">Nos debe</p>
+                  <p className={`text-2xl font-bold tabular-nums mt-0.5 ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                    {formatearPeso(proveedorSeleccionado.saldo_deuda)}
+                  </p>
+                  {Number(proveedorSeleccionado.saldo_deuda) > 0 && (
+                    <button
+                      onClick={() => { setTipoPagoContext('cobro_deuda'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: proveedorSeleccionado.saldo_deuda, metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
+                      className="mt-2 text-xs font-semibold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors">
+                      Registrar cobro
+                    </button>
                   )}
                 </div>
-              )}
-
-              {mostrarDetalleUltimoGasto && proveedorSeleccionado.movimientos && proveedorSeleccionado.movimientos.length > 0 && (
-                <div className="bg-white rounded-xl p-3 mb-3 border border-amber-200 shadow-sm">
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="font-semibold text-amber-700">Detalle del último pago</p>
+                <div className="border border-gray-200 rounded-xl p-3.5">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">Le debemos</p>
+                  <p className={`text-2xl font-bold tabular-nums mt-0.5 ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                    {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
+                  </p>
+                  {Number(proveedorSeleccionado.saldo_a_favor) > 0 && (
                     <button
-                      onClick={() => setMostrarDetalleUltimoGasto(false)}
-                      className="text-xs text-amber-700 hover:text-amber-900"
-                    >
-                      Cerrar
+                      onClick={() => { setTipoPagoContext('pago_a_cuenta'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: proveedorSeleccionado.saldo_a_favor, metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
+                      className="mt-2 text-xs font-semibold text-red-700 border border-red-300 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors">
+                      Registrar pago
                     </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Indicadores */}
+              {proveedorSeleccionado.estadisticas && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Movimientos</p>
+                    <p className="text-lg font-bold text-gray-800 tabular-nums">{proveedorSeleccionado.estadisticas.total_gastos}</p>
                   </div>
-                  <p className="text-sm"><strong>Descripción:</strong> {proveedorSeleccionado.movimientos[0].descripcion || '-'}</p>
-                  <p className="text-sm"><strong>Monto:</strong> {formatearPeso(proveedorSeleccionado.movimientos[0].monto)}</p>
-                  <p className="text-sm"><strong>Fecha:</strong> {formatearFecha(proveedorSeleccionado.movimientos[0].fecha)}</p>
-                  <p className="text-sm"><strong>Método:</strong> {proveedorSeleccionado.movimientos[0].metodo_pago}</p>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Total histórico</p>
+                    <p className="text-lg font-bold text-gray-800 tabular-nums">{formatearPeso(proveedorSeleccionado.estadisticas.total_monto)}</p>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Promedio</p>
+                    <p className="text-lg font-bold text-gray-800 tabular-nums">{formatearPeso(proveedorSeleccionado.estadisticas.promedio_gasto)}</p>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Último mov.</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {proveedorSeleccionado.movimientos?.[0] ? formatearFecha(proveedorSeleccionado.movimientos[0].fecha).split(',')[0] : '—'}
+                    </p>
+                  </div>
                 </div>
               )}
-               
 
-              {/* Botón dedicado para abrir modal de historial */}
-              <div className="border-t pt-2">
-                <button
-                  onClick={() => setMostrarModalHistorial(true)}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
-                >
-                  🧾 Abrir Historial de Gastos
+              {/* Gastos por mes (sobrio) */}
+              {estadisticasMes.length > 0 && (
+                <div className="border border-gray-200 rounded-xl p-3.5">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold mb-2">Gastos por mes</p>
+                  <div className="h-20 flex items-end gap-2">
+                    {estadisticasMes.slice(0, 8).reverse().map((mes, index) => {
+                      const totalMes = Number(mes.total) || 0;
+                      const porcentaje = maxGastoMes > 0 ? (totalMes / maxGastoMes) * 100 : 0;
+                      return (
+                        <div key={index} className="flex-1 flex flex-col items-center justify-end h-full"
+                          title={`${new Date(mes.mes).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })}: ${formatearPeso(mes.total)}`}>
+                          <div className="w-full max-w-[42px] bg-slate-700 hover:bg-slate-600 rounded-t transition-colors"
+                            style={{ height: `${Math.max(8, porcentaje)}%` }}></div>
+                          <p className="text-[9px] text-gray-400 mt-1 whitespace-nowrap capitalize">
+                            {new Date(mes.mes).toLocaleDateString('es-AR', { month: 'short' })}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Movimientos recientes (compras, gastos y pagos asignados) */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-3.5 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">Movimientos recientes</p>
+                  <button onClick={() => setMostrarModalHistorial(true)}
+                    className="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-gray-300 hover:border-gray-400 px-3 py-1 rounded-lg transition-colors">
+                    Ver historial completo →
+                  </button>
+                </div>
+                {(proveedorSeleccionado.movimientos || []).length === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-6">
+                    Sin movimientos todavía. Las compras y gastos asignados a este proveedor aparecen acá.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {proveedorSeleccionado.movimientos.slice(0, 5).map(mov => (
+                      <div key={mov.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                        <span className="text-base flex-shrink-0">
+                          {mov.tipo === 'pago_proveedor' ? '💸' : mov.es_compra ? '🛒' : '📄'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{mov.descripcion || (mov.es_compra ? 'Compra' : 'Gasto')}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {formatearFecha(mov.fecha)} · {(mov.metodo_pago || '').replace('_', ' ')}
+                            {mov.es_compra ? ' · compra' : mov.tipo === 'pago_proveedor' ? ' · pago' : ''}
+                          </p>
+                        </div>
+                        <span className="font-semibold text-gray-800 text-sm tabular-nums flex-shrink-0">{formatearPeso(mov.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Notas (solo si hay) */}
+              {proveedorSeleccionado.notas && (
+                <div className="border border-gray-200 rounded-xl p-3.5">
+                  <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Notas</p>
+                  <p className="text-sm text-gray-700">{proveedorSeleccionado.notas}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Barra de acciones: primarias a la derecha, destructivas discretas a la izquierda */}
+            <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-between gap-2 flex-wrap flex-shrink-0">
+              <div className="flex items-center gap-1">
+                {proveedorSeleccionado.activo ? (
+                  <button onClick={() => archivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                    className="text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-200 px-3 py-2 rounded-lg transition-colors">
+                    📦 Archivar
+                  </button>
+                ) : (
+                  <button onClick={() => reactivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                    className="text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 px-3 py-2 rounded-lg transition-colors">
+                    ♻️ Reactivar
+                  </button>
+                )}
+                <button onClick={() => eliminarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
+                  className="text-xs text-red-400 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
+                  🗑️ Eliminar
                 </button>
               </div>
-
-              {/* Saldos Actuales */}
-              <div className="border-t pt-3">
-                <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2 text-sm">
-                  💰 Saldos Actuales
-                </h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setTipoPagoContext('cobro_deuda'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: Number(proveedorSeleccionado.saldo_deuda) > 0 ? proveedorSeleccionado.saldo_deuda : '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
-                    className={`p-2 rounded-lg border transition-all duration-200 text-left ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'bg-green-50 border-green-300 hover:bg-green-100 cursor-pointer shadow-sm' : 'bg-gray-50 border-gray-200 cursor-default'}`}
-                  >
-                    <p className="text-[10px] text-gray-500 uppercase font-semibold mb-0.5">✅ Nos debe</p>
-                    <p className={`text-base font-bold ${Number(proveedorSeleccionado.saldo_deuda) > 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                      {formatearPeso(proveedorSeleccionado.saldo_deuda)}
-                    </p>
-                    {Number(proveedorSeleccionado.saldo_deuda) > 0 && <p className="text-[10px] text-green-500 mt-0.5">→ Registrar cobro</p>}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTipoPagoContext('pago_a_cuenta'); setMostrarModalPago(true); setFormPago(p => ({ ...p, monto: Number(proveedorSeleccionado.saldo_a_favor) > 0 ? proveedorSeleccionado.saldo_a_favor : '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); setBoletaPreview(''); }}
-                    className={`p-2 rounded-lg border transition-all duration-200 text-left ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'bg-red-50 border-red-300 hover:bg-red-100 cursor-pointer shadow-sm' : 'bg-gray-50 border-gray-200 cursor-default'}`}
-                  >
-                    <p className="text-[10px] text-gray-500 uppercase font-semibold mb-0.5">⚠️ Les debemos</p>
-                    <p className={`text-base font-bold ${Number(proveedorSeleccionado.saldo_a_favor) > 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                      {formatearPeso(proveedorSeleccionado.saldo_a_favor)}
-                    </p>
-                    {Number(proveedorSeleccionado.saldo_a_favor) > 0 && <p className="text-[10px] text-red-500 mt-0.5">→ Registrar pago</p>}
-                  </button>
-                </div>
-              </div>
-
-              {/* Botones de acción */}
-              <div className="border-t pt-2 flex flex-col gap-2">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setMostrarDetalle(false); abrirModalEditar(proveedorSeleccionado); }}
-                    className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium text-sm transition-colors"
-                  >
-                    ✏️ Editar
-                  </button>
-                  <button
-                    onClick={() => { setMostrarModalPago(true); setTipoPagoContext('pago_a_cuenta'); setBoletaPreview(''); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); }}
-                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors"
-                  >
-                    💳 Registrar Pago
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  {proveedorSeleccionado.activo ? (
-                    <button
-                      onClick={() => archivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
-                      className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-sm transition-colors"
-                    >
-                      📦 Archivar
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => reactivarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
-                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors"
-                    >
-                      ♻️ Reactivar
-                    </button>
-                  )}
-                  <button
-                    onClick={() => eliminarProveedor(proveedorSeleccionado.id, proveedorSeleccionado.nombre)}
-                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition-colors"
-                  >
-                    🗑️ Eliminar definitivo
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setMostrarDetalle(false); abrirModalEditar(proveedorSeleccionado); }}
+                  className="text-sm font-semibold text-slate-700 border border-gray-300 hover:bg-gray-100 px-4 py-2 rounded-xl transition-colors">
+                  ✏️ Editar
+                </button>
+                <button onClick={() => { setMostrarModalPago(true); setTipoPagoContext('pago_a_cuenta'); setBoletaPreview(''); setFormPago(p => ({ ...p, monto: '', metodo_pago: 'efectivo', descripcion: '', recibo_url: '' })); }}
+                  className="text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl transition-colors">
+                  💵 Registrar pago
+                </button>
               </div>
             </div>
           </div>
