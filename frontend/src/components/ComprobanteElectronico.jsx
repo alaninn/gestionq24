@@ -25,6 +25,13 @@ const nombresDocumentos = {
   80: 'CUIT', 96: 'DNI', 99: 'Consumidor Final',
 };
 
+// Condición frente al IVA del receptor (RG 5616)
+const nombresCondicionIva = {
+  1: 'Resp. Inscripto', 4: 'IVA Exento', 5: 'Consumidor Final',
+  6: 'Resp. Monotributo', 7: 'Sujeto No Categorizado', 13: 'Monotributista Social',
+  15: 'IVA No Alcanzado',
+};
+
 // ---- Genera la URL del QR oficial de ARCA/AFIP ----
 function generarUrlQR(comprobante, cuitEmisor) {
   const fecha = comprobante.fecha_emision
@@ -121,6 +128,16 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   const documentoNombre = nombresDocumentos[comprobante.tipo_documento] || 'Sin identificar';
   const cuitEmisor = config?.cuit || comprobante.cuit_emisor || '';
 
+  // Condición IVA del receptor: la guardada en el comprobante, o se infiere
+  const condReceptor = nombresCondicionIva[comprobante.condicion_iva_receptor]
+    || (letra === 'A' ? 'Resp. Inscripto' : (Number(comprobante.tipo_documento) === 80 ? 'Resp. Monotributo' : 'Consumidor Final'));
+
+  // Ancho del ticket según configuración (igual que el ticket común)
+  const tamanioTicket = config?.tamanio_ticket || '80';
+  const tamanioPersonalizado = parseInt(config?.tamanio_ticket_personalizado || 0, 10);
+  const anchoTicket = tamanioTicket === 'personalizado' && tamanioPersonalizado > 0
+    ? tamanioPersonalizado : (parseInt(tamanioTicket, 10) || 80);
+
   const puntoVentaStr = String(comprobante.punto_venta || 1).padStart(5, '0');
   const numeroStr = String(comprobante.numero_comprobante || 0).padStart(8, '0');
   const fechaEmision = comprobante.fecha_emision
@@ -144,16 +161,20 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', monospace; font-size: 11px; width: 80mm; padding: 4mm; color: #000; background: #fff; }
+    body { font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; width: ${anchoTicket}mm; max-width: ${anchoTicket}mm; padding: 3mm; color: #000; background: #fff; }
     .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .grande { font-size: 18px; }
+    .bold { font-weight: 900; }
+    .grande { font-size: 18px; font-weight: 900; }
+    .chica { font-size: 11px; }
     .sep { border-top: 1px dashed #000; margin: 4px 0; }
     .sep-doble { border-top: 2px solid #000; margin: 4px 0; }
     .fila { display: flex; justify-content: space-between; margin: 2px 0; }
-    .letra-box { border: 3px solid #000; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; margin: 4px auto; }
+    .letra-box { border: 3px solid #000; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; margin: 4px auto; }
     .qr-container { display: flex; justify-content: center; margin: 8px 0; }
-    @media print { body { width: 80mm; } }
+    @media print {
+      body { width: ${anchoTicket}mm; }
+      @page { size: ${anchoTicket}mm auto; margin: 0; }
+    }
   </style>
 </head>
 <body>
@@ -173,27 +194,33 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   </div>
   <div class="sep"></div>
   <div class="fila"><span>Punto de Venta:</span><span>${puntoVentaStr}</span></div>
-  <div class="fila"><span>Cond. IVA Receptor:</span><span>${documentoNombre === 'CUIT' ? 'Resp. Inscripto' : 'Consumidor Final'}</span></div>
+  <div class="fila"><span>Cond. IVA Receptor:</span><span>${condReceptor}</span></div>
   <div class="fila"><span>Documento:</span><span>${documentoNombre}</span></div>
   ${comprobante.numero_documento ? `<div class="fila"><span>N&#176; Doc:</span><span>${comprobante.numero_documento}</span></div>` : ''}
   ${comprobante.denominacion_comprador && comprobante.denominacion_comprador !== 'Consumidor Final' ? `<div class="fila"><span>Nombre:</span><span>${comprobante.denominacion_comprador}</span></div>` : ''}
   <div class="sep"></div>
-  ${comprobante.importe_neto ? `<div class="fila"><span>Subtotal:</span><span>${fmt(comprobante.importe_neto)}</span></div>` : ''}
-  ${Number(comprobante.importe_iva) > 0 ? `<div class="fila"><span>IVA 21%:</span><span>${fmt(comprobante.importe_iva)}</span></div>` : ''}
+  ${letra === 'A' ? `
+    ${comprobante.importe_neto ? `<div class="fila"><span>Neto Gravado:</span><span>${fmt(comprobante.importe_neto)}</span></div>` : ''}
+    ${Number(comprobante.importe_iva) > 0 ? `<div class="fila"><span>IVA 21%:</span><span>${fmt(comprobante.importe_iva)}</span></div>` : ''}
+  ` : ''}
   <div class="sep-doble"></div>
-  <div class="fila bold" style="font-size:14px"><span>TOTAL:</span><span>${fmt(comprobante.importe_total)}</span></div>
+  <div class="fila bold" style="font-size:17px"><span>TOTAL:</span><span>${fmt(comprobante.importe_total)}</span></div>
   <div class="sep-doble"></div>
-  ${comprobante.metodo_pago ? `<div class="center" style="font-size:9px; margin: 2px 0;">Forma de Pago: ${comprobante.metodo_pago.charAt(0).toUpperCase() + comprobante.metodo_pago.slice(1)}</div>` : ''}
-  <div class="center" style="font-size:9px; margin: 4px 0;">Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div>
-  <div class="center">
-    <div style="font-size:9px">CAE N&#176;: ${comprobante.cae}</div>
-    <div style="font-size:9px">Vto. CAE: ${fechaVto}</div>
+  ${letra === 'B' && Number(comprobante.importe_iva) > 0 ? `
+  <div class="center chica" style="margin: 3px 0;">R&#233;gimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div>
+  <div class="fila chica"><span>IVA Contenido:</span><span>${fmt(comprobante.importe_iva)}</span></div>
+  <div class="fila chica"><span>Otros Imp. Nac. Indirectos:</span><span>${fmt(0)}</span></div>
+  ` : `<div class="center chica" style="margin: 3px 0;">R&#233;gimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div>`}
+  ${comprobante.metodo_pago ? `<div class="center chica" style="margin: 2px 0;">Forma de Pago: ${comprobante.metodo_pago.charAt(0).toUpperCase() + comprobante.metodo_pago.slice(1)}</div>` : ''}
+  <div class="center" style="margin-top:4px">
+    <div class="chica bold">CAE N&#176;: ${comprobante.cae}</div>
+    <div class="chica">Vto. CAE: ${fechaVto}</div>
   </div>
   <div class="sep"></div>
   <div class="qr-container"><div id="qrcode"></div></div>
-  <div class="center" style="font-size:8px">Consulte su comprobante en www.arca.gob.ar</div>
+  <div class="center chica">Consulte su comprobante en www.arca.gob.ar</div>
   <div class="sep"></div>
- ${letra === 'C' ? '<div class="center" style="font-size:9px">El presente comprobante no genera credito fiscal</div>' : letra === 'A' ? '<div class="center" style="font-size:9px">IVA discriminado - Valida como credito fiscal</div>' : '<div class="center" style="font-size:9px">IVA incluido en el precio - No valida como credito fiscal</div>'}
+ ${letra === 'C' ? '<div class="center chica">El presente comprobante no genera credito fiscal</div>' : letra === 'A' ? '<div class="center chica">IVA discriminado - Valida como credito fiscal</div>' : '<div class="center chica">IVA incluido en el precio - No valida como credito fiscal</div>'}
   <script>
     window.onload = function() {
       try {
@@ -273,7 +300,7 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   </div>
   <div className="flex justify-between">
     <span>Cond. IVA Receptor:</span>
-    <span className="font-bold">{documentoNombre === 'CUIT' ? 'Resp. Inscripto' : 'Consumidor Final'}</span>
+    <span className="font-bold">{condReceptor}</span>
   </div>
   <div className="flex justify-between">
     <span>Documento:</span>
@@ -295,21 +322,23 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            {/* Montos */}
-            <div className="text-xs space-y-1 my-2">
-              {Number(comprobante.importe_neto) > 0 && (
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>{fmt(comprobante.importe_neto)}</span>
-                </div>
-              )}
-              {Number(comprobante.importe_iva) > 0 && (
-                <div className="flex justify-between">
-                  <span>IVA (21%):</span>
-                  <span>{fmt(comprobante.importe_iva)}</span>
-                </div>
-              )}
-            </div>
+            {/* Montos: la A discrimina IVA; la B lo informa como "contenido" (Ley 27.743) */}
+            {letra === 'A' && (
+              <div className="text-xs space-y-1 my-2">
+                {Number(comprobante.importe_neto) > 0 && (
+                  <div className="flex justify-between">
+                    <span>Neto Gravado:</span>
+                    <span>{fmt(comprobante.importe_neto)}</span>
+                  </div>
+                )}
+                {Number(comprobante.importe_iva) > 0 && (
+                  <div className="flex justify-between">
+                    <span>IVA (21%):</span>
+                    <span>{fmt(comprobante.importe_iva)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t-2 border-b-2 border-black my-2 py-1">
               <div className="flex justify-between font-black text-base">
@@ -317,6 +346,19 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
                 <span>{fmt(comprobante.importe_total)}</span>
               </div>
             </div>
+
+            {letra === 'B' && Number(comprobante.importe_iva) > 0 && (
+              <div className="text-xs space-y-0.5 my-2 text-gray-700">
+                <div className="flex justify-between">
+                  <span>IVA Contenido:</span>
+                  <span>{fmt(comprobante.importe_iva)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Otros Imp. Nac. Indirectos:</span>
+                  <span>{fmt(0)}</span>
+                </div>
+              </div>
+            )}
 
             {/* Forma de Pago */}
             {comprobante.metodo_pago && (

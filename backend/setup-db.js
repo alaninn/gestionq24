@@ -259,6 +259,9 @@ CREATE INDEX IF NOT EXISTS idx_comprobantes_negocio ON comprobantes_electronicos
 CREATE INDEX IF NOT EXISTS idx_comprobantes_venta ON comprobantes_electronicos(venta_id);
 CREATE INDEX IF NOT EXISTS idx_comprobantes_estado ON comprobantes_electronicos(estado);
 
+-- Condición frente al IVA del receptor (RG 5616) guardada en cada comprobante
+ALTER TABLE comprobantes_electronicos ADD COLUMN IF NOT EXISTS condicion_iva_receptor INTEGER;
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

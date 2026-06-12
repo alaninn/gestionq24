@@ -677,7 +677,7 @@ function Proveedores() {
               {/* Información del proveedor compacta (condicional) */}
               {mostrarInfoProveedor && (
                 <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm text-sm">
-                  <div className="grid grid-cols-3 gap-2 text-gray-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-gray-700">
                     <div>
                       <p className="text-gray-500 uppercase tracking-wide text-xs">Teléfono</p>
                       <p className="font-semibold">{proveedorSeleccionado.telefono || '-'}</p>

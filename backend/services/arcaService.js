@@ -192,8 +192,23 @@ async function emitirComprobante(datos) {
         denominacion_comprador,
         importe_total,
         importe_neto,
-        importe_iva
+        importe_iva,
+        condicion_iva_receptor
     } = datos;
+
+    // Condición frente al IVA del receptor (RG 5616 — obligatorio en WSFEv1):
+    // 1=Resp. Inscripto, 4=Exento, 5=Consumidor Final, 6=Resp. Monotributo,
+    // 7=Sujeto No Categorizado, 13=Monotributista Social, 15=IVA No Alcanzado.
+    // Si el frontend no la manda, se infiere: comprobantes A → RI;
+    // con CUIT → Monotributista; resto → Consumidor Final.
+    const tipoCmp = parseInt(tipo_comprobante);
+    const docTipo = parseInt(tipo_documento) || 99;
+    let condIvaReceptor = parseInt(condicion_iva_receptor) || 0;
+    if (!condIvaReceptor) {
+        if ([1, 2, 3].includes(tipoCmp)) condIvaReceptor = 1;
+        else if (docTipo === 80) condIvaReceptor = 6;
+        else condIvaReceptor = 5;
+    }
     
     let xmlEnviado = null;
     let xmlRespuesta = null;
@@ -311,8 +326,8 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
                 <ar:FeDetReq>
                     <ar:FECAEDetRequest>
                         <ar:Concepto>1</ar:Concepto>
-                        <ar:DocTipo>${tipo_documento || 99}</ar:DocTipo>
-                        <ar:DocNro>${tipo_documento === 99 ? 0 : (numero_documento || 0)}</ar:DocNro>
+                        <ar:DocTipo>${docTipo}</ar:DocTipo>
+                        <ar:DocNro>${docTipo === 99 ? 0 : (String(numero_documento || '').replace(/[-\s.]/g, '') || 0)}</ar:DocNro>
                         <ar:CbteDesde>${numeroComprobante}</ar:CbteDesde>
                         <ar:CbteHasta>${numeroComprobante}</ar:CbteHasta>
                         <ar:CbteFch>${fechaEmision}</ar:CbteFch>
@@ -327,6 +342,7 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
                         <ar:FchVtoPago></ar:FchVtoPago>
                         <ar:MonId>PES</ar:MonId>
                         <ar:MonCotiz>1.000</ar:MonCotiz>
+                        <ar:CondicionIVAReceptorId>${condIvaReceptor}</ar:CondicionIVAReceptorId>
                         ${importeIvaCalculado > 0 ? `
                         <ar:Iva>
                             <ar:AlicIva>
@@ -418,15 +434,15 @@ if (resultadoOperacion !== 'A') {
                 venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
                 punto_venta, tipo_comprobante, tipo_documento, numero_documento,
                 denominacion_comprador, importe_total, importe_neto, importe_iva,
-                xml_enviado, xml_respuesta, estado
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido')
+                xml_enviado, xml_respuesta, estado, condicion_iva_receptor
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido', $16)
             RETURNING *
         `, [
             venta_id, negocio_id, cae, caeVencimientoDate, numeroComprobante,
-            punto_venta, tipo_comprobante, tipo_documento || 99,
+            punto_venta, tipo_comprobante, docTipo,
             numero_documento || null, denominacion_comprador || 'Consumidor Final',
             importe_total, importeNetoCalculado, importeIvaCalculado,
-            xmlEnviado, xmlRespuesta
+            xmlEnviado, xmlRespuesta, condIvaReceptor
         ]);
         
         // 13. Actualizar venta con el comprobante electrónico
