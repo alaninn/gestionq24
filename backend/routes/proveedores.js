@@ -48,8 +48,6 @@ router.get('/:id', verificarPermiso('proveedores', 'ver'), async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        console.log('Cargando detalle proveedor:', req.params.id, 'negocio:', negocio_id);
-
         const proveedor = await db.query(
             'SELECT * FROM proveedores WHERE id = $1 AND negocio_id = $2',
             [parseInt(req.params.id), negocio_id]

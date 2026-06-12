@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 
 function Proveedores() {
   const [proveedores, setProveedores] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
+  // Vista del listado: 'tarjetas' o 'lista' (se recuerda por dispositivo)
+  const [vista, setVista] = useState(() => localStorage.getItem('proveedores_vista') || 'tarjetas');
+  const cambiarVista = (v) => { setVista(v); localStorage.setItem('proveedores_vista', v); };
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarDetalle, setMostrarDetalle] = useState(false);
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState(null);
@@ -56,6 +60,13 @@ function Proveedores() {
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda]);
+
+  // El botón "atrás" del celular cierra los modales en vez de salir
+  useCerrarConAtras(mostrarModal, () => setMostrarModal(false));
+  useCerrarConAtras(mostrarDetalle, () => setMostrarDetalle(false));
+  useCerrarConAtras(mostrarModalPago, () => setMostrarModalPago(false));
+  useCerrarConAtras(mostrarEditarGasto, () => setMostrarEditarGasto(false));
+  useCerrarConAtras(mostrarModalHistorial, () => setMostrarModalHistorial(false));
 
   const cargarProveedores = async () => {
     try {
@@ -398,6 +409,19 @@ function Proveedores() {
         </div>
 
         <div className="flex gap-2 items-center flex-wrap">
+          {/* Toggle de vista: tarjetas / lista */}
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button onClick={() => cambiarVista('tarjetas')}
+              title="Ver como tarjetas"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${vista === 'tarjetas' ? 'bg-white text-green-700 shadow' : 'text-gray-500 hover:text-gray-700'}`}>
+              🗂️ Tarjetas
+            </button>
+            <button onClick={() => cambiarVista('lista')}
+              title="Ver como listado"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${vista === 'lista' ? 'bg-white text-green-700 shadow' : 'text-gray-500 hover:text-gray-700'}`}>
+              📋 Lista
+            </button>
+          </div>
           <span className="text-sm text-gray-600">Ordenar por:</span>
           <select
             value={ordenamiento}
@@ -454,12 +478,11 @@ function Proveedores() {
           placeholder="🔍 Buscar por nombre, teléfono o email..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          onKeyUp={cargarProveedores}
           className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
         />
       </div>
 
-      {/* LISTADO DE PROVEEDORES EN TARJETAS */}
+      {/* LISTADO DE PROVEEDORES */}
       {cargando ? (
         <div className="text-center py-12 text-gray-500">Cargando...</div>
       ) : proveedores.length === 0 ? (
@@ -467,7 +490,79 @@ function Proveedores() {
           <p className="text-lg">No hay proveedores</p>
           <p className="text-sm">Crea uno desde el botón "+ Nuevo Proveedor"</p>
         </div>
+      ) : vista === 'lista' ? (
+        /* ---- VISTA LISTA ---- */
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px]">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Proveedor</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Contacto</th>
+                  <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Nos debe</th>
+                  <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Le debemos</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Últ. movimiento</th>
+                  <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {proveedores.map(prov => (
+                  <tr key={prov.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => verDetalle(prov)}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                          {prov.nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-800 truncate">{prov.nombre}</p>
+                          {prov.notas && <p className="text-xs text-gray-400 truncate max-w-[200px]">{prov.notas}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {prov.telefono || '-'}
+                      {prov.email && <span className="block text-xs text-gray-400">{prov.email}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-bold ${Number(prov.saldo_deuda) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {formatearPeso(prov.saldo_deuda)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-bold ${Number(prov.saldo_a_favor) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        {formatearPeso(prov.saldo_a_favor)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {prov.updated_at ? formatearFecha(prov.updated_at) : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => verDetalle(prov)}
+                          className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2.5 py-1 rounded text-sm transition-colors">
+                          Ver
+                        </button>
+                        <button onClick={() => abrirModalEditar(prov)}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-sm transition-colors">
+                          Editar
+                        </button>
+                        {(Number(prov.saldo_deuda) > 0 || Number(prov.saldo_a_favor) > 0) && (
+                          <button onClick={() => abrirPagoDesdeListado(prov, Number(prov.saldo_a_favor) > 0 ? 'pago_a_cuenta' : 'cobro_deuda')}
+                            title="Registrar pago/cobro"
+                            className="bg-green-100 hover:bg-green-200 text-green-700 px-2.5 py-1 rounded text-sm transition-colors">
+                            💵
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* ---- VISTA TARJETAS ---- */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {proveedores.map((prov) => (
             <div key={prov.id} className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden border-l-4 border-green-500">
