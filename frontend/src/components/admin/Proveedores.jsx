@@ -578,15 +578,15 @@ function Proveedores() {
             const nosDebe = Number(prov.saldo_deuda) > 0;
             return (
               <div key={prov.id} onClick={() => verDetalle(prov)}
-                className="bg-white rounded-xl shadow-sm border border-gray-200 hover:border-slate-400 hover:shadow-md transition-all cursor-pointer p-3.5">
+                className="bg-gradient-to-b from-slate-50 via-white to-slate-100 rounded-xl border border-slate-200 shadow-[0_4px_14px_rgba(15,23,42,0.10)] hover:shadow-[0_8px_22px_rgba(15,23,42,0.16)] hover:border-slate-400 hover:-translate-y-0.5 transition-all cursor-pointer p-3.5 ring-1 ring-slate-900/5">
                 {/* Nombre + estado */}
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 bg-slate-100 text-slate-700 rounded-lg flex items-center justify-center font-bold flex-shrink-0">
+                  <div className="w-9 h-9 bg-slate-800 text-white rounded-lg flex items-center justify-center font-bold flex-shrink-0 shadow">
                     {prov.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-gray-800 truncate">{prov.nombre}</p>
-                    <p className="text-[11px] text-gray-400 truncate">{prov.telefono || prov.email || 'Sin contacto'}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{prov.telefono || 'Sin teléfono'}</p>
                   </div>
                   {!prov.activo && (
                     <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full flex-shrink-0">Archivado</span>
@@ -672,39 +672,6 @@ function Proveedores() {
                   onChange={(e) => setFormulario(p => ({ ...p, telefono: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
                   placeholder="+54 11 1234-5678"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formulario.email}
-                  onChange={(e) => setFormulario(p => ({ ...p, email: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                  placeholder="contacto@proveedor.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-                <input
-                  type="text"
-                  value={formulario.direccion}
-                  onChange={(e) => setFormulario(p => ({ ...p, direccion: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                  placeholder="Calle 123, Piso 4"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-                <textarea
-                  value={formulario.notas}
-                  onChange={(e) => setFormulario(p => ({ ...p, notas: e.target.value }))}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                  placeholder="Información adicional..."
                 />
               </div>
 
