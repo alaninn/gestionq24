@@ -36,6 +36,30 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
 
+  // Alta rápida de proveedor sin salir del modal
+  const [mostrarNuevoProveedor, setMostrarNuevoProveedor] = useState(false);
+  const [nuevoProveedor, setNuevoProveedor] = useState({ nombre: '', telefono: '' });
+  const [creandoProveedor, setCreandoProveedor] = useState(false);
+
+  const crearProveedorRapido = async () => {
+    if (!nuevoProveedor.nombre.trim()) return;
+    try {
+      setCreandoProveedor(true);
+      const res = await api.post('/api/proveedores', {
+        nombre: nuevoProveedor.nombre.trim(),
+        telefono: nuevoProveedor.telefono.trim() || null,
+      });
+      await cargarProveedores();
+      setFormulario(p => ({ ...p, proveedor_id: String(res.data.id) }));
+      setNuevoProveedor({ nombre: '', telefono: '' });
+      setMostrarNuevoProveedor(false);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al crear el proveedor');
+    } finally {
+      setCreandoProveedor(false);
+    }
+  };
+
   // Cargar proveedores cuando se abre el modal
   useEffect(() => {
     cargarProveedores();
@@ -281,19 +305,47 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
           {tabActiva === 'proveedor' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🧾 PROVEEDOR *</label>
-                <select
-                  value={formulario.proveedor_id}
-                  onChange={(e) => setFormulario(p => ({ ...p, proveedor_id: e.target.value, monto: '' }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50"
-                >
-                  <option value="">Buscar proveedor...</option>
-                  {proveedores.map(prov => (
-                    <option key={prov.id} value={prov.id}>
-                      {prov.nombre} {prov.saldo_a_favor > 0 ? `(nosotros le debemos: $${prov.saldo_a_favor})` : prov.saldo_deuda > 0 ? `(nos debe a nosotros: $${prov.saldo_deuda})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium text-gray-700">🧾 PROVEEDOR *</label>
+                  <button type="button"
+                    onClick={() => { setMostrarNuevoProveedor(v => !v); setError(''); }}
+                    className="text-xs font-semibold text-blue-700 border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors">
+                    {mostrarNuevoProveedor ? '← Elegir existente' : '➕ Nuevo proveedor'}
+                  </button>
+                </div>
+
+                {!mostrarNuevoProveedor ? (
+                  <select
+                    value={formulario.proveedor_id}
+                    onChange={(e) => setFormulario(p => ({ ...p, proveedor_id: e.target.value, monto: '' }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50"
+                  >
+                    <option value="">Buscar proveedor...</option>
+                    {proveedores.map(prov => (
+                      <option key={prov.id} value={prov.id}>
+                        {prov.nombre} {prov.saldo_a_favor > 0 ? `(nosotros le debemos: $${prov.saldo_a_favor})` : prov.saldo_deuda > 0 ? `(nos debe a nosotros: $${prov.saldo_deuda})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  /* Alta rápida: nombre y teléfono alcanzan */
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                    <input type="text" value={nuevoProveedor.nombre}
+                      onChange={(e) => setNuevoProveedor(p => ({ ...p, nombre: e.target.value }))}
+                      autoFocus
+                      className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="Nombre del proveedor *" />
+                    <input type="tel" value={nuevoProveedor.telefono}
+                      onChange={(e) => setNuevoProveedor(p => ({ ...p, telefono: e.target.value }))}
+                      className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="Teléfono (opcional)" />
+                    <button type="button" disabled={!nuevoProveedor.nombre.trim() || creandoProveedor}
+                      onClick={crearProveedorRapido}
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+                      {creandoProveedor ? 'Creando...' : '✅ Crear y seleccionar'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Estado de deuda del proveedor */}
