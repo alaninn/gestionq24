@@ -109,9 +109,10 @@ router.get('/por-turno', async (req, res) => {
         const { fecha_desde, fecha_hasta } = req.query;
 
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 t.id, t.fecha_apertura, t.fecha_cierre,
-                t.inicio_caja, t.estado,
+                t.inicio_caja, t.estado, t.nombre AS nombre_caja,
+                uc.nombre AS usuario_cierre_nombre,
                 COUNT(v.id) AS total_ventas,
                 COALESCE(SUM(v.total), 0) AS total_facturado,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS efectivo,
@@ -120,6 +121,7 @@ router.get('/por-turno', async (req, res) => {
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS transferencia,
                 COALESCE(g.total_gastos, 0) AS total_gastos
             FROM turnos t
+            LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
             LEFT JOIN ventas v ON v.turno_id = t.id
             LEFT JOIN (
                 SELECT turno_id, SUM(monto) AS total_gastos
@@ -129,7 +131,7 @@ router.get('/por-turno', async (req, res) => {
             WHERE t.fecha_apertura::date >= $1::date
               AND t.fecha_apertura::date <= $2::date
               AND t.negocio_id = $3
-            GROUP BY t.id, g.total_gastos
+            GROUP BY t.id, g.total_gastos, uc.nombre
             ORDER BY t.fecha_apertura DESC
         `, [fecha_desde, fecha_hasta, negocio_id]);
 
@@ -269,8 +271,9 @@ router.get('/control-caja', async (req, res) => {
         const { fecha_desde, fecha_hasta } = req.query;
 
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 t.*,
+                uc.nombre AS usuario_cierre_nombre,
                 COUNT(v.id) AS total_ventas,
                 COALESCE(SUM(v.total), 0) AS total_facturado,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS ventas_efectivo,
@@ -279,6 +282,7 @@ router.get('/control-caja', async (req, res) => {
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS ventas_transferencia,
                 COALESCE(g.total_gastos, 0) AS total_gastos
             FROM turnos t
+            LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
             LEFT JOIN ventas v ON v.turno_id = t.id
             LEFT JOIN (
                 SELECT turno_id, SUM(monto) AS total_gastos
@@ -288,7 +292,7 @@ router.get('/control-caja', async (req, res) => {
             WHERE t.fecha_apertura::date >= $1::date
               AND t.fecha_apertura::date <= $2::date
               AND t.negocio_id = $3
-            GROUP BY t.id, g.total_gastos
+            GROUP BY t.id, g.total_gastos, uc.nombre
             ORDER BY t.fecha_apertura DESC
         `, [fecha_desde, fecha_hasta, negocio_id]);
 

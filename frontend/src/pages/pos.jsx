@@ -24,75 +24,127 @@ const fmt = (n) => new Intl.NumberFormat('es-AR', {
 // =============================================
 // MODAL: SELECCIÓN/APERTURA DE CAJA
 // =============================================
-function ModalSeleccionCaja({ cajasAbiertas, onAbrir, onUnirse }) {
-  const [vista, setVista] = useState(cajasAbiertas.length > 0 ? 'seleccionar' : 'nueva');
+function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, onUnirse }) {
+  // Selección: { tipo: 'fija-cerrada'|'fija-abierta'|'abierta', id }
+  const [seleccion, setSeleccion] = useState(null);
+  const [vistaEventual, setVistaEventual] = useState(false);
   const [nombre, setNombre] = useState('');
   const [inicioCaja, setInicioCaja] = useState('');
-  const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
-  const NOMBRES_SUGERIDOS = ['Mañana', 'Tarde', 'Noche', 'Principal', 'Online'];
 
+  // Cajas abiertas que NO son cajas fijas (eventuales abiertas por alguien)
+  const idsTurnosFijas = cajasFijas.filter(c => c.turno_abierto_id).map(c => c.turno_abierto_id);
+  const abiertasEventuales = cajasAbiertas.filter(c => !idsTurnosFijas.includes(c.id));
+  const datosAbierta = (turnoId) => cajasAbiertas.find(c => c.id === turnoId);
+
+  const confirmar = () => {
+    if (!seleccion) return;
+    if (seleccion.tipo === 'fija-cerrada') onAbrirFija(seleccion.id, parseFloat(inicioCaja) || 0);
+    else onUnirse(seleccion.id); // fija-abierta y abierta usan el turno_id
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="p-6 border-b text-white rounded-t-2xl" style={{ backgroundColor: 'var(--color-primario)' }}>
-          <h3 className="text-xl font-bold">🏦 Gestión de Caja</h3>
-          <p className="text-white text-opacity-80 text-sm mt-1">Seleccioná cómo querés trabajar hoy</p>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="p-5 border-b text-white" style={{ backgroundColor: 'var(--color-primario)' }}>
+          <h3 className="text-xl font-bold">🏦 Apertura de Caja</h3>
+          <p className="text-white text-opacity-80 text-sm mt-1">Elegí la caja de tu turno</p>
         </div>
-        <div className="flex border-b">
-          {cajasAbiertas.length > 0 && (
-            <button onClick={() => setVista('seleccionar')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${vista === 'seleccionar' ? 'border-b-2 text-orange-500 border-orange-500' : 'text-gray-500 hover:text-gray-700'}`}>
-              📋 Cajas Abiertas ({cajasAbiertas.length})
-            </button>
-          )}
-          <button onClick={() => setVista('nueva')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${vista === 'nueva' ? 'border-b-2 text-orange-500 border-orange-500' : 'text-gray-500 hover:text-gray-700'}`}>
-            ➕ Nueva Caja
-          </button>
-        </div>
-        <div className="p-6">
-          {vista === 'seleccionar' && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-500 mb-3">Seleccioná una caja para unirte:</p>
-              {cajasAbiertas.map(caja => (
-                <button key={caja.id} type="button" onClick={() => setCajaSeleccionada(caja.id)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${cajaSeleccionada === caja.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-gray-800">{caja.nombre}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{caja.total_usuarios} usuario(s) · {caja.total_ventas} ventas</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-orange-500">{fmt(caja.total_facturado)}</p>
-                      <p className="text-xs text-gray-400">facturado</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-              <button onClick={() => cajaSeleccionada && onUnirse(cajaSeleccionada)} disabled={!cajaSeleccionada}
-                style={{ backgroundColor: cajaSeleccionada ? 'var(--color-primario)' : '' }}
-                className="w-full py-3 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors mt-2">
-                ✅ Unirme a esta caja
-              </button>
-            </div>
-          )}
-          {vista === 'nueva' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nombre de la caja *</label>
-                <div className="flex gap-2 flex-wrap mb-2">
-                  {NOMBRES_SUGERIDOS.map(n => (
-                    <button key={n} type="button" onClick={() => setNombre(n)}
-                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${nombre === n ? 'text-white border-orange-500' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                      style={nombre === n ? { backgroundColor: 'var(--color-primario)' } : {}}>
-                      {n}
+
+        <div className="p-5 space-y-3 overflow-y-auto flex-1">
+          {!vistaEventual ? (
+            <>
+              {/* Cajas FIJAS del local */}
+              {cajasFijas.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🏪 Cajas del local</p>
+                  {cajasFijas.map(cf => {
+                    const abierta = !!cf.turno_abierto_id;
+                    const info = abierta ? datosAbierta(cf.turno_abierto_id) : null;
+                    const activa = seleccion && ((abierta && seleccion.id === cf.turno_abierto_id) || (!abierta && seleccion.tipo === 'fija-cerrada' && seleccion.id === cf.id));
+                    return (
+                      <button key={cf.id} type="button"
+                        onClick={() => setSeleccion(abierta ? { tipo: 'fija-abierta', id: cf.turno_abierto_id } : { tipo: 'fija-cerrada', id: cf.id })}
+                        className={`w-full p-3.5 rounded-xl border-2 text-left transition-all ${activa ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-gray-800">{cf.nombre}</p>
+                            {abierta ? (
+                              <p className="text-xs text-green-600 mt-0.5">🔓 Abierta · {info?.total_usuarios || 1} usuario(s) · {info?.total_ventas || 0} ventas</p>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-0.5">🔒 Cerrada — tocá para abrirla</p>
+                            )}
+                          </div>
+                          {abierta && info && (
+                            <p className="font-bold text-orange-500 flex-shrink-0">{fmt(info.total_facturado)}</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Cajas eventuales abiertas */}
+              {abiertasEventuales.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-2">📋 Otras cajas abiertas</p>
+                  {abiertasEventuales.map(caja => (
+                    <button key={caja.id} type="button" onClick={() => setSeleccion({ tipo: 'abierta', id: caja.id })}
+                      className={`w-full p-3.5 rounded-xl border-2 text-left transition-all ${seleccion?.tipo === 'abierta' && seleccion.id === caja.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-gray-800">{caja.nombre}</p>
+                          <p className="text-xs text-green-600 mt-0.5">🔓 {caja.total_usuarios} usuario(s) · {caja.total_ventas} ventas</p>
+                        </div>
+                        <p className="font-bold text-orange-500">{fmt(caja.total_facturado)}</p>
+                      </div>
                     </button>
                   ))}
+                </>
+              )}
+
+              {cajasFijas.length === 0 && abiertasEventuales.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">
+                  No hay cajas definidas todavía.<br />El administrador puede crearlas en <b>Control de Cajas</b>, o abrí una caja eventual.
+                </p>
+              )}
+
+              {/* Efectivo inicial: solo al abrir una caja fija cerrada */}
+              {seleccion?.tipo === 'fija-cerrada' && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 animate-aparecer">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Efectivo inicial en caja</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                    <input type="number" value={inicioCaja} onChange={(e) => setInicioCaja(e.target.value)} autoFocus
+                      className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      placeholder="0" min="0" />
+                  </div>
                 </div>
+              )}
+
+              <button onClick={confirmar} disabled={!seleccion}
+                style={{ backgroundColor: seleccion ? 'var(--color-primario)' : '' }}
+                className="w-full py-3 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors">
+                {!seleccion ? 'Seleccioná una caja'
+                  : seleccion.tipo === 'fija-cerrada' ? '🔓 Abrir caja'
+                  : '✅ Unirme a esta caja'}
+              </button>
+
+              <button onClick={() => { setVistaEventual(true); setSeleccion(null); }}
+                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                ➕ Necesito una caja eventual (caso particular)
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Caja eventual: nombre libre */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">➕ Caja eventual</p>
+              <p className="text-xs text-gray-400">Para un caso particular (evento, delivery, prueba). Las cajas de todos los días se crean fijas desde Control de Cajas.</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la caja *</label>
                 <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="O escribí un nombre personalizado..." />
+                  placeholder="Ej: Evento, Delivery..." />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Efectivo inicial en caja</label>
@@ -108,7 +160,11 @@ function ModalSeleccionCaja({ cajasAbiertas, onAbrir, onUnirse }) {
                 className="w-full py-3 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors">
                 🔓 Abrir Caja "{nombre || '...'}"
               </button>
-            </div>
+              <button onClick={() => setVistaEventual(false)}
+                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                ← Volver a las cajas del local
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1251,8 +1307,9 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                 <button onClick={onCerrado}
                   className={`w-full md:flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-lg transition-colors`}
                 >
-                  Finalizar Turno
+                  Finalizar Turno y Salir
                 </button>
+                <p className="text-xs text-gray-400 text-center md:hidden">Se cerrará tu sesión para que ingrese el próximo turno</p>
               </div>
             </div>
           </div>
@@ -1823,6 +1880,7 @@ function POS() {
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
   const [cajasAbiertas, setCajasAbiertas] = useState([]);
+  const [cajasFijas, setCajasFijas] = useState([]);
   const [cargandoTurno, setCargandoTurno] = useState(true);
   const [config, setConfig] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -1982,7 +2040,12 @@ useEffect(() => {
 
     const manejarTeclado = (e) => {
       // Teclas F - siempre activas aunque haya modal
-      if (e.key === 'F1') { e.preventDefault(); if (config?.permite_venta_rapida !== false) setMostrarModalRapida(true); return; }
+      if (e.key === 'F1') {
+        e.preventDefault();
+        if (config?.permite_venta_rapida !== false) setMostrarModalRapida(true);
+        else alert('🔒 Función desactivada por el administrador.\n\nLa venta rápida se puede activar desde Configuración.');
+        return;
+      }
       if (e.key === 'F2') { e.preventDefault(); inputBuscarRef.current?.focus(); return; }
       if (e.key === 'F3') { e.preventDefault(); setMostrarModalFiados(true); return; }
       if (e.key === 'F4') { e.preventDefault(); setMostrarModalCierre(true); return; }
@@ -2056,8 +2119,12 @@ useEffect(() => {
       const res = await api.get('/api/turnos/actual');
       setTurno(res.data);
       if (!res.data) {
-        const resCajas = await api.get('/api/turnos/abiertas');
+        const [resCajas, resFijas] = await Promise.all([
+          api.get('/api/turnos/abiertas'),
+          api.get('/api/turnos/cajas-fijas').catch(() => ({ data: [] })),
+        ]);
         setCajasAbiertas(resCajas.data);
+        setCajasFijas(resFijas.data);
       }
     } catch { } finally { setCargandoTurno(false); }
   };
@@ -2485,13 +2552,11 @@ const imprimirTicketDesdeModal = () => {
   }
 
   if (!turno) {
-    return (
-      <ModalSeleccionCaja cajasAbiertas={cajasAbiertas}
-        onAbrir={async (nombre, inicioCaja) => {
-          try { 
-            const res = await api.post('/api/turnos/abrir', { nombre, inicio_caja: inicioCaja }); 
-            // ✅ RESET COMPLETO DEL ESTADO SOLO AL ABRIR NUEVA CAJA
-            setTurno(res.data);
+    const abrirCaja = async (payload) => {
+      try {
+        const res = await api.post('/api/turnos/abrir', payload);
+        // ✅ RESET COMPLETO DEL ESTADO SOLO AL ABRIR NUEVA CAJA
+        setTurno(res.data);
             setPestanas([{ id: 1, nombre: 'Venta 1', carrito: [] }]);
             setPestanaActiva(1);
             setContadorVentas(1);
@@ -2519,12 +2584,18 @@ const imprimirTicketDesdeModal = () => {
             localStorage.removeItem('pos_pestanas');
             localStorage.removeItem('pos_pestana_activa');
             localStorage.removeItem('pos_contador_ventas');
-          }
-          catch (err) { alert(err.response?.data?.error || 'Error al abrir caja'); }
-        }}
+      } catch (err) {
+        alert(err.response?.data?.error || 'Error al abrir caja');
+        verificarTurno(); // refrescar estados (p. ej. otro usuario la abrió recién)
+      }
+    };
+    return (
+      <ModalSeleccionCaja cajasAbiertas={cajasAbiertas} cajasFijas={cajasFijas}
+        onAbrir={(nombre, inicioCaja) => abrirCaja({ nombre, inicio_caja: inicioCaja })}
+        onAbrirFija={(cajaDefinidaId, inicioCaja) => abrirCaja({ caja_definida_id: cajaDefinidaId, inicio_caja: inicioCaja })}
         onUnirse={async (turnoId) => {
           try { const res = await api.post(`/api/turnos/${turnoId}/unirse`); setTurno(res.data); }
-          catch (err) { alert(err.response?.data?.error || 'Error al unirse a la caja'); }
+          catch (err) { alert(err.response?.data?.error || 'Error al unirse a la caja'); verificarTurno(); }
         }}
       />
     );
@@ -3062,14 +3133,12 @@ const imprimirTicketDesdeModal = () => {
         <ModalCierreCaja turno={turno}
           onCerrar={() => { setMostrarModalCierre(false); inputBuscarRef.current?.focus(); }}
           onCerrado={() => {
-            setTurno(null);
-            setPestanas([{ id: 1, nombre: 'Venta 1', carrito: [] }]);
-            setPestanaActiva(1); setContadorVentas(1);
+            // Caja cerrada → se cierra la sesión para que ingrese el usuario
+            // del turno siguiente y abra (o elija) su caja.
             localStorage.removeItem('pos_pestanas');
             localStorage.removeItem('pos_pestana_activa');
             localStorage.removeItem('pos_contador_ventas');
-            setMostrarModalCierre(false);
-            api.get('/api/turnos/abiertas').then(res => { setCajasAbiertas(res.data); });
+            logout();
           }} />
       )}
       {mostrarModalRapida && (

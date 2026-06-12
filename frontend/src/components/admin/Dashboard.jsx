@@ -5,7 +5,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
-import SaludNegocio from './SaludNegocio';
 import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -412,9 +411,6 @@ if (error) return (
           </div>
         </div>
       )}
-
-      {/* Widget de Salud del Negocio */}
-      <SaludNegocio />
 
       {/* Tarjetas de stats del mes */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
