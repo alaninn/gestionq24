@@ -7,7 +7,7 @@ router.get('/', verificarPermiso('gastos', 'ver'), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta, tipo, con_boleta, proveedor_id, es_compra } = req.query;
+        const { fecha_desde, fecha_hasta, tipo, con_boleta, proveedor_id, es_compra, con_factura } = req.query;
 
         let where = 'WHERE g.negocio_id = $1';
         let valores = [negocio_id];
@@ -21,6 +21,8 @@ router.get('/', verificarPermiso('gastos', 'ver'), async (req, res) => {
         if (con_boleta === 'true' || con_boleta === '1') { where += ` AND g.tipo_documento IN ('boleta','factura')`; }
         if (con_boleta === 'false' || con_boleta === '0') { where += ` AND (g.tipo_documento IS NULL OR g.tipo_documento = 'sin_boleta')`; }
         if (proveedor_id) { where += ` AND g.proveedor_id = $${contador}`; valores.push(proveedor_id); contador++; }
+        // Gastos "en blanco" (Factura A/B/C): suman IVA crédito al Resumen Fiscal
+        if (con_factura === 'true' || con_factura === '1') { where += ` AND g.tipo_comprobante IN ('factura_a','factura_b','factura_c')`; }
 
         const consulta = `
             SELECT g.*, p.nombre AS proveedor_nombre, u.nombre AS usuario_nombre

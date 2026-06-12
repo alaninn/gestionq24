@@ -14,9 +14,30 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.8.3';
+export const VERSION_ACTUAL = '2.8.4';
 
 export const CHANGELOG = [
+  {
+    version: '2.8.4',
+    fecha: '2026-06-12',
+    titulo: 'Gastos como libro diario + dato fiscal X / Factura A',
+    destacados: [
+      {
+        titulo: '📒 Menú de Gastos renovado',
+        detalle: 'Gastos funciona ahora como un libro diario de los movimientos de dinero del local. Filtros como el Dashboard (Hoy, Por día, Por mes, Rango de fechas o Todo) más filtro por tipo (gastos, compras, pagos a proveedores). Tabla más clara y vista de tarjetas en celular.',
+      },
+      {
+        titulo: '🧾 Dato fiscal en cada gasto: X o Factura A',
+        detalle: 'Al cargar un gasto o un pago a proveedor elegís si es un gasto X (sin comprobante) o en blanco con Factura A: estos últimos calculan el IVA contenido y suman crédito fiscal al Resumen Fiscal automáticamente.',
+      },
+    ],
+    cambios: [
+      { t: 'Modal de nuevo gasto simplificado: se quitaron la categoría y el toggle de gasto fijo (la descripción cuenta qué se pagó y ahora es obligatoria). Mercado Pago como método de pago.' },
+      { t: 'Pago a proveedor desde el modal: ahora también elige de dónde sale el dinero (caja/local/MP) y su dato fiscal.' },
+      { t: 'Gasto avanzado: corregido un error que sumaba IVA encima del precio en compras sin factura o con factura B/C (una compra de $1.000 se registraba como $1.210).' },
+      { t: 'Proveedores: corregido el botón Editar del historial que cerraba el modal sin abrir el editor; tarjetas del menú más compactas y profesionales; saldos de todos los proveedores reseteados a cero para arrancar limpio.' },
+    ],
+  },
   {
     version: '2.8.3',
     fecha: '2026-06-12',
