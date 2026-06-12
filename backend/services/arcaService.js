@@ -429,21 +429,38 @@ if (resultadoOperacion !== 'A') {
             caeVencimiento.substring(6, 8)
         );
         
-        const comprobanteResult = await db.query(`
-            INSERT INTO comprobantes_electronicos (
-                venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
-                punto_venta, tipo_comprobante, tipo_documento, numero_documento,
-                denominacion_comprador, importe_total, importe_neto, importe_iva,
-                xml_enviado, xml_respuesta, estado, condicion_iva_receptor
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido', $16)
-            RETURNING *
-        `, [
+        // El CAE ya fue emitido por ARCA: el guardado NO puede perderlo.
+        // Si la columna nueva todavía no existe (migración pendiente), reintenta sin ella.
+        let comprobanteResult;
+        const valoresInsert = [
             venta_id, negocio_id, cae, caeVencimientoDate, numeroComprobante,
             punto_venta, tipo_comprobante, docTipo,
             numero_documento || null, denominacion_comprador || 'Consumidor Final',
             importe_total, importeNetoCalculado, importeIvaCalculado,
-            xmlEnviado, xmlRespuesta, condIvaReceptor
-        ]);
+            xmlEnviado, xmlRespuesta
+        ];
+        try {
+            comprobanteResult = await db.query(`
+                INSERT INTO comprobantes_electronicos (
+                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                    denominacion_comprador, importe_total, importe_neto, importe_iva,
+                    xml_enviado, xml_respuesta, estado, condicion_iva_receptor
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido', $16)
+                RETURNING *
+            `, [...valoresInsert, condIvaReceptor]);
+        } catch (insertError) {
+            console.error('⚠️ Insert con condicion_iva_receptor falló, reintentando sin la columna:', insertError.message);
+            comprobanteResult = await db.query(`
+                INSERT INTO comprobantes_electronicos (
+                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                    denominacion_comprador, importe_total, importe_neto, importe_iva,
+                    xml_enviado, xml_respuesta, estado
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido')
+                RETURNING *
+            `, valoresInsert);
+        }
         
         // 13. Actualizar venta con el comprobante electrónico
         if (venta_id) {

@@ -2310,14 +2310,18 @@ importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobant
           };
 
           const resComprobante = await api.post('/api/arca/emitir', comprobanteData);
-          
+
           if (resComprobante.data.exito) {
             console.log('✅ Comprobante electrónico emitido:', resComprobante.data.comprobante.cae);
             setUltimoComprobante(resComprobante.data.comprobante);
+          } else {
+            alert(`⚠️ La venta se registró, pero NO se pudo emitir la factura electrónica:\n${resComprobante.data.error || 'Error desconocido'}\n\nPodés reintentarla desde Configuración → Facturación.`);
           }
         } catch (errArca) {
           console.error('⚠️ Error al emitir comprobante ARCA:', errArca);
-          // No detener el flujo, la venta ya se registró
+          // La venta ya se registró: avisamos fuerte que la factura NO salió
+          const msg = errArca.response?.data?.error || errArca.message || 'Error de conexión';
+          alert(`⚠️ La venta se registró, pero NO se pudo emitir la factura electrónica:\n${msg}\n\nPodés reintentarla desde Configuración → Facturación.`);
         }
       }
 
