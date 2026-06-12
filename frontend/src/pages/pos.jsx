@@ -2730,12 +2730,28 @@ const imprimirTicketDesdeModal = () => {
             {oscuro ? '☀️' : '🌙'}
           </button>
 
+          {/* Actualizar la app (equivale a Ctrl+Shift+R) por si algo quedó trabado */}
+          <button
+            onClick={async () => {
+              try {
+                if (window.caches) {
+                  const claves = await caches.keys();
+                  await Promise.all(claves.map(k => caches.delete(k)));
+                }
+              } catch { }
+              window.location.reload();
+            }}
+            title="Actualizar la pantalla (recarga forzada)"
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white transition-all flex-shrink-0">
+            🔄
+          </button>
+
           {/* Cambiar usuario (cambio de turno) — discreto, en la esquina */}
           <button
             onClick={() => { if (window.confirm('¿Cambiar de usuario?\n\nSe cerrará la sesión actual para que ingrese otro usuario (cambio de turno).')) logout(); }}
             title="Cambiar usuario (cambio de turno)"
             className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white transition-all flex-shrink-0">
-            🔄
+            👤
           </button>
         </div>
       </div>
