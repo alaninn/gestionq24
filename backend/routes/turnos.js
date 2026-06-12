@@ -256,6 +256,34 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     }
 });
 
+// POST salir de una caja SIN cerrarla (cambio de caja):
+// el usuario deja de estar asociado pero la caja sigue abierta para los demás.
+router.post('/:id/salir', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const usuario_id = req.usuario.id;
+
+        const turno = await db.query(
+            "SELECT id, nombre FROM turnos WHERE id = $1 AND negocio_id = $2 AND estado = 'abierto'",
+            [req.params.id, negocio_id]
+        );
+        if (turno.rows.length === 0) {
+            return res.status(404).json({ error: 'Caja no encontrada o ya cerrada' });
+        }
+
+        await db.query(
+            'DELETE FROM turno_usuarios WHERE turno_id = $1 AND usuario_id = $2',
+            [req.params.id, usuario_id]
+        );
+
+        res.json({ mensaje: `Saliste de la caja "${turno.rows[0].nombre}". La caja sigue abierta.` });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al salir de la caja' });
+    }
+});
+
 // PUT cerrar caja
 router.put('/:id/cerrar', async (req, res) => {
     try {
