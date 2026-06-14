@@ -7,6 +7,34 @@
 
 ---
 
+## 📌 Última sesión (14/06/2026) — dónde quedamos
+
+Resumen para retomar sin perder contexto (si esta conversación no se recupera con
+`claude --continue`):
+
+1. **Reporte de errores del superadmin** (botón 🐞 Errores): se validó el circuito
+   completo de punta a punta. Sube el `.md` a la rama `reportes-errores` (carpeta
+   `reportes/`) y el agente lo lee desde acá con `git fetch origin reportes-errores`.
+   El `GITHUB_TOKEN` ya está configurado en el `backend/.env` del VPS (no en local).
+2. **Bug encontrado y ya resuelto**: `DateTimeParseError` en el dashboard
+   (`backend/routes/reportes.js`) cuando llegaba una fecha no-string. Ya estaba
+   arreglado en `master` (commit `30fc406`, guarda `typeof v !== 'string'` en
+   `fechaONull`). Los logs del reporte eran viejos.
+3. **v2.9.4 (commit `3fcc367`, pusheado a master)**: al subir el reporte a GitHub
+   ahora se **limpian las fuentes** para no repetir errores viejos —
+   `limpiarFuentesReporte()` en `superadmin.js` borra los `errores_frontend`
+   incluidos, trunca `gestionq24-error.log` y vacía el buffer (`logBuffer.limpiar()`).
+   El front muestra qué se limpió. **Pendiente**: correr `actualizar.sh` en el VPS.
+4. **Visor de Logs del superadmin** revisado: "Iniciar en vivo" (`/logs/en-vivo`),
+   "Archivo (salida)" y "Archivo (errores)" (`/logs/archivo?tipo=out|error`) andan OK.
+5. **Plugin de memoria `claude-mem`**: estaba **desactivado** desde el 10/06 (su
+   worker no arrancaba por el puerto 37777 ocupado). Se **reactivó** en
+   `~/.claude/settings.json` (`"claude-mem@thedotmack": true`). Toma efecto al
+   **reiniciar** Claude Code. La memoria vieja (hasta 10/06) está en
+   `~/.claude-mem/claude-mem.db`. Esta sesión NO quedó en claude-mem (estaba apagado).
+
+---
+
 ## 🐞 Reportes de errores (leerlos desde acá)
 
 El panel **Superadmin** tiene un botón **🐞 Errores** que arma un `.md` con:
