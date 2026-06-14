@@ -14,9 +14,27 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.8.4';
+export const VERSION_ACTUAL = '2.9.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.0',
+    fecha: '2026-06-14',
+    titulo: 'Alta rápida de productos, permisos de proveedores y gastos por origen',
+    destacados: [
+      {
+        titulo: '🏷️ Alta rápida de productos en el POS',
+        detalle: 'Nuevo botón "Alta rápida" (tecla F7) en el POS: cuando encontrás un producto sin precio, lo das de alta al toque con solo el nombre (el código de barras y el precio son opcionales). Queda marcado "por revisar" para que después un administrador le complete los datos. En el menú de Productos aparece un aviso con la lista de productos por revisar (chip ⚠️), y apenas se les carga un precio salen de la lista solos.',
+      },
+      {
+        titulo: '🚚 Permisos de proveedores para tus empleados',
+        detalle: 'Ahora podés darle permiso a encargados y cajeros para usar el panel de Proveedores (ver, crear, pagar) tanto en el panel como en el POS. El editor de permisos quedó más claro, agrupado por módulo, e incluye también editar ventas y editar gastos.',
+      },
+    ],
+    cambios: [
+      { t: 'Gastos: nuevas tarjetas que desglosan los gastos por origen del dinero (🧰 de caja, 🏪 del local, 📱 de Mercado Pago). Al tocar una, filtra el listado por ese origen.' },
+    ],
+  },
   {
     version: '2.8.4',
     fecha: '2026-06-12',

@@ -95,6 +95,8 @@ const [categorias, setCategorias] = useState([]);
   const [buscar, setBuscar] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [soloStockBajo, setSoloStockBajo] = useState(false);
+  const [soloPorRevisar, setSoloPorRevisar] = useState(false);
+  const [totalPorRevisar, setTotalPorRevisar] = useState(0);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
   const [error, setError] = useState('');
@@ -134,7 +136,7 @@ const [categorias, setCategorias] = useState([]);
     stock: '0', stock_minimo: '0', unidad: 'Uni',
   });
 
-  useEffect(() => { cargarProductos(); cargarCategorias(); }, []);
+  useEffect(() => { cargarProductos(); cargarCategorias(); cargarContadorRevisar(); }, []);
 
   // El botón "atrás" del celular cierra el modal abierto
   useCerrarConAtras(mostrarFormulario, () => setMostrarFormulario(false));
@@ -143,7 +145,7 @@ const [categorias, setCategorias] = useState([]);
   useEffect(() => {
     const timer = setTimeout(() => cargarProductos(), 400);
     return () => clearTimeout(timer);
-  }, [buscar, categoriaFiltro, soloStockBajo]);
+  }, [buscar, categoriaFiltro, soloStockBajo, soloPorRevisar]);
 
   useEffect(() => {
     if (celdaEditando && inputRef.current) {
@@ -159,6 +161,16 @@ const [categorias, setCategorias] = useState([]);
   const cargarProductos = async (pagina = 1) => {
     try {
       setCargando(true);
+      // Filtro "por revisar": usa su propio endpoint (sin paginar, son pocos)
+      if (soloPorRevisar) {
+        const res = await api.get('/api/productos/por-revisar');
+        setProductos(res.data);
+        setTotalProductos(res.data.length);
+        setTotalPaginas(1);
+        setPaginaActual(1);
+        setTotalPorRevisar(res.data.length);
+        return;
+      }
       let url = `/api/productos?pagina=${pagina}&limite=${LIMITE}`;
       if (buscar) url += `&buscar=${buscar}`;
       if (categoriaFiltro) url += `&categoria=${categoriaFiltro}`;
@@ -173,6 +185,14 @@ const [categorias, setCategorias] = useState([]);
     } finally {
       setCargando(false);
     }
+  };
+
+  // Contador de productos por revisar (para el chip y el banner)
+  const cargarContadorRevisar = async () => {
+    try {
+      const res = await api.get('/api/productos/por-revisar');
+      setTotalPorRevisar(res.data.length);
+    } catch { /* silencioso */ }
   };
 
 const cargarCategorias = async () => {
@@ -348,6 +368,7 @@ const cargarCategorias = async () => {
       }
       setMostrarFormulario(false);
       cargarProductos();
+      cargarContadorRevisar();
       setTimeout(() => setExito(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al guardar el producto');
@@ -739,7 +760,7 @@ const exportarExcel = async () => {
           <option value="">Todas las categorías</option>
           {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nombre}</option>)}
         </select>
-        <button onClick={() => setSoloStockBajo(v => !v)}
+        <button onClick={() => { setSoloStockBajo(v => !v); setSoloPorRevisar(false); }}
           title="Mostrar solo productos con stock en o por debajo del mínimo"
           className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
             soloStockBajo
@@ -748,7 +769,29 @@ const exportarExcel = async () => {
           }`}>
           ⚠️ Stock bajo
         </button>
+        <button onClick={() => { setSoloPorRevisar(v => !v); setSoloStockBajo(false); }}
+          title="Productos cargados rápido desde el POS que necesitan completar datos"
+          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+            soloPorRevisar
+              ? 'bg-amber-500 border-amber-500 text-white'
+              : 'bg-white border-gray-300 text-gray-600 hover:border-amber-300'
+          }`}>
+          🏷️ Por revisar{totalPorRevisar > 0 ? ` (${totalPorRevisar})` : ''}
+        </button>
       </div>
+
+      {/* Banner de productos por revisar */}
+      {totalPorRevisar > 0 && !soloPorRevisar && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-amber-800">
+            ⚠️ Hay <b>{totalPorRevisar}</b> producto(s) cargado(s) rápido desde el POS que necesitan que completes precio, costo y categoría.
+          </p>
+          <button onClick={() => { setSoloPorRevisar(true); setSoloStockBajo(false); }}
+            className="text-sm bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap">
+            Revisarlos ahora
+          </button>
+        </div>
+      )}
 
       <p className="text-xs text-gray-400">💡 Hacé clic en el precio o stock para editarlo. Enter para guardar, Escape para cancelar.</p>
 
@@ -821,7 +864,10 @@ const exportarExcel = async () => {
                     onChange={() => toggleSeleccion(producto.id)}
                     className="w-5 h-5 mt-0.5 text-red-600 rounded flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-800 leading-snug">{producto.nombre}</p>
+                    <p className="font-medium text-gray-800 leading-snug">
+                      {producto.requiere_revision && <span title="Cargado rápido — completá sus datos">⚠️ </span>}
+                      {producto.nombre}
+                    </p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {producto.codigo || 'sin código'}{producto.categoria_nombre ? ` · ${producto.categoria_nombre}` : ''}
                     </p>
@@ -889,7 +935,12 @@ const exportarExcel = async () => {
                         className="w-4 h-4 text-red-600 rounded cursor-pointer" />
                     </td>
                     <td className="px-4 py-2 text-gray-500 text-sm">{producto.codigo || '-'}</td>
-                    <td className="px-4 py-2 font-medium text-gray-800">{producto.nombre}</td>
+                    <td className="px-4 py-2 font-medium text-gray-800">
+                      {producto.requiere_revision && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mr-1.5 align-middle" title="Cargado rápido desde el POS — completá sus datos">⚠️ por revisar</span>
+                      )}
+                      {producto.nombre}
+                    </td>
                     <td className="px-4 py-2 text-gray-500 text-sm">{producto.categoria_nombre || '-'}</td>
                     <td className="px-2 py-1">
                       <CeldaEditable producto={producto} campo="precio_costo" formatear={formatearPeso} alinear="right" celdaEditando={celdaEditando} iniciarEdicion={iniciarEdicion} guardarEdicionInline={guardarEdicionInline} cancelarEdicion={cancelarEdicion} inputRef={inputRef} />

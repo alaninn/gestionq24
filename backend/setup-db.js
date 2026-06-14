@@ -151,6 +151,11 @@ CREATE INDEX IF NOT EXISTS idx_stock_categorias_negocio ON stock_categorias(nego
 -- Ubicación y orden de cada producto dentro de la pantalla de Stock
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_categoria_id INTEGER REFERENCES stock_categorias(id) ON DELETE SET NULL;
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS stock_orden INTEGER DEFAULT 0;
+
+-- Producto cargado "rápido" desde el POS (sin precio/datos completos):
+-- queda marcado para que un admin después le complete la info.
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS requiere_revision BOOLEAN DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_productos_revision ON productos(negocio_id) WHERE requiere_revision = TRUE;
 CREATE INDEX IF NOT EXISTS idx_productos_stock_cat ON productos(negocio_id, stock_categoria_id, stock_orden);
 
 -- =============================================

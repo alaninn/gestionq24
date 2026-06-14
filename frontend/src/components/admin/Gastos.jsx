@@ -597,6 +597,8 @@ function Gastos() {
   // ---- FILTROS (como el Dashboard: hoy / por día / por mes / rango / todo) ----
   const [periodoFiltro, setPeriodoFiltro] = useState('hoy');
   const [tipoFiltro, setTipoFiltro] = useState('todos');
+  // Filtro por origen del dinero (lo activan las tarjetas): 'todos'|'caja'|'local'|'otro'
+  const [filtroOrigen, setFiltroOrigen] = useState('todos');
   const hoyISO = () => {
     const hoy = new Date();
     const offset = hoy.getTimezoneOffset() * 60000;
@@ -994,6 +996,18 @@ function Gastos() {
   const cantidadCompras = gastos.filter(g => g.es_compra || g.tipo === 'compra').length;
   const totalPagosProveedores = gastos.filter(g => g.tipo === 'pago_proveedor').reduce((acc, g) => acc + parseFloat(g.monto), 0);
   const cantidadPagosProveedores = gastos.filter(g => g.tipo === 'pago_proveedor').length;
+
+  // Desglose por ORIGEN del dinero (de dónde salió la plata)
+  const origenDe = (g) => g.origen_dinero || 'caja';
+  const totalCaja = gastos.filter(g => origenDe(g) === 'caja').reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  const cantidadCaja = gastos.filter(g => origenDe(g) === 'caja').length;
+  const totalLocal = gastos.filter(g => origenDe(g) === 'local').reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  const cantidadLocal = gastos.filter(g => origenDe(g) === 'local').length;
+  const totalMp = gastos.filter(g => origenDe(g) === 'otro').reduce((acc, g) => acc + parseFloat(g.monto), 0);
+  const cantidadMp = gastos.filter(g => origenDe(g) === 'otro').length;
+
+  // Listado visible: aplica el filtro por origen si está activo
+  const gastosVisibles = filtroOrigen === 'todos' ? gastos : gastos.filter(g => origenDe(g) === filtroOrigen);
 
   const totalVentasLibro = libroVentas.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
   const totalIvaVentasLibro = libroVentas.reduce((acc, v) => {
@@ -1505,6 +1519,40 @@ function Gastos() {
             </div>
           </div>
 
+          {/* ---- TARJETAS POR ORIGEN DEL DINERO (clickeables) ---- */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { id: 'caja', label: '🧰 Gastos de caja', desc: 'Salieron de la caja del turno', total: totalCaja, cant: cantidadCaja, color: 'amber' },
+              { id: 'local', label: '🏪 Gastos del local', desc: 'Plata del local (otra caja)', total: totalLocal, cant: cantidadLocal, color: 'sky' },
+              { id: 'otro', label: '📱 Gastos de MP', desc: 'Mercado Pago del local', total: totalMp, cant: cantidadMp, color: 'violet' },
+            ].map(o => {
+              const activo = filtroOrigen === o.id;
+              const colores = {
+                amber: activo ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-300' : 'border-amber-200 hover:border-amber-400',
+                sky: activo ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-300' : 'border-sky-200 hover:border-sky-400',
+                violet: activo ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-300' : 'border-violet-200 hover:border-violet-400',
+              }[o.color];
+              return (
+                <button key={o.id} type="button"
+                  onClick={() => setFiltroOrigen(activo ? 'todos' : o.id)}
+                  className={`text-left bg-white rounded-xl p-4 shadow border-2 transition-all ${colores}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-700">{o.label}</p>
+                    {activo && <span className="text-[10px] bg-gray-800 text-white px-1.5 py-0.5 rounded-full">filtrando ✕</span>}
+                  </div>
+                  <p className="text-xl font-bold text-gray-800 mt-1 tabular-nums">{formatearPeso(o.total)}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{o.desc} · {o.cant} mov.</p>
+                </button>
+              );
+            })}
+          </div>
+          {filtroOrigen !== 'todos' && (
+            <p className="text-xs text-gray-500 -mt-1">
+              Mostrando solo gastos de <b>{filtroOrigen === 'caja' ? 'la caja' : filtroOrigen === 'local' ? 'el local' : 'Mercado Pago'}</b>.
+              <button onClick={() => setFiltroOrigen('todos')} className="text-blue-600 hover:underline ml-1">Ver todos</button>
+            </p>
+          )}
+
       {/* ---- FILTROS (como el Dashboard) ---- */}
       <div className="bg-white rounded-xl p-4 shadow flex gap-3 flex-wrap items-center">
 
@@ -1583,10 +1631,10 @@ function Gastos() {
         <div className="sm:hidden divide-y divide-gray-100">
           {cargando ? (
             <p className="text-center py-8 text-gray-400">Cargando gastos...</p>
-          ) : gastos.length === 0 ? (
+          ) : gastosVisibles.length === 0 ? (
             <p className="text-center py-10 text-gray-400">💸 No hay movimientos en este período</p>
           ) : (
-            gastos.map(gasto => (
+            gastosVisibles.map(gasto => (
               <div key={gasto.id} className="p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -1637,7 +1685,7 @@ function Gastos() {
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
               <tr><td colSpan="9" className="text-center py-8 text-gray-400">Cargando gastos...</td></tr>
-            ) : gastos.length === 0 ? (
+            ) : gastosVisibles.length === 0 ? (
               <tr>
                 <td colSpan="9" className="text-center py-12 text-gray-400">
                   <p className="text-4xl mb-2">💸</p>
@@ -1645,7 +1693,7 @@ function Gastos() {
                 </td>
               </tr>
             ) : (
-              gastos.map(gasto => (
+              gastosVisibles.map(gasto => (
                 <tr key={gasto.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 text-sm whitespace-nowrap">
                     {formatearFecha(gasto.fecha)}

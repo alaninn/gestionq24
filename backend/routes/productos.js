@@ -129,6 +129,64 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     }
 });
 
+// Productos cargados rápido que necesitan que un admin complete sus datos
+router.get('/por-revisar', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const resultado = await db.query(`
+            SELECT p.*, c.nombre AS categoria_nombre
+            FROM productos p
+            LEFT JOIN categorias c ON p.categoria_id = c.id
+            WHERE p.activo = TRUE AND p.negocio_id = $1 AND p.requiere_revision = TRUE
+            ORDER BY p.created_at DESC NULLS LAST, p.id DESC
+        `, [negocio_id]);
+        res.json(resultado.rows);
+    } catch (error) {
+        console.error('Error productos por revisar:', error);
+        res.status(500).json({ error: 'Error al obtener productos por revisar' });
+    }
+});
+
+// Alta RÁPIDA desde el POS: solo el nombre es obligatorio; precio y código
+// son opcionales. Queda marcado requiere_revision para que un admin lo complete.
+// Lo puede usar cualquiera que venda (permiso ventas:crear).
+router.post('/rapido', verificarPermiso('ventas', 'crear'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const nombre = (req.body.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
+
+        const precio = parseFloat(req.body.precio_venta) || 0;
+        let codigo = (req.body.codigo || '').trim();
+
+        // Código: si lo cargaron, validar que no exista; si no, generar uno interno
+        if (codigo) {
+            const ex = await db.query('SELECT id FROM productos WHERE codigo = $1 AND negocio_id = $2', [codigo, negocio_id]);
+            if (ex.rows.length > 0) {
+                return res.status(400).json({ error: 'Ya existe un producto con ese código de barras' });
+            }
+        } else {
+            codigo = `INT-${Math.floor(Math.random() * 900000 + 100000)}`;
+        }
+
+        const resultado = await db.query(`
+            INSERT INTO productos (codigo, nombre, precio_venta, precio_costo, stock, stock_minimo, unidad, alicuota_iva, margen_ganancia, negocio_id, requiere_revision)
+            VALUES ($1, $2, $3, 0, 0, 0, 'Uni', 0, 0, $4, TRUE)
+            RETURNING *
+        `, [codigo, nombre, precio, negocio_id]);
+
+        res.status(201).json(resultado.rows[0]);
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ya existe un producto con ese código' });
+        }
+        console.error('Error alta rápida:', error);
+        res.status(500).json({ error: 'Error al dar de alta el producto' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
@@ -579,6 +637,8 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
                 precio_mayorista = $6, stock = $7,
                 stock_minimo = $8, unidad = $9,
                 alicuota_iva = $10, margen_ganancia = $11,
+                -- Apenas el producto tiene precio, deja de necesitar revisión
+                requiere_revision = CASE WHEN $5::numeric > 0 THEN FALSE ELSE requiere_revision END,
                 updated_at = NOW()
             WHERE id = $12 AND negocio_id = $13
             RETURNING *

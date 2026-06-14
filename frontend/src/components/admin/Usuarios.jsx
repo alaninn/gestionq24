@@ -14,29 +14,46 @@ const ROLES = [
   // Nota: el rol 'superadmin' nunca aparece acá — solo existe uno y sos vos
 ];
 
-const PERMISOS_DISPONIBLES = [
-  { modulo: 'productos', accion: 'ver', label: '👀 Ver productos' },
-  { modulo: 'productos', accion: 'crear', label: '➕ Crear productos' },
-  { modulo: 'productos', accion: 'editar', label: '✏️ Editar productos' },
-  { modulo: 'productos', accion: 'eliminar', label: '🗑️ Eliminar productos' },
-  { modulo: 'ventas', accion: 'ver', label: '👀 Ver ventas' },
-  { modulo: 'ventas', accion: 'crear', label: '🛒 Crear ventas' },
-  { modulo: 'ventas', accion: 'anular', label: '❌ Anular ventas' },
-  { modulo: 'gastos', accion: 'ver', label: '👀 Ver gastos' },
-  { modulo: 'gastos', accion: 'crear', label: '➕ Crear gastos' },
-  { modulo: 'gastos', accion: 'eliminar', label: '🗑️ Eliminar gastos' },
-  { modulo: 'reportes', accion: 'ver', label: '📊 Ver reportes' },
-  { modulo: 'clientes', accion: 'ver', label: '👀 Ver clientes' },
-  { modulo: 'clientes', accion: 'crear', label: '➕ Crear clientes' },
-  { modulo: 'caja', accion: 'abrir', label: '🔓 Abrir caja' },
-  { modulo: 'caja', accion: 'cerrar', label: '🔒 Cerrar caja' },
+// Permisos agrupados por módulo para mostrarlos ordenados en el editor
+const PERMISOS_GRUPOS = [
+  { modulo: 'productos', titulo: '📦 Productos', acciones: [
+    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+    { accion: 'editar', label: 'Editar' }, { accion: 'eliminar', label: 'Eliminar' },
+  ]},
+  { modulo: 'ventas', titulo: '🛒 Ventas', acciones: [
+    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+    { accion: 'editar', label: 'Editar' }, { accion: 'anular', label: 'Anular' },
+  ]},
+  { modulo: 'gastos', titulo: '💸 Gastos', acciones: [
+    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+    { accion: 'editar', label: 'Editar' }, { accion: 'eliminar', label: 'Eliminar' },
+  ]},
+  { modulo: 'proveedores', titulo: '🚚 Proveedores', acciones: [
+    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+    { accion: 'editar', label: 'Editar/pagar' }, { accion: 'eliminar', label: 'Eliminar' },
+  ]},
+  { modulo: 'clientes', titulo: '👥 Clientes / Cta. corriente', acciones: [
+    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear/cobrar' },
+  ]},
+  { modulo: 'reportes', titulo: '📊 Reportes', acciones: [
+    { accion: 'ver', label: 'Ver' },
+  ]},
+  { modulo: 'caja', titulo: '🏦 Caja', acciones: [
+    { accion: 'abrir', label: 'Abrir' }, { accion: 'cerrar', label: 'Cerrar' },
+  ]},
 ];
+
+// Lista plana (compat. con el resto del componente)
+const PERMISOS_DISPONIBLES = PERMISOS_GRUPOS.flatMap(g =>
+  g.acciones.map(a => ({ modulo: g.modulo, accion: a.accion, label: `${g.titulo.replace(/^[^ ]+ /, '')}: ${a.label}` }))
+);
 
 const PERMISOS_DEFAULT = {
   admin: {
     productos: ['ver', 'crear', 'editar', 'eliminar'],
-    ventas: ['ver', 'crear', 'anular'],
-    gastos: ['ver', 'crear', 'eliminar'],
+    ventas: ['ver', 'crear', 'editar', 'anular'],
+    gastos: ['ver', 'crear', 'editar', 'eliminar'],
+    proveedores: ['ver', 'crear', 'editar', 'eliminar'],
     reportes: ['ver'],
     clientes: ['ver', 'crear'],
     caja: ['abrir', 'cerrar'],
@@ -45,6 +62,7 @@ const PERMISOS_DEFAULT = {
     productos: ['ver', 'crear', 'editar'],
     ventas: ['ver', 'crear'],
     gastos: ['ver', 'crear'],
+    proveedores: ['ver', 'crear', 'editar'],
     reportes: ['ver'],
     clientes: ['ver', 'crear'],
     caja: ['abrir', 'cerrar'],
@@ -52,6 +70,7 @@ const PERMISOS_DEFAULT = {
   cajero: {
     ventas: ['crear'],
     gastos: ['crear'],
+    proveedores: ['ver', 'crear'],
     clientes: ['ver'],
     caja: ['abrir', 'cerrar'],
   },
@@ -460,19 +479,28 @@ function Usuarios() {
                     </div>
                   );
                 })()}
-                <div className="border border-gray-200 rounded-xl p-3 max-h-52 overflow-y-auto bg-gray-50">
-                  <div className="grid grid-cols-2 gap-2">
-                    {PERMISOS_DISPONIBLES.map(p => (
-                      <label key={`${p.modulo}_${p.accion}`}
-                        className="flex items-center gap-2 cursor-pointer hover:bg-white rounded-lg p-1.5 transition-colors">
-                        <input type="checkbox"
-                          checked={tienePermiso(p.modulo, p.accion)}
-                          onChange={() => togglePermiso(p.modulo, p.accion)}
-                          className="w-4 h-4 text-green-600 rounded" />
-                        <span className="text-xs text-gray-600">{p.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                <div className="border border-gray-200 rounded-xl p-3 max-h-64 overflow-y-auto bg-gray-50 space-y-3">
+                  {PERMISOS_GRUPOS.map(grupo => (
+                    <div key={grupo.modulo}>
+                      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{grupo.titulo}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {grupo.acciones.map(a => {
+                          const activo = tienePermiso(grupo.modulo, a.accion);
+                          return (
+                            <button key={a.accion} type="button"
+                              onClick={() => togglePermiso(grupo.modulo, a.accion)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                                activo
+                                  ? 'bg-green-600 border-green-600 text-white'
+                                  : 'bg-white border-gray-300 text-gray-600 hover:border-green-400'
+                              }`}>
+                              {activo ? '✓ ' : ''}{a.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

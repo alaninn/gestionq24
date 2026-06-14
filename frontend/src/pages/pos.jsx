@@ -245,6 +245,96 @@ function ModalVentaRapida({ onAgregar, onCerrar }) {
 }
 
 // =============================================
+// MODAL: ALTA RÁPIDA DE PRODUCTO (queda por revisar)
+// =============================================
+function ModalProductoRapido({ onCerrar, onCreado }) {
+  const [nombre, setNombre] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    setError('');
+    setGuardando(true);
+    try {
+      const res = await api.post('/api/productos/rapido', {
+        nombre: nombre.trim(),
+        codigo: codigo.trim() || null,
+        precio_venta: precio ? parseFloat(precio) : 0,
+      });
+      if (onCreado) onCreado(res.data);
+      onCerrar();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al dar de alta el producto');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b bg-teal-600 text-white">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🏷️</span>
+            <div>
+              <h3 className="text-lg font-bold">Alta rápida de producto</h3>
+              <p className="text-teal-100 text-xs">F7 · Para productos sin precio</p>
+            </div>
+          </div>
+          <button onClick={onCerrar} className="text-teal-200 hover:text-white text-2xl">×</button>
+        </div>
+        <form onSubmit={guardar} className="p-5 space-y-4">
+          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-lg text-sm">❌ {error}</div>}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del producto *</label>
+            <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              placeholder="Ej: Galletitas surtidas" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Código de barras <span className="text-gray-400">(opcional)</span></label>
+            <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              placeholder="Escaneá o escribí el código" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Precio final <span className="text-gray-400">(opcional)</span></label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+              <input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} min="0" step="0.01"
+                className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                placeholder="0,00" />
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+            ⚠️ Queda marcado <b>"por revisar"</b> para que un administrador complete sus datos (costo, categoría, stock).
+          </div>
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onCerrar}
+              className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" disabled={guardando || !nombre.trim()}
+              className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg font-bold transition-colors">
+              {guardando ? 'Guardando...' : '✅ Dar de alta'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =============================================
 // MODAL: HISTORIAL DE VENTAS DEL TURNO
 // =============================================
 function ModalHistorial({ turno, onCerrar, config }) {
@@ -1892,6 +1982,7 @@ function POS() {
   const [mostrarModalVenta, setMostrarModalVenta] = useState(false);
   const [mostrarModalCierre, setMostrarModalCierre] = useState(false);
   const [mostrarModalRapida, setMostrarModalRapida] = useState(false);
+  const [mostrarModalProductoRapido, setMostrarModalProductoRapido] = useState(false);
   const [mostrarModalHistorial, setMostrarModalHistorial] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [mensajeScanner, setMensajeScanner] = useState(null);
@@ -1974,6 +2065,7 @@ function POS() {
   useCerrarConAtras(mostrarModalGasto, () => setMostrarModalGasto(false));
   useCerrarConAtras(mostrarModalCierre, () => setMostrarModalCierre(false));
   useCerrarConAtras(mostrarModalRapida, () => setMostrarModalRapida(false));
+  useCerrarConAtras(mostrarModalProductoRapido, () => setMostrarModalProductoRapido(false));
   useCerrarConAtras(mostrarModalFiados, () => setMostrarModalFiados(false));
   useCerrarConAtras(mostrarModalHistorial, () => setMostrarModalHistorial(false));
   useCerrarConAtras(!!mostrarModalVentaProducto, () => setMostrarModalVentaProducto(null));
@@ -2050,6 +2142,7 @@ useEffect(() => {
       if (e.key === 'F3') { e.preventDefault(); setMostrarModalFiados(true); return; }
       if (e.key === 'F4') { e.preventDefault(); setMostrarModalCierre(true); return; }
       if (e.key === 'F5') { e.preventDefault(); setMostrarModalHistorial(true); return; }
+      if (e.key === 'F7') { e.preventDefault(); setMostrarModalProductoRapido(true); return; }
       if (e.key === 'F8') { 
         e.preventDefault(); 
         if (mostrarModalVenta && modalVentaRef.current) {
@@ -2664,6 +2757,13 @@ const imprimirTicketDesdeModal = () => {
           </button>
         )}
 
+        <button onClick={() => setMostrarModalProductoRapido(true)}
+          title="Dar de alta un producto al toque (útil para productos sin precio)"
+          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+          🏷️ <span className="hidden sm:inline">Alta rápida</span>
+          <span className="text-teal-200 text-xs hidden lg:inline">[F7]</span>
+        </button>
+
         <button onClick={() => setMostrarModalFiados(true)}
           style={{ backgroundColor: 'var(--color-primario)' }}
           className="flex items-center gap-2 hover:opacity-80 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
@@ -3178,6 +3278,14 @@ const imprimirTicketDesdeModal = () => {
       {mostrarModalRapida && (
         <ModalVentaRapida onAgregar={agregarVentaRapida}
           onCerrar={() => { setMostrarModalRapida(false); inputBuscarRef.current?.focus(); }} />
+      )}
+      {mostrarModalProductoRapido && (
+        <ModalProductoRapido
+          onCerrar={() => { setMostrarModalProductoRapido(false); inputBuscarRef.current?.focus(); }}
+          onCreado={(prod) => {
+            setMensajeScanner({ tipo: 'exito', texto: `🏷️ "${prod.nombre}" dado de alta${Number(prod.precio_venta) > 0 ? '' : ' (sin precio, queda por revisar)'}` });
+            setTimeout(() => setMensajeScanner(null), 3000);
+          }} />
       )}
       {mostrarModalFiados && (
         <ModalFiados onCerrar={() => { setMostrarModalFiados(false); inputBuscarRef.current?.focus(); }} />
