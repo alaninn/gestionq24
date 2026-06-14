@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.11';
+export const VERSION_ACTUAL = '2.9.12';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.12',
+    fecha: '2026-06-14',
+    titulo: 'Cierre en celular: arreglado el encimado',
+    cambios: [
+      { t: 'Modal de cierre de caja en celular: los paneles ya no se enciman (el botón "Revelar Información" se montaba sobre la sección de comprobantes). Ahora cada sección se apila ordenada con su altura natural.' },
+    ],
+  },
   {
     version: '2.9.11',
     fecha: '2026-06-14',

@@ -1545,7 +1545,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
             <button onClick={onCerrar} className="text-white/80 hover:text-white text-3xl leading-none">×</button>
           </div>
 
-          <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto md:flex md:overflow-hidden">
             {/* Panel Izquierdo: Resumen del Turno */}
             <div className="w-full md:w-1/2 p-4 sm:p-6 md:border-r bg-gradient-to-br from-gray-50 to-white md:overflow-y-auto min-h-0">
               <div className="flex flex-col md:h-full">
