@@ -699,5 +699,7 @@ module.exports = {
     obtenerComprobantes,
     obtenerUltimoNumero,
     guardarCertificadoNegocio,
+    fechaArgYYYYMMDD,
+    consultarFechaComprobante,
     CERT_DIR
 };
