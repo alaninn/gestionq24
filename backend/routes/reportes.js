@@ -51,7 +51,14 @@ router.get('/historial', async (req, res) => {
         const totalVendido = ventas.rows.reduce((acc, v) => acc + parseFloat(v.total), 0);
         const totalVentas = ventas.rows.length;
         const porMetodo = ventas.rows.reduce((acc, v) => {
-            acc[v.metodo_pago] = (acc[v.metodo_pago] || 0) + parseFloat(v.total);
+            if (v.metodo_pago === 'dividido') {
+                // Repartir: la parte efectivo cuenta como efectivo y la virtual en su medio
+                acc['efectivo'] = (acc['efectivo'] || 0) + (parseFloat(v.monto_efectivo) || 0);
+                const mv = v.metodo_virtual || 'transferencia';
+                acc[mv] = (acc[mv] || 0) + (parseFloat(v.monto_virtual) || 0);
+            } else {
+                acc[v.metodo_pago] = (acc[v.metodo_pago] || 0) + parseFloat(v.total);
+            }
             return acc;
         }, {});
         const porDia = ventas.rows.reduce((acc, v) => {
@@ -138,10 +145,10 @@ router.get('/por-turno', async (req, res) => {
                 uc.nombre AS usuario_cierre_nombre,
                 COUNT(v.id) AS total_ventas,
                 COALESCE(SUM(v.total), 0) AS total_facturado,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS efectivo,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total ELSE 0 END), 0) AS tarjeta,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total ELSE 0 END), 0) AS mercadopago,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS transferencia,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total WHEN v.metodo_pago = 'dividido' THEN COALESCE(v.monto_efectivo,0) ELSE 0 END), 0) AS efectivo,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'tarjeta' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS tarjeta,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'mercadopago' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS mercadopago,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'transferencia' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS transferencia,
                 COALESCE(g.total_gastos, 0) AS total_gastos
             FROM turnos t
             LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
@@ -300,10 +307,10 @@ router.get('/control-caja', async (req, res) => {
                 uc.nombre AS usuario_cierre_nombre,
                 COUNT(v.id) AS total_ventas,
                 COALESCE(SUM(v.total), 0) AS total_facturado,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS ventas_efectivo,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total ELSE 0 END), 0) AS ventas_tarjeta,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total ELSE 0 END), 0) AS ventas_mp,
-                COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS ventas_transferencia,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'efectivo' THEN v.total WHEN v.metodo_pago = 'dividido' THEN COALESCE(v.monto_efectivo,0) ELSE 0 END), 0) AS ventas_efectivo,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'tarjeta' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_tarjeta,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'mercadopago' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_mp,
+                COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'transferencia' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_transferencia,
                 COALESCE(g.total_gastos, 0) AS total_gastos
             FROM turnos t
             LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
@@ -353,17 +360,33 @@ router.get('/dashboard', async (req, res) => {
             ORDER BY dia ASC
         `, [negocio_id]);
 
+        // Desglose por método repartiendo el pago dividido (efectivo + medio virtual)
         const ventasPorMetodo = await db.query(`
-            SELECT 
-                metodo_pago,
-                COUNT(*) AS cantidad,
-                COALESCE(SUM(total), 0) AS total
-            FROM ventas
-            WHERE negocio_id = $1
-              AND fecha::date >= $2::date
-              AND fecha::date <= $3::date
-            GROUP BY metodo_pago
-            ORDER BY total DESC
+            WITH v AS (
+                SELECT * FROM ventas
+                WHERE negocio_id = $1 AND fecha::date >= $2::date AND fecha::date <= $3::date
+            )
+            SELECT metodo_pago, cantidad, total FROM (
+                SELECT 'efectivo' AS metodo_pago,
+                    COUNT(*) FILTER (WHERE metodo_pago IN ('efectivo','dividido')) AS cantidad,
+                    COALESCE(SUM(CASE WHEN metodo_pago='efectivo' THEN total WHEN metodo_pago='dividido' THEN COALESCE(monto_efectivo,0) ELSE 0 END),0) AS total FROM v
+                UNION ALL
+                SELECT 'transferencia',
+                    COUNT(*) FILTER (WHERE metodo_pago='transferencia' OR (metodo_pago='dividido' AND metodo_virtual='transferencia')),
+                    COALESCE(SUM(CASE WHEN metodo_pago='transferencia' THEN total WHEN metodo_pago='dividido' AND metodo_virtual='transferencia' THEN COALESCE(monto_virtual,0) ELSE 0 END),0) FROM v
+                UNION ALL
+                SELECT 'tarjeta',
+                    COUNT(*) FILTER (WHERE metodo_pago='tarjeta' OR (metodo_pago='dividido' AND metodo_virtual='tarjeta')),
+                    COALESCE(SUM(CASE WHEN metodo_pago='tarjeta' THEN total WHEN metodo_pago='dividido' AND metodo_virtual='tarjeta' THEN COALESCE(monto_virtual,0) ELSE 0 END),0) FROM v
+                UNION ALL
+                SELECT 'mercadopago',
+                    COUNT(*) FILTER (WHERE metodo_pago='mercadopago' OR (metodo_pago='dividido' AND metodo_virtual='mercadopago')),
+                    COALESCE(SUM(CASE WHEN metodo_pago='mercadopago' THEN total WHEN metodo_pago='dividido' AND metodo_virtual='mercadopago' THEN COALESCE(monto_virtual,0) ELSE 0 END),0) FROM v
+                UNION ALL
+                SELECT 'cuenta_corriente',
+                    COUNT(*) FILTER (WHERE metodo_pago='cuenta_corriente'),
+                    COALESCE(SUM(CASE WHEN metodo_pago='cuenta_corriente' THEN total ELSE 0 END),0) FROM v
+            ) t WHERE total > 0 ORDER BY total DESC
         `, [negocio_id, inicioMes, finMes]);
 
         const topProductos = await db.query(`
@@ -409,15 +432,15 @@ router.get('/dashboard', async (req, res) => {
 
         const diaDetalle = await db.query(`
             SELECT
-                COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total END), 0) AS efectivo,
-                COUNT(CASE WHEN metodo_pago = 'efectivo' THEN 1 END) AS efectivo_cant,
-                COALESCE(SUM(CASE WHEN metodo_pago = 'transferencia' THEN total END), 0) AS transferencia,
-                COUNT(CASE WHEN metodo_pago = 'transferencia' THEN 1 END) AS transferencia_cant,
-                COALESCE(SUM(CASE WHEN metodo_pago = 'tarjeta' THEN total END), 0) AS tarjeta,
-                COUNT(CASE WHEN metodo_pago = 'tarjeta' THEN 1 END) AS tarjeta_cant,
-                COALESCE(SUM(CASE WHEN metodo_pago = 'mercadopago' THEN total END), 0) AS mercadopago,
-                COUNT(CASE WHEN metodo_pago = 'mercadopago' THEN 1 END) AS mercadopago_cant,
-                COALESCE(SUM(CASE WHEN metodo_pago NOT IN ('efectivo','transferencia','tarjeta','mercadopago') THEN total END), 0) AS otros,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total WHEN metodo_pago = 'dividido' THEN COALESCE(monto_efectivo,0) END), 0) AS efectivo,
+                COUNT(CASE WHEN metodo_pago IN ('efectivo','dividido') THEN 1 END) AS efectivo_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'transferencia' THEN total WHEN metodo_pago = 'dividido' AND metodo_virtual = 'transferencia' THEN COALESCE(monto_virtual,0) END), 0) AS transferencia,
+                COUNT(CASE WHEN metodo_pago = 'transferencia' OR (metodo_pago = 'dividido' AND metodo_virtual = 'transferencia') THEN 1 END) AS transferencia_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'tarjeta' THEN total WHEN metodo_pago = 'dividido' AND metodo_virtual = 'tarjeta' THEN COALESCE(monto_virtual,0) END), 0) AS tarjeta,
+                COUNT(CASE WHEN metodo_pago = 'tarjeta' OR (metodo_pago = 'dividido' AND metodo_virtual = 'tarjeta') THEN 1 END) AS tarjeta_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago = 'mercadopago' THEN total WHEN metodo_pago = 'dividido' AND metodo_virtual = 'mercadopago' THEN COALESCE(monto_virtual,0) END), 0) AS mercadopago,
+                COUNT(CASE WHEN metodo_pago = 'mercadopago' OR (metodo_pago = 'dividido' AND metodo_virtual = 'mercadopago') THEN 1 END) AS mercadopago_cant,
+                COALESCE(SUM(CASE WHEN metodo_pago NOT IN ('efectivo','transferencia','tarjeta','mercadopago','dividido') THEN total END), 0) AS otros,
                 COUNT(CASE WHEN tipo_facturacion = 'electronica' THEN 1 END) AS facturadas,
                 COALESCE(SUM(CASE WHEN tipo_facturacion = 'electronica' THEN total END), 0) AS facturado_electronico,
                 COUNT(*) AS total_ventas,
@@ -498,8 +521,8 @@ router.get('/facturado-mes', async (req, res) => {
                 TO_CHAR(fecha, 'Month') AS nombre_mes,
                 COUNT(*) AS total_ventas,
                 ROUND(COALESCE(SUM(total), 0)::numeric, 2) AS facturado_mes,
-                ROUND(COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total ELSE 0 END), 0)::numeric, 2) AS efectivo,
-                ROUND(COALESCE(SUM(CASE WHEN metodo_pago != 'efectivo' THEN total ELSE 0 END), 0)::numeric, 2) AS otros_medios
+                ROUND(COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total WHEN metodo_pago = 'dividido' THEN COALESCE(monto_efectivo,0) ELSE 0 END), 0)::numeric, 2) AS efectivo,
+                ROUND(COALESCE(SUM(CASE WHEN metodo_pago = 'dividido' THEN COALESCE(monto_virtual,0) WHEN metodo_pago != 'efectivo' THEN total ELSE 0 END), 0)::numeric, 2) AS otros_medios
             FROM ventas
             WHERE negocio_id = $1
               AND anulada = FALSE

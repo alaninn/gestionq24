@@ -600,6 +600,11 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
 }, ref) {
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [efectivoEntregado, setEfectivoEntregado] = useState('');
+  // Pago dividido: parte efectivo + parte por un medio virtual
+  const [montoEfectivoDiv, setMontoEfectivoDiv] = useState('');
+  const [montoVirtualDiv, setMontoVirtualDiv] = useState('');
+  const [metodoVirtualDiv, setMetodoVirtualDiv] = useState('transferencia');
+  const [facturarTodo, setFacturarTodo] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [buscarCliente, setBuscarCliente] = useState('');
   const [clientes, setClientes] = useState([]);
@@ -643,7 +648,15 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
     { id: 'mercadopago', label: '📱 Mercado Pago' },
     { id: 'transferencia', label: '🏦 Transferencia' },
     { id: 'cuenta_corriente', label: '📋 Cuenta Corriente' },
-  ].filter(m => m.id === 'cuenta_corriente' || metodosActivos.includes(m.id));
+    { id: 'dividido', label: '🔀 Pago dividido' },
+  ].filter(m => m.id === 'cuenta_corriente' || m.id === 'dividido' || metodosActivos.includes(m.id));
+
+  // Opciones para la parte virtual del pago dividido (las que estén activas)
+  const mediosVirtuales = [
+    { id: 'transferencia', label: '🏦 Transferencia' },
+    { id: 'mercadopago', label: '📱 Mercado Pago' },
+    { id: 'tarjeta', label: '💳 Tarjeta' },
+  ].filter(m => metodosActivos.includes(m.id));
 
   useEffect(() => {
     if (buscarCliente.trim().length > 1) {
@@ -659,6 +672,24 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
   const totalFinal = total + recargoTarjeta;
   const vuelto = metodoPago === 'efectivo' ? (parseFloat(efectivoEntregado) || 0) - totalFinal : 0;
 
+  // Pago dividido: partes y límite de aviso por monto virtual alto
+  const efDiv = parseFloat(montoEfectivoDiv) || 0;
+  const viDiv = parseFloat(montoVirtualDiv) || 0;
+  const sumaDiv = efDiv + viDiv;
+  const limiteVirtual = parseFloat(config?.limite_aviso_pago_virtual) || 100000;
+
+  // Al escribir un casillero, completar el otro para que sumen el total (ayuda memoria)
+  const setEfectivoDividido = (val) => {
+    setMontoEfectivoDiv(val);
+    const n = parseFloat(val);
+    if (!isNaN(n)) setMontoVirtualDiv(String(Math.max(0, Math.round((totalFinal - n) * 100) / 100)));
+  };
+  const setVirtualDividido = (val) => {
+    setMontoVirtualDiv(val);
+    const n = parseFloat(val);
+    if (!isNaN(n)) setMontoEfectivoDiv(String(Math.max(0, Math.round((totalFinal - n) * 100) / 100)));
+  };
+
   const confirmar = async () => {
     if (metodoPago === 'cuenta_corriente' && !clienteSeleccionado) {
       alert('Seleccioná un cliente para la cuenta corriente');
@@ -672,6 +703,26 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
         return;
       }
     }
+
+    // Pago dividido: las partes deben sumar el total
+    if (metodoPago === 'dividido') {
+      if (efDiv <= 0 || viDiv <= 0) {
+        alert('Cargá el monto en efectivo y el monto virtual.');
+        return;
+      }
+      if (Math.abs(sumaDiv - totalFinal) > 1) {
+        alert(`Las partes deben sumar el total (${fmt(totalFinal)}). Ahora suman ${fmt(sumaDiv)}.`);
+        return;
+      }
+    }
+
+    // Aviso por monto virtual alto (evita errores de tipeo)
+    const montoVirtualACobrar = metodoPago === 'dividido' ? viDiv
+      : (['transferencia', 'mercadopago', 'tarjeta'].includes(metodoPago) ? totalFinal : 0);
+    if (montoVirtualACobrar > limiteVirtual) {
+      if (!window.confirm(`⚠️ Vas a cobrar ${fmt(montoVirtualACobrar)} por un medio virtual.\nEs un monto alto. ¿Confirmás que es correcto?`)) return;
+    }
+
     setCargando(true);
     try {
       await onConfirmar({
@@ -681,6 +732,10 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
         totalFinal,
         clienteId: clienteSeleccionado?.id || null,
         esFiado: metodoPago === 'cuenta_corriente',
+        montoEfectivo: metodoPago === 'dividido' ? efDiv : null,
+        montoVirtual: metodoPago === 'dividido' ? viDiv : null,
+        metodoVirtual: metodoPago === 'dividido' ? metodoVirtualDiv : null,
+        facturarTodo,
       });
     } finally { setCargando(false); }
   };
@@ -799,6 +854,58 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
             </div>
           )}
 
+          {/* Pago dividido */}
+          {metodoPago === 'dividido' && (
+            <div className="space-y-3 p-4 bg-indigo-50 rounded-xl border border-indigo-200">
+              <p className="text-xs text-indigo-700">
+                💡 Cargá cuánto paga en efectivo y cuánto por medio virtual. Al completar uno, se autocompleta el otro para que sumen el total.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">💵 Efectivo</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
+                    <input type="number" min="0" value={montoEfectivoDiv}
+                      onChange={(e) => setEfectivoDividido(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="0" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">🔀 Virtual</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
+                    <input type="number" min="0" value={montoVirtualDiv}
+                      onChange={(e) => setVirtualDividido(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="0" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Medio de la parte virtual</label>
+                <select value={metodoVirtualDiv} onChange={(e) => setMetodoVirtualDiv(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {(mediosVirtuales.length ? mediosVirtuales : [{ id: 'transferencia', label: '🏦 Transferencia' }]).map(m => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Ayuda memoria del estado de la suma */}
+              <div className={`text-sm font-medium rounded-lg px-3 py-2 ${
+                Math.abs(sumaDiv - totalFinal) <= 1 && sumaDiv > 0
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}>
+                {sumaDiv === 0
+                  ? `Total a repartir: ${fmt(totalFinal)}`
+                  : Math.abs(sumaDiv - totalFinal) <= 1
+                    ? `✅ Suma correcta: ${fmt(sumaDiv)}`
+                    : sumaDiv < totalFinal
+                      ? `Faltan ${fmt(totalFinal - sumaDiv)} para llegar al total (${fmt(totalFinal)})`
+                      : `Te pasaste ${fmt(sumaDiv - totalFinal)} del total (${fmt(totalFinal)})`}
+              </div>
+            </div>
+          )}
+
           {/* Facturación Electrónica */}
           {config?.facturacion_electronica_activa && (
             <div className="space-y-3">
@@ -829,6 +936,22 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
               {/* Campos de facturación electrónica */}
               {facturacionElectronica && (
                 <div className="space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  {/* En pago dividido, por defecto se factura solo la parte virtual */}
+                  {metodoPago === 'dividido' && (
+                    <div className="space-y-2">
+                      <label className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer">
+                        <span className="text-sm text-gray-700">Facturar todo (efectivo + virtual)</span>
+                        <input type="checkbox" checked={facturarTodo}
+                          onChange={(e) => setFacturarTodo(e.target.checked)}
+                          className="w-5 h-5 accent-green-600" />
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        {facturarTodo
+                          ? `Se factura el total: ${fmt(totalFinal)}`
+                          : `Se factura solo la parte virtual: ${fmt(viDiv)} (la parte en efectivo no se factura)`}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Comprobante</label>
                     <select
@@ -2398,7 +2521,7 @@ useEffect(() => {
     setRedondeoVenta(ajuste);
   };
 
-  const confirmarVenta = async ({ metodoPago, descuento, recargo, totalFinal, clienteId, esFiado }) => {
+  const confirmarVenta = async ({ metodoPago, descuento, recargo, totalFinal, clienteId, esFiado, montoEfectivo, montoVirtual, metodoVirtual, facturarTodo }) => {
     // Crear una sola venta unificada con todos los items (rápidos + stock)
     const todosLosItems = carritoActivo.map(item => ({
       producto_id: item.esRapida ? null : item.producto_id,
@@ -2420,7 +2543,15 @@ useEffect(() => {
       cliente_id: clienteId || null,
       es_fiado: esFiado || false,
       tipo_facturacion: facturacionElectronica ? 'electronica' : 'x',
+      monto_efectivo: metodoPago === 'dividido' ? (parseFloat(montoEfectivo) || 0) : null,
+      monto_virtual: metodoPago === 'dividido' ? (parseFloat(montoVirtual) || 0) : null,
+      metodo_virtual: metodoPago === 'dividido' ? (metodoVirtual || 'transferencia') : null,
     };
+
+    // En pago dividido se factura solo la parte virtual (salvo "Facturar todo")
+    const importeFactura = (metodoPago === 'dividido' && !facturarTodo)
+      ? (parseFloat(montoVirtual) || 0)
+      : parseFloat(totalFinal);
 
     // ---- MODO OFFLINE ----
     if (!online) {
@@ -2458,15 +2589,15 @@ useEffect(() => {
             // Condición IVA receptor (RG 5616): A → RI; CUIT → lo elegido (def. monotributo); resto → consumidor final
             condicion_iva_receptor: [1, 2, 3].includes(tipoComprobante) ? 1
               : (tipoDocumento === 80 ? (condicionIvaReceptor || 6) : 5),
-            importe_total: parseFloat(totalFinal),
+            importe_total: importeFactura,
 // Factura C (monotributista): IVA = 0, neto = total
 // Factura A/B (responsable inscripto): IVA = 21%
 importe_neto: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
-    ? parseFloat(totalFinal)                           // Factura C: neto = total (sin IVA)
-    : parseFloat((totalFinal / 1.21).toFixed(2)),      // Factura A/B: neto = total / 1.21
+    ? importeFactura                                   // Factura C: neto = total (sin IVA)
+    : parseFloat((importeFactura / 1.21).toFixed(2)),  // Factura A/B: neto = total / 1.21
 importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
     ? 0                                                // Factura C: sin IVA
-    : parseFloat((totalFinal - totalFinal / 1.21).toFixed(2)), // Factura A/B: IVA = total - neto
+    : parseFloat((importeFactura - importeFactura / 1.21).toFixed(2)), // Factura A/B: IVA = total - neto
           };
 
           const resComprobante = await api.post('/api/arca/emitir', comprobanteData);

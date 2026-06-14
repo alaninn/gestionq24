@@ -304,6 +304,17 @@ ALTER TABLE comprobantes_electronicos ADD COLUMN IF NOT EXISTS condicion_iva_rec
 -- fecha impresa coincidan SIEMPRE con lo que registró AFIP (sin desfasajes de zona horaria).
 ALTER TABLE comprobantes_electronicos ADD COLUMN IF NOT EXISTS cbte_fecha VARCHAR(8);
 
+-- Pago dividido: una venta puede pagarse parte en efectivo y parte por un medio
+-- virtual (transferencia/MP/tarjeta). metodo_pago = 'dividido' y se guardan los montos
+-- de cada parte para que el cierre de caja y los reportes sigan cuadrando.
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS monto_efectivo NUMERIC(12,2);
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS monto_virtual NUMERIC(12,2);
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS metodo_virtual VARCHAR(30);
+
+-- Monto a partir del cual el POS pide confirmación al cobrar por un medio virtual
+-- (aviso anti-error de tipeo). Default $100.000, editable por negocio.
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS limite_aviso_pago_virtual NUMERIC(12,2) DEFAULT 100000;
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

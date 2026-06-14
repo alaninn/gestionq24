@@ -14,9 +14,24 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.7';
+export const VERSION_ACTUAL = '2.9.8';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.8',
+    fecha: '2026-06-14',
+    titulo: 'Pago dividido y aviso por montos virtuales',
+    destacados: [
+      {
+        titulo: '🔀 Pago dividido (efectivo + virtual)',
+        detalle: 'En el cobro hay un método nuevo "Pago dividido": el cliente paga una parte en efectivo y otra por transferencia, Mercado Pago o tarjeta. Cargás un casillero y el otro se completa solo para que sumen el total. La caja sigue cuadrando: la parte efectivo cuenta como efectivo y la virtual en su medio. Si facturás, por defecto se factura solo la parte virtual (con la opción "Facturar todo" para el total).',
+      },
+    ],
+    cambios: [
+      { t: 'Aviso anti-error: si cobrás por un medio virtual (transferencia/MP/tarjeta) por encima de un monto configurable (default $100.000), el POS pide confirmar. Se ajusta en Configuración.' },
+      { t: 'Corregido: en algunos monitores el botón "Registrar pago" del modal de gastos quedaba tapado; ahora el modal se adapta a la pantalla.' },
+    ],
+  },
   {
     version: '2.9.7',
     fecha: '2026-06-14',

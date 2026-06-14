@@ -53,7 +53,17 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { turno_id, cliente_id, items, metodo_pago, descuento, recargo, es_fiado, total } = req.body;
+        const { turno_id, cliente_id, items, metodo_pago, descuento, recargo, es_fiado, total,
+                monto_efectivo, monto_virtual, metodo_virtual } = req.body;
+
+        // Pago dividido: validar que las partes sumen el total
+        const esDividido = metodo_pago === 'dividido';
+        const efectivoParte = esDividido ? (parseFloat(monto_efectivo) || 0) : null;
+        const virtualParte = esDividido ? (parseFloat(monto_virtual) || 0) : null;
+        const virtualMetodo = esDividido ? (metodo_virtual || 'transferencia') : null;
+        if (esDividido && Math.abs((efectivoParte + virtualParte) - parseFloat(total)) > 1) {
+            return res.status(400).json({ error: 'En pago dividido, efectivo + virtual debe igualar el total' });
+        }
 
         if (!items || items.length === 0) {
             return res.status(400).json({ error: 'La venta debe tener al menos un producto' });
@@ -152,9 +162,11 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         }
 
         const ventaResult = await db.query(`
-            INSERT INTO ventas (turno_id, cliente_id, total, descuento, recargo, metodo_pago, es_fiado, negocio_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
-        `, [turno_id || null, cliente_id || null, total, descuento || 0, recargo || 0, metodo_pago || 'efectivo', es_fiado || false, negocio_id]);
+            INSERT INTO ventas (turno_id, cliente_id, total, descuento, recargo, metodo_pago, es_fiado, negocio_id,
+                                monto_efectivo, monto_virtual, metodo_virtual)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+        `, [turno_id || null, cliente_id || null, total, descuento || 0, recargo || 0, metodo_pago || 'efectivo', es_fiado || false, negocio_id,
+            efectivoParte, virtualParte, virtualMetodo]);
 
         const ventaId = ventaResult.rows[0].id;
 

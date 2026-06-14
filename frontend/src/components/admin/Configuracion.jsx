@@ -619,6 +619,31 @@ function Configuracion() {
                   </div>
                 </div>
 
+                {/* Aviso por monto virtual alto (anti-error de tipeo) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    ⚠️ Aviso por monto virtual alto
+                  </h3>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Pedir confirmación si el cobro virtual supera</label>
+                      <div className="relative w-40">
+                        <span className="absolute left-3 top-2 text-gray-500">$</span>
+                        <input
+                          type="number"
+                          value={config?.limite_aviso_pago_virtual ?? 100000}
+                          onChange={(e) => set('limite_aviso_pago_virtual', e.target.value)}
+                          min="0" step="1000"
+                          className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Al cobrar por transferencia, Mercado Pago o tarjeta (o la parte virtual de un pago dividido) por encima de este monto, el POS pide confirmar para evitar errores de tipeo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Recargo general (botón manual en el carrito del POS) */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
