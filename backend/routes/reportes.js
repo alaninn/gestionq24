@@ -2,11 +2,34 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 
+// Sanea una fecha que llega por query: devuelve 'YYYY-MM-DD' válido o null.
+// Evita el error de PostgreSQL "DateTimeParseError" cuando llega '' o basura.
+function fechaONull(v) {
+    if (!v || typeof v !== 'string') return null;
+    const s = v.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const d = new Date(s + 'T00:00:00');
+    return isNaN(d.getTime()) ? null : s;
+}
+
+// Rango seguro para reportes: si no mandan fechas válidas, usa un rango amplio.
+function rangoSeguro(req) {
+    const hoy = new Date();
+    const offset = hoy.getTimezoneOffset() * 60000;
+    const hoyStr = new Date(hoy - offset).toISOString().split('T')[0];
+    return {
+        desde: fechaONull(req.query.fecha_desde) || '2000-01-01',
+        hasta: fechaONull(req.query.fecha_hasta) || hoyStr,
+    };
+}
+
 router.get('/historial', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta, turno_id } = req.query;
+        const { turno_id } = req.query;
+        const fecha_desde = fechaONull(req.query.fecha_desde);
+        const fecha_hasta = fechaONull(req.query.fecha_hasta);
 
         let consulta = `
             SELECT v.*, COUNT(vi.id) as cantidad_items,
@@ -72,10 +95,10 @@ router.get('/productos-vendidos', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta } = req.query;
+        const { desde, hasta } = rangoSeguro(req);
 
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 vi.producto_id,
                 vi.nombre_producto,
                 p.codigo,
@@ -93,7 +116,7 @@ router.get('/productos-vendidos', async (req, res) => {
               AND v.negocio_id = $3
             GROUP BY vi.producto_id, vi.nombre_producto, p.codigo, c.nombre
             ORDER BY total_cantidad DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+        `, [desde, hasta, negocio_id]);
 
         res.json(resultado.rows);
     } catch (error) {
@@ -106,7 +129,7 @@ router.get('/por-turno', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta } = req.query;
+        const { desde, hasta } = rangoSeguro(req);
 
         const resultado = await db.query(`
             SELECT
@@ -133,7 +156,7 @@ router.get('/por-turno', async (req, res) => {
               AND t.negocio_id = $3
             GROUP BY t.id, g.total_gastos, uc.nombre
             ORDER BY t.fecha_apertura DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+        `, [desde, hasta, negocio_id]);
 
         res.json(resultado.rows);
     } catch (error) {
@@ -146,7 +169,7 @@ router.get('/rentabilidad', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta } = req.query;
+        const { desde, hasta } = rangoSeguro(req);
 
         const porProducto = await db.query(`
             SELECT 
@@ -169,7 +192,7 @@ router.get('/rentabilidad', async (req, res) => {
               AND v.negocio_id = $3
             GROUP BY vi.nombre_producto, p.codigo, p.precio_costo
             ORDER BY ganancia DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+        `, [desde, hasta, negocio_id]);
 
         const porCategoria = await db.query(`
             SELECT 
@@ -187,7 +210,7 @@ router.get('/rentabilidad', async (req, res) => {
               AND v.negocio_id = $3
             GROUP BY c.nombre
             ORDER BY ganancia DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+        `, [desde, hasta, negocio_id]);
 
         res.json({ porProducto: porProducto.rows, porCategoria: porCategoria.rows });
     } catch (error) {
@@ -227,10 +250,11 @@ router.get('/por-categoria', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta, categoria_id } = req.query;
+        const { categoria_id } = req.query;
+        const { desde, hasta } = rangoSeguro(req);
 
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 vi.nombre_producto, p.codigo,
                 SUM(vi.cantidad) AS total_cantidad,
                 SUM(vi.subtotal) AS total_facturado,
@@ -247,7 +271,7 @@ router.get('/por-categoria', async (req, res) => {
               AND v.negocio_id = $4
             GROUP BY vi.nombre_producto, p.codigo, p.precio_costo
             ORDER BY total_cantidad DESC
-        `, [fecha_desde, fecha_hasta, categoria_id, negocio_id]);
+        `, [desde, hasta, categoria_id, negocio_id]);
 
         const totalVendido = resultado.rows.reduce((acc, r) => acc + parseFloat(r.total_facturado), 0);
         const totalCosto = resultado.rows.reduce((acc, r) => acc + parseFloat(r.total_costo || 0), 0);
@@ -268,7 +292,7 @@ router.get('/control-caja', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_desde, fecha_hasta } = req.query;
+        const { desde, hasta } = rangoSeguro(req);
 
         const resultado = await db.query(`
             SELECT
@@ -294,7 +318,7 @@ router.get('/control-caja', async (req, res) => {
               AND t.negocio_id = $3
             GROUP BY t.id, g.total_gastos, uc.nombre
             ORDER BY t.fecha_apertura DESC
-        `, [fecha_desde, fecha_hasta, negocio_id]);
+        `, [desde, hasta, negocio_id]);
 
         const totales = {
             total_ventas: resultado.rows.reduce((a, r) => a + parseInt(r.total_ventas), 0),
@@ -381,7 +405,7 @@ router.get('/dashboard', async (req, res) => {
         // Detalle del DÍA (hoy por defecto, o ?fecha=YYYY-MM-DD para otro día):
         // desglose por método de pago, facturación electrónica, gastos por origen,
         // ventas por hora y productos más vendidos del día.
-        const fechaDia = req.query.fecha || null;
+        const fechaDia = fechaONull(req.query.fecha);
 
         const diaDetalle = await db.query(`
             SELECT
