@@ -77,9 +77,12 @@ app.use('/api/clientes', verificarToken, validarLimitePlan, rutasClientes);
 // Proveedores
 app.use('/api/proveedores', verificarToken, validarLimitePlan, rutasProveedores);
 
-// Reportes — requiere permiso y plan premium para avanzados
-app.use('/api/reportes/avanzados', verificarToken, validarLimitePlan, verificarPermiso('reportes', 'ver'), puedeUsarFuncion('reportes_avanzados'));
-app.use('/api/reportes', verificarToken, validarLimitePlan, verificarPermiso('reportes', 'ver'), rutasReportes);
+// Reportes — son solo lecturas del propio negocio. La VISIBILIDAD de cada
+// panel (Dashboard, Reportes, Control de Caja, Resumen Fiscal) la controla el
+// menú según los permisos del usuario; acá basta con estar logueado.
+// Los reportes "avanzados" sí exigen plan premium.
+app.use('/api/reportes/avanzados', verificarToken, validarLimitePlan, puedeUsarFuncion('reportes_avanzados'));
+app.use('/api/reportes', verificarToken, validarLimitePlan, rutasReportes);
 
 // Configuracion — solo admin
 app.use('/api/configuracion', verificarToken, validarLimitePlan, rutasConfiguracion);

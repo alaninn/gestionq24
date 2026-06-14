@@ -14,9 +14,27 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.0';
+export const VERSION_ACTUAL = '2.9.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.1',
+    fecha: '2026-06-14',
+    titulo: 'Permisos por panel del menú + plantillas de rol',
+    destacados: [
+      {
+        titulo: '🔐 Elegí qué ve cada empleado',
+        detalle: 'En Usuarios, ahora cada panel del menú (Dashboard, Productos, Stock, Control de Caja, Cuentas Corrientes, Proveedores, Gastos, Resumen Fiscal, Reportes, Soporte y el POS) es un permiso que el administrador activa o desactiva por usuario. El que no tiene "Ver panel" de una sección, no la ve en su menú. Usuarios y Configuración quedan siempre solo para administradores por seguridad.',
+      },
+      {
+        titulo: '⚡ Plantillas de rol',
+        detalle: 'Al crear o editar un empleado podés aplicar una plantilla rápida (Encargado o Cajero) que carga los permisos típicos de ese rol, y después ajustás lo que quieras. El editor de permisos quedó agrupado por panel con una descripción de cada uno.',
+      },
+    ],
+    cambios: [
+      { t: 'Corregido un error de pantalla en blanco/errores en Reportes cuando se filtraba por fechas vacías o inválidas.' },
+    ],
+  },
   {
     version: '2.9.0',
     fecha: '2026-06-14',

@@ -14,32 +14,45 @@ const ROLES = [
   // Nota: el rol 'superadmin' nunca aparece acá — solo existe uno y sos vos
 ];
 
-// Permisos agrupados por módulo para mostrarlos ordenados en el editor
+// Permisos agrupados por PANEL del menú. El "ver" controla si el panel
+// aparece en el menú del usuario; las demás acciones, qué puede hacer dentro.
 const PERMISOS_GRUPOS = [
-  { modulo: 'productos', titulo: '📦 Productos', acciones: [
-    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+  { modulo: 'dashboard', titulo: '📊 Dashboard', desc: 'Resumen del día y del negocio', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
+  ]},
+  { modulo: 'productos', titulo: '📦 Productos', desc: 'Productos y categorías', acciones: [
+    { accion: 'ver', label: 'Ver panel' }, { accion: 'crear', label: 'Crear' },
     { accion: 'editar', label: 'Editar' }, { accion: 'eliminar', label: 'Eliminar' },
   ]},
-  { modulo: 'ventas', titulo: '🛒 Ventas', acciones: [
-    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
-    { accion: 'editar', label: 'Editar' }, { accion: 'anular', label: 'Anular' },
+  { modulo: 'stock', titulo: '📉 Stock', desc: 'Inventario por góndola y conteo', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
   ]},
-  { modulo: 'gastos', titulo: '💸 Gastos', acciones: [
-    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
-    { accion: 'editar', label: 'Editar' }, { accion: 'eliminar', label: 'Eliminar' },
+  { modulo: 'caja', titulo: '🏦 Control de Caja', desc: 'Cierres + abrir/cerrar caja en el POS', acciones: [
+    { accion: 'ver', label: 'Ver panel' }, { accion: 'abrir', label: 'Abrir caja' }, { accion: 'cerrar', label: 'Cerrar caja' },
   ]},
-  { modulo: 'proveedores', titulo: '🚚 Proveedores', acciones: [
-    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear' },
+  { modulo: 'clientes', titulo: '👥 Cuentas Corrientes', desc: 'Clientes y fiados', acciones: [
+    { accion: 'ver', label: 'Ver panel' }, { accion: 'crear', label: 'Crear/cobrar' },
+  ]},
+  { modulo: 'proveedores', titulo: '🚚 Proveedores', desc: 'Proveedores y pagos', acciones: [
+    { accion: 'ver', label: 'Ver panel' }, { accion: 'crear', label: 'Crear' },
     { accion: 'editar', label: 'Editar/pagar' }, { accion: 'eliminar', label: 'Eliminar' },
   ]},
-  { modulo: 'clientes', titulo: '👥 Clientes / Cta. corriente', acciones: [
-    { accion: 'ver', label: 'Ver' }, { accion: 'crear', label: 'Crear/cobrar' },
+  { modulo: 'gastos', titulo: '💸 Gastos', desc: 'Libro diario de gastos', acciones: [
+    { accion: 'ver', label: 'Ver panel' }, { accion: 'crear', label: 'Crear' },
+    { accion: 'editar', label: 'Editar' }, { accion: 'eliminar', label: 'Eliminar' },
   ]},
-  { modulo: 'reportes', titulo: '📊 Reportes', acciones: [
-    { accion: 'ver', label: 'Ver' },
+  { modulo: 'resumen_fiscal', titulo: '🧾 Resumen Fiscal', desc: 'IVA ventas/compras (Premium)', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
   ]},
-  { modulo: 'caja', titulo: '🏦 Caja', acciones: [
-    { accion: 'abrir', label: 'Abrir' }, { accion: 'cerrar', label: 'Cerrar' },
+  { modulo: 'reportes', titulo: '📈 Reportes', desc: 'Historial y estadísticas', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
+  ]},
+  { modulo: 'soporte', titulo: '🎫 Soporte', desc: 'Tickets de soporte', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
+  ]},
+  { modulo: 'ventas', titulo: '🛒 Ventas (POS)', desc: 'Vender y manejar ventas', acciones: [
+    { accion: 'crear', label: 'Vender' }, { accion: 'ver', label: 'Ver ventas' },
+    { accion: 'editar', label: 'Editar' }, { accion: 'anular', label: 'Anular' },
   ]},
 ];
 
@@ -48,31 +61,40 @@ const PERMISOS_DISPONIBLES = PERMISOS_GRUPOS.flatMap(g =>
   g.acciones.map(a => ({ modulo: g.modulo, accion: a.accion, label: `${g.titulo.replace(/^[^ ]+ /, '')}: ${a.label}` }))
 );
 
+// Usuarios y Configuración quedan SIEMPRE solo para administradores (no se
+// otorgan a empleados por seguridad).
 const PERMISOS_DEFAULT = {
   admin: {
+    dashboard: ['ver'],
     productos: ['ver', 'crear', 'editar', 'eliminar'],
-    ventas: ['ver', 'crear', 'editar', 'anular'],
-    gastos: ['ver', 'crear', 'editar', 'eliminar'],
-    proveedores: ['ver', 'crear', 'editar', 'eliminar'],
-    reportes: ['ver'],
+    stock: ['ver'],
+    caja: ['ver', 'abrir', 'cerrar'],
     clientes: ['ver', 'crear'],
-    caja: ['abrir', 'cerrar'],
+    proveedores: ['ver', 'crear', 'editar', 'eliminar'],
+    gastos: ['ver', 'crear', 'editar', 'eliminar'],
+    resumen_fiscal: ['ver'],
+    reportes: ['ver'],
+    soporte: ['ver'],
+    ventas: ['ver', 'crear', 'editar', 'anular'],
   },
   encargado: {
+    dashboard: ['ver'],
     productos: ['ver', 'crear', 'editar'],
-    ventas: ['ver', 'crear'],
-    gastos: ['ver', 'crear'],
-    proveedores: ['ver', 'crear', 'editar'],
-    reportes: ['ver'],
+    stock: ['ver'],
+    caja: ['ver', 'abrir', 'cerrar'],
     clientes: ['ver', 'crear'],
-    caja: ['abrir', 'cerrar'],
+    proveedores: ['ver', 'crear', 'editar'],
+    gastos: ['ver', 'crear'],
+    resumen_fiscal: ['ver'],
+    reportes: ['ver'],
+    ventas: ['ver', 'crear'],
   },
   cajero: {
-    ventas: ['crear'],
-    gastos: ['crear'],
-    proveedores: ['ver', 'crear'],
-    clientes: ['ver'],
     caja: ['abrir', 'cerrar'],
+    clientes: ['ver'],
+    proveedores: ['ver', 'crear'],
+    gastos: ['crear'],
+    ventas: ['crear'],
   },
 };
 
@@ -446,13 +468,33 @@ function Usuarios() {
                 </div>
               </div>
 
+              {/* Plantillas de rol: aplican un set de permisos predefinido */}
+              {!['admin', 'superadmin'].includes(form.rol) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-blue-800 mb-2">⚡ Plantillas rápidas — aplican los permisos típicos de cada rol (después podés ajustar):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'encargado', label: '👔 Encargado', desc: 'Casi todo, menos Usuarios y Config' },
+                      { id: 'cajero', label: '🧑‍💼 Cajero', desc: 'Solo POS + caja + fiados' },
+                    ].map(p => (
+                      <button key={p.id} type="button"
+                        onClick={() => setForm(f => ({ ...f, permisos: JSON.parse(JSON.stringify(PERMISOS_DEFAULT[p.id] || {})) }))}
+                        title={p.desc}
+                        className="text-xs bg-white border border-blue-300 hover:bg-blue-100 text-blue-800 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Permisos */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Permisos</label>
+                  <label className="block text-sm font-medium text-gray-700">Permisos por panel</label>
                   <div className="flex gap-2">
                     <button type="button"
-                      onClick={() => setForm(p => ({ ...p, permisos: PERMISOS_DEFAULT.admin }))}
+                      onClick={() => setForm(p => ({ ...p, permisos: JSON.parse(JSON.stringify(PERMISOS_DEFAULT.admin)) }))}
                       className="text-xs text-purple-600 hover:underline">
                       Todos
                     </button>
@@ -481,9 +523,12 @@ function Usuarios() {
                 })()}
                 <div className="border border-gray-200 rounded-xl p-3 max-h-64 overflow-y-auto bg-gray-50 space-y-3">
                   {PERMISOS_GRUPOS.map(grupo => (
-                    <div key={grupo.modulo}>
-                      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{grupo.titulo}</p>
-                      <div className="flex flex-wrap gap-1.5">
+                    <div key={grupo.modulo} className="pb-2 border-b border-gray-200 last:border-0">
+                      <div className="flex items-baseline justify-between">
+                        <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">{grupo.titulo}</p>
+                        {grupo.desc && <span className="text-[10px] text-gray-400">{grupo.desc}</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
                         {grupo.acciones.map(a => {
                           const activo = tienePermiso(grupo.modulo, a.accion);
                           return (
@@ -502,6 +547,7 @@ function Usuarios() {
                     </div>
                   ))}
                 </div>
+                <p className="text-[11px] text-gray-400 mt-1">🔒 Usuarios y Configuración quedan siempre solo para administradores.</p>
               </div>
 
               {/* Estado — solo al editar */}

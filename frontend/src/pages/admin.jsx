@@ -1,4 +1,4 @@
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Dashboard from '../components/admin/Dashboard';
 import Productos from '../components/admin/Productos';
 import Categorias from '../components/admin/Categorias';
@@ -86,6 +86,22 @@ function Admin() {
   const { colorPrimario } = useTema();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
+
+  // Primera sección que el usuario puede ver (para redirigir si no tiene Dashboard)
+  const primeraSeccionDisponible = () => {
+    const orden = [
+      ['productos', 'ver', '/admin/productos'],
+      ['stock', 'ver', '/admin/stock'],
+      ['caja', 'ver', '/admin/caja'],
+      ['clientes', 'ver', '/admin/cuentas-corrientes'],
+      ['proveedores', 'ver', '/admin/proveedores'],
+      ['gastos', 'ver', '/admin/gastos'],
+      ['reportes', 'ver', '/admin/reportes'],
+      ['soporte', 'ver', '/admin/soporte'],
+    ];
+    const m = orden.find(([mod, acc]) => tienePermiso(mod, acc));
+    return m ? m[2] : '/pos';
+  };
   
   // Detectar si superadmin está accediendo otro negocio
   const accesoSuperadminNegocio = localStorage.getItem('acceso_superadmin_negocio');
@@ -148,20 +164,27 @@ function Admin() {
             <span>Punto de Venta</span>
           </button>
 
-          <NavLink to="/admin" icon="📊" label="Dashboard" exact />
+          {tienePermiso('dashboard', 'ver') && (
+            <NavLink to="/admin" icon="📊" label="Dashboard" exact />
+          )}
 
+          {(tienePermiso('productos', 'ver') || tienePermiso('stock', 'ver')) && (
+            <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
+          )}
           {tienePermiso('productos', 'ver') && (
             <>
-              <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
               <NavLink to="/admin/productos" icon="📦" label="Productos" />
               <NavLink to="/admin/categorias" icon="🏷️" label="Categorías" />
             </>
           )}
+          {tienePermiso('stock', 'ver') && (
+            <NavLink to="/admin/stock" icon="📉" label="Stock" />
+          )}
 
-          {(tienePermiso('ventas', 'ver') || tienePermiso('clientes', 'ver') || tienePermiso('proveedores', 'ver') || tienePermiso('gastos', 'ver')) && (
+          {(tienePermiso('caja', 'ver') || tienePermiso('clientes', 'ver') || tienePermiso('proveedores', 'ver') || tienePermiso('gastos', 'ver') || tienePermiso('resumen_fiscal', 'ver')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Finanzas</p>
           )}
-          {tienePermiso('ventas', 'ver') && (
+          {tienePermiso('caja', 'ver') && (
             <NavLink to="/admin/caja" icon="🏦" label="Control de Caja" />
           )}
           {tienePermiso('clientes', 'ver') && (
@@ -170,19 +193,16 @@ function Admin() {
           {tienePermiso('proveedores', 'ver') && (
             <NavLink to="/admin/proveedores" icon="📦" label="Proveedores" />
           )}
-          {tienePermiso('productos', 'ver') && (
-            <NavLink to="/admin/stock" icon="📉" label="Stock" />
-          )}
           {tienePermiso('gastos', 'ver') && (
             <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
           )}
-          {(tienePermiso('ventas', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
+          {tienePermiso('resumen_fiscal', 'ver') && (
             esPremium
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
 
-          {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver') || ['admin','superadmin'].includes(usuario?.rol)) && (
+          {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
           )}
           {tienePermiso('reportes', 'ver') && (
@@ -272,7 +292,10 @@ function Admin() {
 
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            {/* Index: Dashboard si tiene permiso, sino su primera sección disponible */}
+            <Route path="/" element={
+              tienePermiso('dashboard', 'ver') ? <Dashboard /> : <Navigate to={primeraSeccionDisponible()} replace />
+            } />
             <Route path="/productos" element={<Productos />} />
             <Route path="/categorias" element={<Categorias />} />
             <Route path="/gastos" element={<Gastos />} />
