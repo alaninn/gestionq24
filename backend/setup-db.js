@@ -178,6 +178,20 @@ ALTER TABLE turnos ADD COLUMN IF NOT EXISTS usuario_cierre_id INTEGER;
 ALTER TABLE turnos ADD COLUMN IF NOT EXISTS caja_definida_id INTEGER;
 
 -- =============================================
+-- TABLA: plantillas_permisos
+-- Permisos predefinidos por rol y por negocio (encargado, cajero).
+-- El admin los edita desde la pantalla de Usuarios. Si no hay fila, se usan
+-- los valores por defecto del código.
+-- =============================================
+CREATE TABLE IF NOT EXISTS plantillas_permisos (
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    rol VARCHAR(20) NOT NULL,
+    permisos JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (negocio_id, rol)
+);
+
+-- =============================================
 -- TABLA: planes_config
 -- Límites y funciones de cada plan, editables desde el panel de superadmin.
 -- Si está vacía, el middleware usa los valores por defecto hardcodeados.

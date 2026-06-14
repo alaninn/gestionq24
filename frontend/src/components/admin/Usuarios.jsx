@@ -121,15 +121,36 @@ function Usuarios() {
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
 
+  // Plantillas de permisos del negocio (editables). Arrancan con los defaults.
+  const [plantillas, setPlantillas] = useState({
+    encargado: PERMISOS_DEFAULT.encargado,
+    cajero: PERMISOS_DEFAULT.cajero,
+  });
+  const [mostrarModalPlantillas, setMostrarModalPlantillas] = useState(false);
+  const [plantillaEditando, setPlantillaEditando] = useState('encargado'); // rol que se edita
+  const [permisosPlantilla, setPermisosPlantilla] = useState({});
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
+
+  const cargarPlantillas = async () => {
+    try {
+      const res = await api.get('/api/usuarios/plantillas');
+      setPlantillas({ encargado: res.data.encargado || {}, cajero: res.data.cajero || {} });
+    } catch { /* usa defaults */ }
+  };
+
   const [form, setForm] = useState({
     nombre: '', username: '', email: '', password: '', confirmarPassword: '', rol: 'cajero',
     activo: true, permisos: PERMISOS_DEFAULT.cajero,
   });
 
-  useEffect(() => { cargarUsuarios(); }, []);
+  useEffect(() => { cargarUsuarios(); cargarPlantillas(); }, []);
 
   // El botón "atrás" del celular cierra el modal abierto
   useCerrarConAtras(mostrarModal, () => setMostrarModal(false));
+  useCerrarConAtras(mostrarModalPlantillas, () => setMostrarModalPlantillas(false));
+
+  // Plantilla efectiva (la del negocio o el default) para un rol
+  const plantillaDe = (rol) => plantillas[rol] || PERMISOS_DEFAULT[rol] || {};
 
   const cargarUsuarios = async () => {
     try {
@@ -244,7 +265,42 @@ function Usuarios() {
   };
 
   const cambiarRol = (rol) => {
-    setForm(prev => ({ ...prev, rol, permisos: PERMISOS_DEFAULT[rol] || {} }));
+    // admin = acceso total; encargado/cajero = su plantilla guardada
+    const permisos = rol === 'admin' ? PERMISOS_DEFAULT.admin : JSON.parse(JSON.stringify(plantillaDe(rol)));
+    setForm(prev => ({ ...prev, rol, permisos }));
+  };
+
+  // ---- Modal de plantillas de permisos ----
+  const abrirModalPlantillas = (rol = 'encargado') => {
+    setPlantillaEditando(rol);
+    setPermisosPlantilla(JSON.parse(JSON.stringify(plantillaDe(rol))));
+    setMostrarModalPlantillas(true);
+  };
+
+  const togglePermisoPlantilla = (modulo, accion) => {
+    setPermisosPlantilla(prev => {
+      const p = { ...prev };
+      const lista = p[modulo] ? [...p[modulo]] : [];
+      const i = lista.indexOf(accion);
+      if (i >= 0) lista.splice(i, 1); else lista.push(accion);
+      if (lista.length) p[modulo] = lista; else delete p[modulo];
+      return p;
+    });
+  };
+
+  const guardarPlantilla = async () => {
+    try {
+      setGuardandoPlantilla(true);
+      await api.put(`/api/usuarios/plantillas/${plantillaEditando}`, { permisos: permisosPlantilla });
+      setPlantillas(prev => ({ ...prev, [plantillaEditando]: permisosPlantilla }));
+      setExito(`Plantilla de ${plantillaEditando} guardada`);
+      setMostrarModalPlantillas(false);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar la plantilla');
+    } finally {
+      setGuardandoPlantilla(false);
+    }
   };
 
   const fmtFecha = (f) => f ? new Date(f).toLocaleDateString('es-AR', {
@@ -260,32 +316,46 @@ function Usuarios() {
           <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
           <p className="text-sm text-gray-500">Administrá los accesos de tu equipo</p>
         </div>
-        {!esPremium && usuarios.length >= limiteUsuarios ? (
-          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
-            ⭐ Límite de {limiteUsuarios} usuarios (Plan Estándar). <span className="font-bold ml-1">Necesitás Plan Premium</span>
-          </div>
-        ) : (
-          <button onClick={abrirNuevo}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-            + Nuevo Usuario
+        <div className="flex gap-2">
+          <button onClick={() => abrirModalPlantillas('encargado')}
+            title="Definir qué permisos trae cada rol por defecto"
+            className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors">
+            ⚙️ Plantillas de permisos
           </button>
-        )}
+          {!esPremium && usuarios.length >= limiteUsuarios ? (
+            <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
+              ⭐ Límite de {limiteUsuarios} usuarios (Estándar)
+            </div>
+          ) : (
+            <button onClick={abrirNuevo}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+              + Nuevo Usuario
+            </button>
+          )}
+        </div>
       </div>
 
       {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg">✅ {exito}</div>}
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
 
-      {/* Tarjetas de roles */}
+      {/* Tarjetas de roles — encargado/cajero abren su plantilla */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {ROLES.map(rol => {
           const cant = usuarios.filter(u => u.rol === rol.id).length;
+          const editable = ['encargado', 'cajero'].includes(rol.id);
+          const nPaneles = editable ? Object.keys(plantillaDe(rol.id)).length : null;
           return (
-            <div key={rol.id} className="bg-white rounded-xl p-4 shadow border-l-4 border-gray-200">
+            <div key={rol.id}
+              onClick={editable ? () => abrirModalPlantillas(rol.id) : undefined}
+              className={`bg-white rounded-xl p-4 shadow border-l-4 border-gray-200 ${editable ? 'cursor-pointer hover:shadow-md hover:border-green-300 transition-all' : ''}`}>
               <div className="flex items-center justify-between">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${rol.color}`}>{rol.label}</span>
                 <span className="text-2xl font-bold text-gray-700">{cant}</span>
               </div>
               <p className="text-xs text-gray-400 mt-2">{rol.desc}</p>
+              {editable && (
+                <p className="text-[11px] text-green-600 mt-1 font-medium">⚙️ {nPaneles} módulo(s) · tocá para editar la plantilla</p>
+              )}
             </div>
           );
         })}
@@ -478,7 +548,7 @@ function Usuarios() {
                       { id: 'cajero', label: '🧑‍💼 Cajero', desc: 'Solo POS + caja + fiados' },
                     ].map(p => (
                       <button key={p.id} type="button"
-                        onClick={() => setForm(f => ({ ...f, permisos: JSON.parse(JSON.stringify(PERMISOS_DEFAULT[p.id] || {})) }))}
+                        onClick={() => setForm(f => ({ ...f, permisos: JSON.parse(JSON.stringify(plantillaDe(p.id))) }))}
                         title={p.desc}
                         className="text-xs bg-white border border-blue-300 hover:bg-blue-100 text-blue-800 px-3 py-1.5 rounded-lg font-medium transition-colors">
                         {p.label}
@@ -577,6 +647,78 @@ function Usuarios() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: editar plantillas de permisos por rol */}
+      {mostrarModalPlantillas && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="p-5 border-b bg-gradient-to-r from-slate-700 to-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">⚙️ Plantillas de permisos</h3>
+                <p className="text-slate-300 text-xs mt-0.5">Definí qué trae cada rol. Se aplica al crear/editar usuarios de ese rol.</p>
+              </div>
+              <button onClick={() => setMostrarModalPlantillas(false)} className="text-white/80 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            {/* Selector de rol a editar */}
+            <div className="px-5 pt-4 flex gap-2">
+              {[
+                { id: 'encargado', label: '👔 Encargado' },
+                { id: 'cajero', label: '🧑‍💼 Cajero' },
+              ].map(r => (
+                <button key={r.id} type="button"
+                  onClick={() => { setPlantillaEditando(r.id); setPermisosPlantilla(JSON.parse(JSON.stringify(plantillaDe(r.id)))); }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    plantillaEditando === r.id ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>
+                  {r.label}
+                </button>
+              ))}
+              <span className="ml-auto self-center text-[11px] text-gray-400">Admin: acceso total (no editable)</span>
+            </div>
+
+            {/* Editor de permisos por panel */}
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-3">
+                {PERMISOS_GRUPOS.map(grupo => (
+                  <div key={grupo.modulo} className="pb-2 border-b border-gray-200 last:border-0">
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">{grupo.titulo}</p>
+                      {grupo.desc && <span className="text-[10px] text-gray-400">{grupo.desc}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {grupo.acciones.map(a => {
+                        const activo = (permisosPlantilla[grupo.modulo] || []).includes(a.accion);
+                        return (
+                          <button key={a.accion} type="button"
+                            onClick={() => togglePermisoPlantilla(grupo.modulo, a.accion)}
+                            className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                              activo ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-green-400'
+                            }`}>
+                            {activo ? '✓ ' : ''}{a.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">🔒 Usuarios y Configuración quedan siempre solo para administradores.</p>
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setMostrarModalPlantillas(false)}
+                className="flex-1 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={guardarPlantilla} disabled={guardandoPlantilla}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50">
+                {guardandoPlantilla ? 'Guardando...' : `💾 Guardar plantilla de ${plantillaEditando}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

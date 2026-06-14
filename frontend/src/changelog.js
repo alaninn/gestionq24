@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.2';
+export const VERSION_ACTUAL = '2.9.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.3',
+    fecha: '2026-06-14',
+    titulo: 'Plantillas de permisos editables',
+    destacados: [
+      {
+        titulo: '⚙️ Definí qué trae cada rol',
+        detalle: 'En Usuarios podés editar las plantillas de permisos de Encargado y Cajero (botón "Plantillas de permisos", o tocando la tarjeta del rol). Elegís qué paneles y acciones trae cada uno y queda guardado. Después, al crear o editar un empleado, aplicás esa plantilla de un toque y ajustás lo puntual. El rol Admin siempre tiene acceso total.',
+      },
+    ],
+  },
   {
     version: '2.9.2',
     fecha: '2026-06-14',

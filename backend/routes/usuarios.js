@@ -12,6 +12,73 @@ const { validarLimitePlan, LIMITES_PLANES } = require('../middleware/planLimites
 // Todas las rutas requieren token
 router.use(verificarToken);
 
+// Plantillas de permisos por defecto (si el negocio no las personalizó)
+const PLANTILLAS_DEFAULT = {
+    encargado: {
+        dashboard: ['ver'],
+        productos: ['ver', 'crear', 'editar'],
+        stock: ['ver'],
+        caja: ['ver', 'abrir', 'cerrar'],
+        clientes: ['ver', 'crear'],
+        proveedores: ['ver', 'crear', 'editar'],
+        gastos: ['ver', 'crear'],
+        resumen_fiscal: ['ver'],
+        reportes: ['ver'],
+        ventas: ['ver', 'crear'],
+    },
+    cajero: {
+        caja: ['abrir', 'cerrar'],
+        clientes: ['ver'],
+        proveedores: ['ver', 'crear'],
+        gastos: ['crear'],
+        ventas: ['crear'],
+    },
+};
+
+// -----------------------------------------------
+// GET /api/usuarios/plantillas — plantillas de permisos del negocio
+// -----------------------------------------------
+router.get('/plantillas', soloAdmin, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await db.query('SELECT rol, permisos FROM plantillas_permisos WHERE negocio_id = $1', [negocio_id]);
+        const guardadas = {};
+        for (const row of r.rows) guardadas[row.rol] = row.permisos;
+        res.json({
+            encargado: guardadas.encargado || PLANTILLAS_DEFAULT.encargado,
+            cajero: guardadas.cajero || PLANTILLAS_DEFAULT.cajero,
+        });
+    } catch (error) {
+        console.error('Error obteniendo plantillas:', error);
+        res.status(500).json({ error: 'Error al obtener las plantillas' });
+    }
+});
+
+// -----------------------------------------------
+// PUT /api/usuarios/plantillas/:rol — guardar la plantilla de un rol
+// -----------------------------------------------
+router.put('/plantillas/:rol', soloAdmin, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const rol = req.params.rol;
+        if (!['encargado', 'cajero'].includes(rol)) {
+            return res.status(400).json({ error: 'Solo se pueden editar las plantillas de encargado y cajero' });
+        }
+        const permisos = req.body.permisos || {};
+        await db.query(`
+            INSERT INTO plantillas_permisos (negocio_id, rol, permisos, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (negocio_id, rol) DO UPDATE SET permisos = $3, updated_at = NOW()
+        `, [negocio_id, rol, JSON.stringify(permisos)]);
+        res.json({ mensaje: 'Plantilla guardada', rol, permisos });
+    } catch (error) {
+        console.error('Error guardando plantilla:', error);
+        res.status(500).json({ error: 'Error al guardar la plantilla' });
+    }
+});
+
 // -----------------------------------------------
 // RUTA: GET /api/usuarios
 // FUNCIÓN: Traer usuarios del negocio actual (o todos si es superadmin)
