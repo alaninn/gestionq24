@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.1';
+export const VERSION_ACTUAL = '2.9.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.2',
+    fecha: '2026-06-14',
+    titulo: 'Reporte de errores para soporte',
+    cambios: [
+      { t: 'Panel SuperAdmin: nuevo botón "🐞 Errores" que arma un reporte con los errores de pantalla de los usuarios y los últimos errores del servidor, para descargarlo o subirlo a GitHub y que soporte lo revise sin tener que pasar nada a mano.', super: true },
+    ],
+  },
   {
     version: '2.9.1',
     fecha: '2026-06-14',

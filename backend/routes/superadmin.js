@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
+const axios = require('axios');
 const db = require('../config/database');
 const { verificarToken, soloSuperadmin } = require('../middleware/auth');
 
@@ -897,6 +898,144 @@ router.get('/errores-frontend', async (req, res) => {
     } catch (error) {
         console.error('Error obteniendo errores frontend:', error);
         res.status(500).json({ error: 'Error al obtener errores' });
+    }
+});
+
+// =============================================
+// REPORTE DE ERRORES (para que la IA lo lea sin copiar/pegar)
+// =============================================
+
+// Arma el contenido Markdown del reporte: errores de pantalla + logs del server.
+async function construirReporteErrores() {
+    const ahora = new Date().toISOString();
+
+    // 1) Errores de pantalla (frontend)
+    const erroresFront = await db.query(`
+        SELECT e.*, n.nombre AS negocio_nombre, u.nombre AS usuario_nombre
+        FROM errores_frontend e
+        LEFT JOIN negocios n ON n.id = e.negocio_id
+        LEFT JOIN usuarios u ON u.id = e.usuario_id
+        ORDER BY e.fecha DESC
+        LIMIT 50
+    `);
+
+    // 2) Últimos logs de ERROR del servidor (archivo de pm2, últimos 32KB)
+    let logsServer = '(no disponible)';
+    try {
+        const os = require('os');
+        const fs = require('fs');
+        const dirLogs = process.env.PM2_LOG_DIR || path.join(os.homedir(), '.pm2', 'logs');
+        const archivo = path.join(dirLogs, 'gestionq24-error.log');
+        if (fs.existsSync(archivo)) {
+            const stat = fs.statSync(archivo);
+            const LEER = 32 * 1024;
+            const inicio = Math.max(0, stat.size - LEER);
+            const fd = fs.openSync(archivo, 'r');
+            const buf = Buffer.alloc(Math.min(LEER, stat.size));
+            fs.readSync(fd, buf, 0, buf.length, inicio);
+            fs.closeSync(fd);
+            let texto = buf.toString('utf8');
+            if (inicio > 0) texto = texto.slice(texto.indexOf('\n') + 1);
+            logsServer = texto.trim() || '(sin errores recientes en el log)';
+        }
+    } catch (e) {
+        logsServer = `(error al leer el log: ${e.message})`;
+    }
+
+    // 3) Logs en memoria (por si pm2 no está, p. ej. en local)
+    let logsMemoria = '';
+    try {
+        const { lineas } = logBuffer.obtenerDesde(0);
+        const enMemoria = (lineas || []).filter(l => l.nivel === 'error');
+        if (enMemoria.length) {
+            logsMemoria = enMemoria.slice(-40).map(l => `[${l.fecha}] ${l.mensaje}`).join('\n');
+        }
+    } catch { /* ignore */ }
+
+    let md = `# 🐞 Reporte de errores — gestionQ24\n\n`;
+    md += `Generado: ${ahora}\n\n`;
+    md += `> Archivo para que la IA diagnostique. Indicá: "revisá reportes/<este archivo>".\n\n`;
+    md += `---\n\n## Errores de pantalla (frontend) — ${erroresFront.rows.length}\n\n`;
+    if (erroresFront.rows.length === 0) {
+        md += `_Sin errores de pantalla registrados._\n\n`;
+    } else {
+        for (const e of erroresFront.rows) {
+            md += `### #${e.id} · ${new Date(e.fecha).toISOString()}\n`;
+            md += `- **Negocio**: ${e.negocio_nombre || e.negocio_id || '-'} · **Usuario**: ${e.usuario_nombre || e.usuario_id || '-'}\n`;
+            md += `- **URL**: ${e.url || '-'}\n`;
+            md += `- **Navegador**: ${(e.user_agent || '-').slice(0, 160)}\n`;
+            md += `- **Mensaje**: ${e.mensaje || '-'}\n`;
+            if (e.stack) md += `\n\`\`\`\n${String(e.stack).slice(0, 2000)}\n\`\`\`\n`;
+            md += `\n`;
+        }
+    }
+    md += `---\n\n## Logs de error del servidor (pm2, últimos)\n\n\`\`\`\n${logsServer.slice(-12000)}\n\`\`\`\n`;
+    if (logsMemoria) md += `\n## Logs de error en memoria\n\n\`\`\`\n${logsMemoria.slice(-8000)}\n\`\`\`\n`;
+    return md;
+}
+
+// GET /api/superadmin/errores/reporte — descarga el .md
+router.get('/errores/reporte', async (req, res) => {
+    try {
+        const md = await construirReporteErrores();
+        const nombre = `errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.send(md);
+    } catch (error) {
+        console.error('Error generando reporte:', error);
+        res.status(500).json({ error: 'Error al generar el reporte de errores' });
+    }
+});
+
+// POST /api/superadmin/errores/subir-git — sube el .md a GitHub vía API REST
+// (no toca el git de producción). Necesita GITHUB_TOKEN en el .env del server.
+router.post('/errores/subir-git', async (req, res) => {
+    try {
+        const token = process.env.GITHUB_TOKEN;
+        const repo = process.env.GITHUB_REPO || 'alaninn/gestionq24';
+        const rama = process.env.GITHUB_REPORTES_BRANCH || 'reportes-errores';
+        if (!token) {
+            return res.status(400).json({
+                error: 'Falta configurar GITHUB_TOKEN en el servidor. Por ahora usá "Descargar".',
+                sinToken: true,
+            });
+        }
+
+        const md = await construirReporteErrores();
+        const nombre = `reportes/errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
+        const api = `https://api.github.com/repos/${repo}`;
+        const headers = { Authorization: `Bearer ${token}`, 'User-Agent': 'gestionq24', Accept: 'application/vnd.github+json' };
+
+        // Asegurar que la rama de reportes exista (si no, crearla desde la default)
+        try {
+            await axios.get(`${api}/git/ref/heads/${rama}`, { headers });
+        } catch (e) {
+            if (e.response?.status === 404) {
+                const repoInfo = await axios.get(api, { headers });
+                const base = repoInfo.data.default_branch || 'master';
+                const baseRef = await axios.get(`${api}/git/ref/heads/${base}`, { headers });
+                await axios.post(`${api}/git/refs`, { ref: `refs/heads/${rama}`, sha: baseRef.data.object.sha }, { headers });
+            } else { throw e; }
+        }
+
+        // Subir el archivo (nombre único → no necesita sha de archivo previo)
+        const contenidoB64 = Buffer.from(md, 'utf8').toString('base64');
+        const r = await axios.put(`${api}/contents/${encodeURIComponent(nombre).replace(/%2F/g, '/')}`, {
+            message: `Reporte de errores ${new Date().toISOString()}`,
+            content: contenidoB64,
+            branch: rama,
+        }, { headers });
+
+        res.json({
+            mensaje: 'Reporte subido a GitHub',
+            archivo: nombre,
+            rama,
+            url: r.data.content?.html_url || null,
+        });
+    } catch (error) {
+        console.error('Error subiendo reporte a git:', error.response?.data || error.message);
+        res.status(500).json({ error: error.response?.data?.message || 'Error al subir el reporte a GitHub' });
     }
 });
 

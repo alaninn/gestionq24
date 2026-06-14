@@ -48,6 +48,11 @@ function Superadmin() {
   // Visor de logs (bajo demanda: solo consume mientras está iniciado)
   const [mostrarModalLogs, setMostrarModalLogs] = useState(false);
   const [mostrarModalPlanes, setMostrarModalPlanes] = useState(false);
+  const [mostrarModalErrores, setMostrarModalErrores] = useState(false);
+  const [errInfo, setErrInfo] = useState(null);     // cantidad de errores
+  const [subiendoGit, setSubiendoGit] = useState(false);
+  const [resultadoGit, setResultadoGit] = useState(null);
+  const [descargandoErr, setDescargandoErr] = useState(false);
   const [planesConfig, setPlanesConfig] = useState([]);
   const [guardandoPlan, setGuardandoPlan] = useState(null);
   const [logsContenido, setLogsContenido] = useState([]);
@@ -91,6 +96,46 @@ function Superadmin() {
   useCerrarConAtras(mostrarModalPlanes, () => setMostrarModalPlanes(false));
 
   // ---- Configuración de planes (límites y funciones editables) ----
+  // ---- Reporte de errores ----
+  useEffect(() => {
+    if (mostrarModalErrores) {
+      setResultadoGit(null);
+      api.get('/api/superadmin/errores-frontend')
+        .then(res => setErrInfo({ frontend: res.data.length }))
+        .catch(() => setErrInfo({ frontend: 0 }));
+    }
+  }, [mostrarModalErrores]);
+
+  const descargarReporteErrores = async () => {
+    try {
+      setDescargandoErr(true);
+      const res = await api.get('/api/superadmin/errores/reporte', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/markdown' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `errores-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setResultadoGit({ error: 'No se pudo generar el reporte' });
+    } finally {
+      setDescargandoErr(false);
+    }
+  };
+
+  const subirReporteErrores = async () => {
+    try {
+      setSubiendoGit(true);
+      setResultadoGit(null);
+      const res = await api.post('/api/superadmin/errores/subir-git');
+      setResultadoGit({ ok: true, ...res.data });
+    } catch (err) {
+      setResultadoGit({ error: err.response?.data?.error || 'Error al subir a GitHub', sinToken: err.response?.data?.sinToken });
+    } finally {
+      setSubiendoGit(false);
+    }
+  };
+
   const abrirModalPlanes = async () => {
     setMostrarModalPlanes(true);
     try {
@@ -495,6 +540,11 @@ function Superadmin() {
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
             title="Configurar límites y funciones de cada plan">
             📐 <span className="hidden sm:inline">Planes</span>
+          </button>
+          <button onClick={() => setMostrarModalErrores(true)}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            title="Generar reporte de errores para que la IA lo revise">
+            🐞 <span className="hidden sm:inline">Errores</span>
           </button>
           <button onClick={() => setMostrarModalLogs(true)}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
@@ -1521,6 +1571,56 @@ function Superadmin() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reporte de Errores */}
+      {mostrarModalErrores && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b bg-gradient-to-r from-rose-600 to-red-600 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">🐞 Reporte de errores</h3>
+                <p className="text-rose-100 text-xs mt-0.5">Para que la IA lo revise sin que tengas que copiar nada</p>
+              </div>
+              <button onClick={() => setMostrarModalErrores(false)} className="text-white/80 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                El reporte junta los <b>errores de pantalla</b> de los usuarios y los <b>últimos errores del servidor</b> en un archivo <code>.md</code>.
+                {errInfo && <> Hay <b>{errInfo.frontend}</b> error(es) de pantalla registrados.</>}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button onClick={descargarReporteErrores} disabled={descargandoErr}
+                  className="flex flex-col items-center gap-1 py-4 border-2 border-gray-200 hover:border-gray-400 rounded-xl transition-colors disabled:opacity-50">
+                  <span className="text-2xl">⬇️</span>
+                  <span className="text-sm font-semibold text-gray-700">{descargandoErr ? 'Generando...' : 'Descargar .md'}</span>
+                  <span className="text-[11px] text-gray-400 text-center px-2">Lo guardás en la carpeta del proyecto</span>
+                </button>
+                <button onClick={subirReporteErrores} disabled={subiendoGit}
+                  className="flex flex-col items-center gap-1 py-4 border-2 border-rose-200 hover:border-rose-400 bg-rose-50 rounded-xl transition-colors disabled:opacity-50">
+                  <span className="text-2xl">☁️</span>
+                  <span className="text-sm font-semibold text-rose-700">{subiendoGit ? 'Subiendo...' : 'Subir a GitHub'}</span>
+                  <span className="text-[11px] text-rose-400 text-center px-2">Queda en la rama de reportes</span>
+                </button>
+              </div>
+
+              {resultadoGit?.ok && (
+                <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 text-sm">
+                  ✅ Subido a GitHub: <b>{resultadoGit.archivo}</b> (rama <b>{resultadoGit.rama}</b>).
+                  <br />Decile a la IA: <i>"revisá {resultadoGit.archivo}"</i>.
+                  {resultadoGit.url && <> · <a href={resultadoGit.url} target="_blank" rel="noreferrer" className="underline">ver en GitHub</a></>}
+                </div>
+              )}
+              {resultadoGit?.error && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
+                  ⚠️ {resultadoGit.error}
+                  {resultadoGit.sinToken && <><br />Tip: configurá <code>GITHUB_TOKEN</code> en el <code>.env</code> del servidor, o usá "Descargar" por ahora.</>}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
