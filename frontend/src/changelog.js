@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.3';
+export const VERSION_ACTUAL = '2.9.4';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.4',
+    fecha: '2026-06-14',
+    titulo: 'Reporte de errores: limpieza automática',
+    cambios: [
+      { t: 'Al subir el reporte de errores a GitHub, ahora se limpian las fuentes (errores de pantalla, log de errores del servidor y buffer en memoria) para no repetir errores viejos en el próximo reporte. El mensaje de éxito indica qué se limpió.', super: true },
+    ],
+  },
   {
     version: '2.9.3',
     fecha: '2026-06-14',

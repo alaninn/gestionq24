@@ -1612,6 +1612,9 @@ function Superadmin() {
                   ✅ Subido a GitHub: <b>{resultadoGit.archivo}</b> (rama <b>{resultadoGit.rama}</b>).
                   <br />Decile a la IA: <i>"revisá {resultadoGit.archivo}"</i>.
                   {resultadoGit.url && <> · <a href={resultadoGit.url} target="_blank" rel="noreferrer" className="underline">ver en GitHub</a></>}
+                  {resultadoGit.limpiado && (
+                    <><br /><span className="text-green-600">🧹 Limpiado tras enviar: {resultadoGit.limpiado.errores_pantalla} error(es) de pantalla{resultadoGit.limpiado.log_servidor ? ' + log del servidor' : ''}. Los próximos reportes no los repetirán.</span></>
+                  )}
                 </div>
               )}
               {resultadoGit?.error && (

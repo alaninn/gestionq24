@@ -51,4 +51,9 @@ function obtenerDesde(desdeId = 0) {
     };
 }
 
-module.exports = { instalar, obtenerDesde };
+/** Vacía el buffer en memoria (p. ej. después de subir el reporte de errores) */
+function limpiar() {
+    buffer.length = 0;
+}
+
+module.exports = { instalar, obtenerDesde, limpiar };

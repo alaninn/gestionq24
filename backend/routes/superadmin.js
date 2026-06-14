@@ -921,12 +921,14 @@ async function construirReporteErrores() {
 
     // 2) Últimos logs de ERROR del servidor (archivo de pm2, últimos 32KB)
     let logsServer = '(no disponible)';
+    let logPath = null;
     try {
         const os = require('os');
         const fs = require('fs');
         const dirLogs = process.env.PM2_LOG_DIR || path.join(os.homedir(), '.pm2', 'logs');
         const archivo = path.join(dirLogs, 'gestionq24-error.log');
         if (fs.existsSync(archivo)) {
+            logPath = archivo;
             const stat = fs.statSync(archivo);
             const LEER = 32 * 1024;
             const inicio = Math.max(0, stat.size - LEER);
@@ -971,13 +973,34 @@ async function construirReporteErrores() {
     }
     md += `---\n\n## Logs de error del servidor (pm2, últimos)\n\n\`\`\`\n${logsServer.slice(-12000)}\n\`\`\`\n`;
     if (logsMemoria) md += `\n## Logs de error en memoria\n\n\`\`\`\n${logsMemoria.slice(-8000)}\n\`\`\`\n`;
-    return md;
+
+    // Devolvemos también qué se incluyó, para poder limpiarlo tras subir a git.
+    const idsFront = erroresFront.rows.map(e => e.id);
+    return { md, idsFront, logPath };
+}
+
+// Limpia las fuentes ya incluidas en un reporte subido (para no repetir errores
+// viejos en el próximo). Se llama SOLO tras subir a git con éxito.
+async function limpiarFuentesReporte({ idsFront, logPath }) {
+    // 1) Borrar los errores de pantalla ya reportados
+    if (idsFront && idsFront.length) {
+        try {
+            await db.query('DELETE FROM errores_frontend WHERE id = ANY($1)', [idsFront]);
+        } catch (e) { console.error('No se pudieron borrar errores_frontend:', e.message); }
+    }
+    // 2) Vaciar el log de error de pm2 (truncar el archivo; pm2 sigue escribiendo)
+    if (logPath) {
+        try { require('fs').truncateSync(logPath, 0); }
+        catch (e) { console.error('No se pudo truncar el log de pm2:', e.message); }
+    }
+    // 3) Vaciar el buffer de logs en memoria
+    try { logBuffer.limpiar(); } catch { /* ignore */ }
 }
 
 // GET /api/superadmin/errores/reporte — descarga el .md
 router.get('/errores/reporte', async (req, res) => {
     try {
-        const md = await construirReporteErrores();
+        const { md } = await construirReporteErrores();
         const nombre = `errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
@@ -1002,7 +1025,8 @@ router.post('/errores/subir-git', async (req, res) => {
             });
         }
 
-        const md = await construirReporteErrores();
+        const reporte = await construirReporteErrores();
+        const md = reporte.md;
         const nombre = `reportes/errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
         const api = `https://api.github.com/repos/${repo}`;
         const headers = { Authorization: `Bearer ${token}`, 'User-Agent': 'gestionq24', Accept: 'application/vnd.github+json' };
@@ -1027,11 +1051,15 @@ router.post('/errores/subir-git', async (req, res) => {
             branch: rama,
         }, { headers });
 
+        // Subido OK → limpiar las fuentes para no repetir estos errores en el próximo reporte
+        await limpiarFuentesReporte(reporte);
+
         res.json({
             mensaje: 'Reporte subido a GitHub',
             archivo: nombre,
             rama,
             url: r.data.content?.html_url || null,
+            limpiado: { errores_pantalla: reporte.idsFront.length, log_servidor: !!reporte.logPath },
         });
     } catch (error) {
         console.error('Error subiendo reporte a git:', error.response?.data || error.message);
