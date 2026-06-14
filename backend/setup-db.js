@@ -300,6 +300,10 @@ CREATE INDEX IF NOT EXISTS idx_comprobantes_estado ON comprobantes_electronicos(
 -- Condición frente al IVA del receptor (RG 5616) guardada en cada comprobante
 ALTER TABLE comprobantes_electronicos ADD COLUMN IF NOT EXISTS condicion_iva_receptor INTEGER;
 
+-- Fecha exacta (CbteFch, formato YYYYMMDD) que se envió a AFIP, para que el QR y la
+-- fecha impresa coincidan SIEMPRE con lo que registró AFIP (sin desfasajes de zona horaria).
+ALTER TABLE comprobantes_electronicos ADD COLUMN IF NOT EXISTS cbte_fecha VARCHAR(8);
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

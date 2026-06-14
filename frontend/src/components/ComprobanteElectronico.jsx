@@ -32,11 +32,19 @@ const nombresCondicionIva = {
   15: 'IVA No Alcanzado',
 };
 
+// Fecha del comprobante (YYYY-MM-DD) EXACTAMENTE como se envió a AFIP (CbteFch).
+// Prioriza cbte_fecha (lo que registró AFIP); si no está (comprobantes viejos),
+// deriva de fecha_emision en hora de Argentina (nunca UTC) para no desfasar el día.
+function fechaCbteISO(comprobante) {
+  const f = comprobante.cbte_fecha;
+  if (f && /^\d{8}$/.test(f)) return `${f.slice(0, 4)}-${f.slice(4, 6)}-${f.slice(6, 8)}`;
+  const base = comprobante.fecha_emision ? new Date(comprobante.fecha_emision) : new Date();
+  return base.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
 // ---- Genera la URL del QR oficial de ARCA/AFIP ----
 function generarUrlQR(comprobante, cuitEmisor) {
-  const fecha = comprobante.fecha_emision
-    ? new Date(comprobante.fecha_emision).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
+  const fecha = fechaCbteISO(comprobante);
 
   const data = {
     ver: 1,
@@ -140,9 +148,8 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
 
   const puntoVentaStr = String(comprobante.punto_venta || 1).padStart(5, '0');
   const numeroStr = String(comprobante.numero_comprobante || 0).padStart(8, '0');
-  const fechaEmision = comprobante.fecha_emision
-    ? new Date(comprobante.fecha_emision).toLocaleDateString('es-AR')
-    : new Date().toLocaleDateString('es-AR');
+  const [aaaaFch, mmFch, ddFch] = fechaCbteISO(comprobante).split('-');
+  const fechaEmision = `${ddFch}/${mmFch}/${aaaaFch}`;
   const fechaVto = comprobante.cae_vencimiento
     ? new Date(comprobante.cae_vencimiento).toLocaleDateString('es-AR')
     : '';

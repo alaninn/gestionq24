@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.6';
+export const VERSION_ACTUAL = '2.9.7';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.7',
+    fecha: '2026-06-14',
+    titulo: 'Factura: QR y fecha siempre iguales a AFIP',
+    cambios: [
+      { t: 'La factura electrónica ahora guarda la fecha exacta que se registró en AFIP y la usa en el código QR y en la fecha impresa. Así el QR siempre valida correctamente contra AFIP, incluso en facturas hechas de noche.' },
+    ],
+  },
   {
     version: '2.9.6',
     fecha: '2026-06-14',

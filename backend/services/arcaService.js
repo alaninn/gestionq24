@@ -507,7 +507,7 @@ if (resultadoOperacion !== 'A') {
             punto_venta, tipo_comprobante, docTipo,
             numero_documento || null, denominacion_comprador || 'Consumidor Final',
             importe_total, importeNetoCalculado, importeIvaCalculado,
-            xmlEnviado, xmlRespuesta
+            xmlEnviado, xmlRespuesta, fechaEmision
         ];
         try {
             comprobanteResult = await db.query(`
@@ -515,12 +515,12 @@ if (resultadoOperacion !== 'A') {
                     venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
                     punto_venta, tipo_comprobante, tipo_documento, numero_documento,
                     denominacion_comprador, importe_total, importe_neto, importe_iva,
-                    xml_enviado, xml_respuesta, estado, condicion_iva_receptor
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido', $16)
+                    xml_enviado, xml_respuesta, cbte_fecha, estado, condicion_iva_receptor
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'emitido', $17)
                 RETURNING *
             `, [...valoresInsert, condIvaReceptor]);
         } catch (insertError) {
-            console.error('⚠️ Insert con condicion_iva_receptor falló, reintentando sin la columna:', insertError.message);
+            console.error('⚠️ Insert con condicion_iva_receptor/cbte_fecha falló, reintentando sin esas columnas:', insertError.message);
             comprobanteResult = await db.query(`
                 INSERT INTO comprobantes_electronicos (
                     venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
@@ -529,7 +529,7 @@ if (resultadoOperacion !== 'A') {
                     xml_enviado, xml_respuesta, estado
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'emitido')
                 RETURNING *
-            `, valoresInsert);
+            `, valoresInsert.slice(0, 15));
         }
         
         // 13. Actualizar venta con el comprobante electrónico
