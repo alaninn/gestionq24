@@ -128,7 +128,11 @@ function Superadmin() {
       setSubiendoGit(true);
       setResultadoGit(null);
       const res = await api.post('/api/superadmin/errores/subir-git');
-      setResultadoGit({ ok: true, ...res.data });
+      if (res.data?.vacio) {
+        setResultadoGit({ vacio: true, mensaje: res.data.mensaje });
+      } else {
+        setResultadoGit({ ok: true, ...res.data });
+      }
     } catch (err) {
       setResultadoGit({ error: err.response?.data?.error || 'Error al subir a GitHub', sinToken: err.response?.data?.sinToken });
     } finally {
@@ -1615,6 +1619,11 @@ function Superadmin() {
                   {resultadoGit.limpiado && (
                     <><br /><span className="text-green-600">🧹 Limpiado tras enviar: {resultadoGit.limpiado.errores_pantalla} error(es) de pantalla{resultadoGit.limpiado.log_servidor ? ' + log del servidor' : ''}. Los próximos reportes no los repetirán.</span></>
                   )}
+                </div>
+              )}
+              {resultadoGit?.vacio && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-xl px-4 py-3 text-sm">
+                  ✅ {resultadoGit.mensaje || 'No hay errores para enviar.'}
                 </div>
               )}
               {resultadoGit?.error && (

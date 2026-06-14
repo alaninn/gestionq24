@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.4';
+export const VERSION_ACTUAL = '2.9.5';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.5',
+    fecha: '2026-06-14',
+    titulo: 'Reporte de errores: no subir si está vacío',
+    cambios: [
+      { t: 'El botón "Subir a GitHub" del reporte de errores ahora solo sube si realmente hay errores (de pantalla, del log del servidor o en memoria). Si no hay nada, avisa "No hay errores para enviar" y no ensucia la rama de reportes.', super: true },
+    ],
+  },
   {
     version: '2.9.4',
     fecha: '2026-06-14',

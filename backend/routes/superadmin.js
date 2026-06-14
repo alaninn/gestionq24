@@ -922,6 +922,7 @@ async function construirReporteErrores() {
     // 2) Últimos logs de ERROR del servidor (archivo de pm2, últimos 32KB)
     let logsServer = '(no disponible)';
     let logPath = null;
+    let logServerConContenido = false; // true solo si el log trae errores reales
     try {
         const os = require('os');
         const fs = require('fs');
@@ -938,6 +939,7 @@ async function construirReporteErrores() {
             fs.closeSync(fd);
             let texto = buf.toString('utf8');
             if (inicio > 0) texto = texto.slice(texto.indexOf('\n') + 1);
+            logServerConContenido = texto.trim().length > 0;
             logsServer = texto.trim() || '(sin errores recientes en el log)';
         }
     } catch (e) {
@@ -976,7 +978,9 @@ async function construirReporteErrores() {
 
     // Devolvemos también qué se incluyó, para poder limpiarlo tras subir a git.
     const idsFront = erroresFront.rows.map(e => e.id);
-    return { md, idsFront, logPath };
+    // ¿Hay algo real para reportar? (errores de pantalla, log del server o memoria)
+    const hayErrores = idsFront.length > 0 || logServerConContenido || logsMemoria.length > 0;
+    return { md, idsFront, logPath, hayErrores };
 }
 
 // Limpia las fuentes ya incluidas en un reporte subido (para no repetir errores
@@ -1026,6 +1030,12 @@ router.post('/errores/subir-git', async (req, res) => {
         }
 
         const reporte = await construirReporteErrores();
+
+        // Si no hay errores reales, no subimos nada (no ensuciar la rama de reportes)
+        if (!reporte.hayErrores) {
+            return res.json({ vacio: true, mensaje: 'No hay errores para enviar 🎉 No se subió nada.' });
+        }
+
         const md = reporte.md;
         const nombre = `reportes/errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
         const api = `https://api.github.com/repos/${repo}`;
