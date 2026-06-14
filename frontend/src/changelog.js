@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.10';
+export const VERSION_ACTUAL = '2.9.11';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.11',
+    fecha: '2026-06-14',
+    titulo: 'Fix del dashboard y cierre en celular',
+    cambios: [
+      { t: 'Corregido un error que a veces hacía fallar la carga del panel principal (se enviaba una fecha inválida al servidor).' },
+      { t: 'Modal de cierre de caja en celular: la sección protegida por PIN ya no se ve colapsada/encimada.' },
+    ],
+  },
   {
     version: '2.9.10',
     fecha: '2026-06-14',

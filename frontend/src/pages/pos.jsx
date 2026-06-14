@@ -1562,7 +1562,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                 </h4>
 
                 {!infoRevelada ? (
-                  <div className="flex-1 flex items-center justify-center">
+                  <div className="md:flex-1 flex items-center justify-center py-10 md:py-0">
                     <div className="text-center">
                       <div className="text-6xl mb-4">🔐</div>
                       <p className="text-gray-600 mb-4">Información protegida por PIN</p>
@@ -1644,7 +1644,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                     )}
                   </div>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center">
+                  <div className="md:flex-1 flex items-center justify-center py-10 md:py-0">
                     <div className="text-center text-gray-500">
                       <div className="animate-spin text-4xl mb-2">⏳</div>
                       <p>Cargando resumen...</p>

@@ -106,11 +106,13 @@ function Dashboard() {
   const cargarDatos = async (fecha) => {
     // Ref para que el auto-refresh de 5 min respete el día que está mirando el usuario
     const f = fecha !== undefined ? fecha : fechaDiaRef.current;
+    // Solo aceptar una fecha string válida (evita ?fecha=[object Object] si llega un evento)
+    const fechaValida = (typeof f === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f)) ? f : null;
     try {
       // Si ya hay datos cargados, solo mostramos un spinner chico en la sección del día
       if (datos) setCargandoDia(true); else setCargando(true);
       setError(false);
-      const res = await api.get('/api/reportes/dashboard' + (f ? `?fecha=${f}` : ''));
+      const res = await api.get('/api/reportes/dashboard' + (fechaValida ? `?fecha=${fechaValida}` : ''));
       setDatos(res.data);
       setUltimaActualizacion(new Date());
     } catch (err) {
