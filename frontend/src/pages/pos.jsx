@@ -1562,13 +1562,13 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                 </h4>
 
                 {!infoRevelada ? (
-                  <div className="md:flex-1 flex items-center justify-center py-10 md:py-0">
-                    <div className="text-center">
-                      <div className="text-6xl mb-4">🔐</div>
-                      <p className="text-gray-600 mb-4">Información protegida por PIN</p>
+                  <div className="md:flex-1 flex items-center justify-center md:py-0">
+                    <div className="text-center w-full">
+                      <div className="hidden md:block text-6xl mb-4">🔐</div>
+                      <p className="hidden md:block text-gray-600 mb-4">Información protegida por PIN</p>
                       <button
                         onClick={() => setMostrarPinModal(true)}
-                        className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors"
+                        className="w-full md:w-auto px-6 py-2.5 md:py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors"
                       >
                         🔓 Revelar Información
                       </button>
@@ -2101,6 +2101,7 @@ function POS() {
   // 'relevancia' respeta el orden del servidor: lo que EMPIEZA con lo buscado primero
   const [ordenar, setOrdenar] = useState('relevancia');
   const [mostrarModalGasto, setMostrarModalGasto] = useState(false);
+  const [menuMobilAbierto, setMenuMobilAbierto] = useState(false);
   const [mostrarModalFiados, setMostrarModalFiados] = useState(false);
   const [mostrarModalVenta, setMostrarModalVenta] = useState(false);
   const [mostrarModalCierre, setMostrarModalCierre] = useState(false);
@@ -2879,7 +2880,41 @@ const imprimirTicketDesdeModal = () => {
 
         <div className="w-px h-7 bg-gray-700 mr-1 sm:mr-2 hidden sm:block flex-shrink-0" />
 
-        {/* Botones principales */}
+        {/* Menú de acciones — solo en celular/tablet (declutter de la barra) */}
+        <div className="lg:hidden relative flex-shrink-0">
+          <button onClick={() => setMenuMobilAbierto(v => !v)} title="Menú de acciones"
+            className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white text-lg">
+            ☰
+          </button>
+          {menuMobilAbierto && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuMobilAbierto(false)} />
+              <div className="absolute left-0 top-12 z-50 w-56 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl py-2">
+                {config?.permite_venta_rapida !== false && (
+                  <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalRapida(true); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">⚡ Venta rápida</button>
+                )}
+                <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalProductoRapido(true); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">🏷️ Alta rápida</button>
+                <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalFiados(true); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">👥 Fiados</button>
+                <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalHistorial(true); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">📋 Historial</button>
+                <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalGasto(true); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">💸 Gastos</button>
+                <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalCierre(true); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">🔒 Cierre de caja</button>
+                <button onClick={() => { setMenuMobilAbierto(false); navigate('/admin'); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">⚙️ Admin</button>
+                <button onClick={async () => { setMenuMobilAbierto(false); try { if (window.caches) { const claves = await caches.keys(); await Promise.all(claves.map(k => caches.delete(k))); } } catch {} window.location.reload(); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">🔄 Actualizar app</button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Botones principales (escritorio) */}
+        <div className="hidden lg:flex items-center gap-1.5 sm:gap-2">
         {config?.permite_venta_rapida !== false && (
           <button onClick={() => setMostrarModalRapida(true)}
             className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
@@ -2924,6 +2959,7 @@ const imprimirTicketDesdeModal = () => {
           className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
           ⚙️ <span className="hidden sm:inline">Admin</span>
         </button>
+        </div>
 
         {/* Status derecha */}
         <div className="ml-auto flex items-center gap-3 flex-shrink-0">
@@ -2991,7 +3027,7 @@ const imprimirTicketDesdeModal = () => {
               window.location.reload();
             }}
             title="Actualizar la pantalla (recarga forzada)"
-            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white transition-all flex-shrink-0">
+            className="hidden lg:flex items-center justify-center w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white transition-all flex-shrink-0">
             🔄
           </button>
 
@@ -3057,7 +3093,7 @@ const imprimirTicketDesdeModal = () => {
                 </div>
                 <p className="text-sm font-semibold mb-1" style={{ color: oscuro ? 'rgba(255,255,255,0.5)' : '#475569' }}>Buscá un producto</p>
                 <p className="text-xs text-center mb-6" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>por nombre, o escaneá el código de barras</p>
-                <div className="w-full space-y-1.5">
+                <div className="w-full space-y-1.5 hidden lg:block">
                   <p className="text-xs mb-2 uppercase tracking-widest" style={{ color: oscuro ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>Atajos de teclado</p>
                   {[
                     ...(config?.permite_venta_rapida !== false ? [{ key: 'F1', label: 'Venta Rápida', color: '#7c3aed', bg: 'rgba(124,58,237,0.15)' }] : []),

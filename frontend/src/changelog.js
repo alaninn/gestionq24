@@ -14,9 +14,25 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.12';
+export const VERSION_ACTUAL = '2.9.13';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.13',
+    fecha: '2026-06-14',
+    titulo: 'POS más prolijo en celular',
+    destacados: [
+      {
+        titulo: '📱 Barra del POS ordenada en celular',
+        detalle: 'En celular la barra de arriba ya no se amontona: quedan a la vista la caja/turno, el cambio de usuario y el modo claro/oscuro. El resto de las acciones (Venta rápida, Alta rápida, Fiados, Historial, Gastos, Cierre, Admin, Actualizar) se agruparon en un menú "☰" que se abre cuando lo necesitás.',
+      },
+    ],
+    cambios: [
+      { t: 'Modal de gastos en celular: ya no se abre el teclado solo al entrar (el campo Monto no toma el foco automáticamente).' },
+      { t: 'Cierre de caja en celular: la sección protegida por PIN ocupa poco (solo el botón "Revelar Información"); el detalle aparece al revelarlo.' },
+      { t: 'Se ocultan los atajos de teclado en celular (no aplican sin teclado físico).' },
+    ],
+  },
   {
     version: '2.9.12',
     fecha: '2026-06-14',

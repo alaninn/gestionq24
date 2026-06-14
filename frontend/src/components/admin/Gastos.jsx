@@ -202,7 +202,6 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                     value={formulario.monto}
                     onChange={(e) => setFormulario(p => ({ ...p, monto: e.target.value }))}
                     required min="0" step="0.01"
-                    autoFocus
                     className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-lg"
                     placeholder="$0,00"
                   />
