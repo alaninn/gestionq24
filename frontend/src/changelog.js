@@ -14,9 +14,23 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.5';
+export const VERSION_ACTUAL = '2.9.6';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.6',
+    fecha: '2026-06-14',
+    titulo: 'Facturación: fecha correcta (hora Argentina)',
+    destacados: [
+      {
+        titulo: '🧾 Las facturas salen con la fecha correcta',
+        detalle: 'Corregimos la fecha de las facturas electrónicas (ARCA/AFIP) para que use siempre la hora de Argentina. Antes, las facturas hechas de noche (después de las 21 hs) podían salir con la fecha del día siguiente. Además, el sistema se asegura de no emitir una factura con fecha anterior a la última autorizada, para evitar rechazos de AFIP. Importante para locales que facturan las 24 horas.',
+      },
+    ],
+    cambios: [
+      { t: 'El reporte de errores ahora muestra la hora en horario de Argentina (antes estaba en UTC, 3 horas adelantado).', super: true },
+    ],
+  },
   {
     version: '2.9.5',
     fecha: '2026-06-14',

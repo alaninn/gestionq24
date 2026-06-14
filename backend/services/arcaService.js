@@ -25,6 +25,58 @@ if (!fs.existsSync(CERT_DIR)) {
     fs.mkdirSync(CERT_DIR, { recursive: true });
 }
 
+// =============================================
+// FECHAS PARA AFIP (CbteFch)
+// AFIP valida el rango de fechas (Concepto 1: N±5 días) contra SU reloj, que está
+// en horario de Argentina. Por eso la fecha del comprobante se calcula en hora AR y
+// NO en UTC: de noche (21:00–23:59 AR) UTC ya es el día siguiente, y la factura
+// saldría con la fecha equivocada (un día adelantada).
+// =============================================
+function fechaArgYYYYMMDD(d = new Date()) {
+    const p = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(d).reduce((acc, x) => { acc[x.type] = x.value; return acc; }, {});
+    return `${p.year}${p.month}${p.day}`;
+}
+
+// Consulta a AFIP la fecha (CbteFch, YYYYMMDD) de un comprobante YA autorizado.
+// Sirve para no emitir una factura con fecha anterior a la del último autorizado:
+// la regla de AFIP es CbteFch >= fecha del último comprobante de ese PtoVta/CbteTipo;
+// si es menor, AFIP rechaza con el error 10016 y se traba la facturación.
+async function consultarFechaComprobante({ wsfeUrl, token, sign, cuit, puntoVenta, tipoComprobante, cbteNro }) {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+    <soapenv:Header/>
+    <soapenv:Body>
+        <ar:FECompConsultar>
+            <ar:Auth>
+                <ar:Token>${token}</ar:Token>
+                <ar:Sign>${sign}</ar:Sign>
+                <ar:Cuit>${cuit}</ar:Cuit>
+            </ar:Auth>
+            <ar:FeCompConsReq>
+                <ar:CbteTipo>${tipoComprobante}</ar:CbteTipo>
+                <ar:CbteNro>${cbteNro}</ar:CbteNro>
+                <ar:PtoVta>${puntoVenta}</ar:PtoVta>
+            </ar:FeCompConsReq>
+        </ar:FECompConsultar>
+    </soapenv:Body>
+</soapenv:Envelope>`;
+    const resp = await axios.post(wsfeUrl, xml, {
+        headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECompConsultar' },
+        timeout: 30000,
+        httpsAgent,
+    });
+    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+    const r = await parser.parseStringPromise(resp.data);
+    const env = r['soap:Envelope'] || r['soapenv:Envelope'];
+    const body = env['soap:Body'] || env['soapenv:Body'];
+    const result = body['FECompConsultarResponse']?.FECompConsultarResult
+        || body['ns1:FECompConsultarResponse']?.FECompConsultarResult;
+    return result?.ResultGet?.CbteFch || null;
+}
+
 /**
  * Genera un par de claves RSA y un CSR (Certificate Signing Request)
  * @param {string} cuit - CUIT del negocio
@@ -305,7 +357,25 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
         const importeIvaCalculado = parseFloat(importe_iva) || 0;
         
         // 7. Crear XML para WSFEv1 (CAESolicitar)
-        const fechaEmision = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        // Fecha del comprobante (CbteFch) en HORA DE ARGENTINA (no UTC).
+        let fechaEmision = fechaArgYYYYMMDD();
+        // Piso de seguridad: nunca emitir con fecha anterior a la del último comprobante
+        // autorizado (regla AFIP; si no, error 10016 y se traba la facturación). Esto cubre
+        // la transición desde el esquema viejo en UTC y cualquier desfasaje de reloj.
+        if (ultimoNro > 0) {
+            try {
+                const ultimaFch = await consultarFechaComprobante({
+                    wsfeUrl: wsfeUrl2, token: ticket.token, sign: ticket.sign, cuit: cuitEmisor,
+                    puntoVenta: parseInt(punto_venta), tipoComprobante: parseInt(tipo_comprobante), cbteNro: ultimoNro,
+                });
+                if (ultimaFch && /^\d{8}$/.test(ultimaFch) && ultimaFch > fechaEmision) {
+                    console.log(`📅 CbteFch ajustada de ${fechaEmision} a ${ultimaFch} (fecha del último autorizado) para respetar la regla de AFIP`);
+                    fechaEmision = ultimaFch;
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudo consultar la fecha del último comprobante; uso la fecha de hoy (AR):', e.message);
+            }
+        }
         
         xmlEnviado = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">

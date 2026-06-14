@@ -905,9 +905,29 @@ router.get('/errores-frontend', async (req, res) => {
 // REPORTE DE ERRORES (para que la IA lo lea sin copiar/pegar)
 // =============================================
 
+// Fecha/hora en horario de Argentina (UTC-3), para que coincida con la PC del usuario.
+const TZ_AR = 'America/Argentina/Buenos_Aires';
+function partesFechaAr(d = new Date()) {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TZ_AR, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+    return Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]));
+}
+// 'YYYY-MM-DDTHH-MM-SS' para nombres de archivo (ordenable cronológicamente)
+function fechaArchivoAr(d = new Date()) {
+    const p = partesFechaAr(d);
+    return `${p.year}-${p.month}-${p.day}T${p.hour}-${p.minute}-${p.second}`;
+}
+// 'YYYY-MM-DD HH:MM:SS (hora Argentina)' legible para el reporte
+function fechaLegibleAr(d = new Date()) {
+    const p = partesFechaAr(d);
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second} (hora Argentina)`;
+}
+
 // Arma el contenido Markdown del reporte: errores de pantalla + logs del server.
 async function construirReporteErrores() {
-    const ahora = new Date().toISOString();
+    const ahora = fechaLegibleAr();
 
     // 1) Errores de pantalla (frontend)
     const erroresFront = await db.query(`
@@ -964,7 +984,7 @@ async function construirReporteErrores() {
         md += `_Sin errores de pantalla registrados._\n\n`;
     } else {
         for (const e of erroresFront.rows) {
-            md += `### #${e.id} · ${new Date(e.fecha).toISOString()}\n`;
+            md += `### #${e.id} · ${fechaLegibleAr(new Date(e.fecha))}\n`;
             md += `- **Negocio**: ${e.negocio_nombre || e.negocio_id || '-'} · **Usuario**: ${e.usuario_nombre || e.usuario_id || '-'}\n`;
             md += `- **URL**: ${e.url || '-'}\n`;
             md += `- **Navegador**: ${(e.user_agent || '-').slice(0, 160)}\n`;
@@ -1005,7 +1025,7 @@ async function limpiarFuentesReporte({ idsFront, logPath }) {
 router.get('/errores/reporte', async (req, res) => {
     try {
         const { md } = await construirReporteErrores();
-        const nombre = `errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
+        const nombre = `errores-${fechaArchivoAr()}.md`;
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
         res.send(md);
@@ -1037,7 +1057,7 @@ router.post('/errores/subir-git', async (req, res) => {
         }
 
         const md = reporte.md;
-        const nombre = `reportes/errores-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.md`;
+        const nombre = `reportes/errores-${fechaArchivoAr()}.md`;
         const api = `https://api.github.com/repos/${repo}`;
         const headers = { Authorization: `Bearer ${token}`, 'User-Agent': 'gestionq24', Accept: 'application/vnd.github+json' };
 
@@ -1056,7 +1076,7 @@ router.post('/errores/subir-git', async (req, res) => {
         // Subir el archivo (nombre único → no necesita sha de archivo previo)
         const contenidoB64 = Buffer.from(md, 'utf8').toString('base64');
         const r = await axios.put(`${api}/contents/${encodeURIComponent(nombre).replace(/%2F/g, '/')}`, {
-            message: `Reporte de errores ${new Date().toISOString()}`,
+            message: `Reporte de errores ${fechaLegibleAr()}`,
             content: contenidoB64,
             branch: rama,
         }, { headers });
