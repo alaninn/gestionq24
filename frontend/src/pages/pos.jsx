@@ -196,7 +196,7 @@ function ModalVentaRapida({ onAgregar, onCerrar }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b bg-purple-600 text-white">
           <div className="flex items-center gap-2">
             <span className="text-2xl">⚡</span>
@@ -276,7 +276,7 @@ function ModalProductoRapido({ onCerrar, onCreado }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b bg-teal-600 text-white">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🏷️</span>
@@ -1055,7 +1055,7 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
 const ModalVentaExitosa = ({ total, onSeguirVendiendo, onImprimir, config, tieneComprobanteElectronico }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b bg-green-600 text-white">
           <div>
             <h3 className="text-xl font-bold">✅ Venta Exitosa</h3>
@@ -1110,10 +1110,10 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-t-3xl">
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-t-3xl flex-shrink-0">
           <div>
             <h3 className="text-2xl font-bold">💵 Contar Billetes</h3>
             <p className="text-emerald-100 text-sm">F12 · Desglose de efectivo por denominaciones</p>
@@ -1121,7 +1121,7 @@ function ModalContarBilletes({ onCerrar, onConfirmar }) {
           <button onClick={onCerrar} className="text-white/80 hover:text-white text-3xl leading-none">×</button>
         </div>
 
-        <div className="flex flex-col h-[70vh]">
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Sección de Conteo */}
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="mb-4">
@@ -1535,9 +1535,9 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     <>
       {/* Modal Principal */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-red-600 to-red-500 text-white rounded-t-3xl">
+          <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-red-600 to-red-500 text-white rounded-t-3xl flex-shrink-0">
             <div>
               <h3 className="text-2xl font-bold">🔒 Cierre de Caja</h3>
               <p className="text-red-100 text-sm">F12 · Finalizar turno y cuadrar caja</p>
@@ -1545,9 +1545,9 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
             <button onClick={onCerrar} className="text-white/80 hover:text-white text-3xl leading-none">×</button>
           </div>
 
-          <div className="flex max-h-[84vh] overflow-hidden">
+          <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
             {/* Panel Izquierdo: Resumen del Turno */}
-            <div className="w-1/2 p-6 border-r bg-gradient-to-br from-gray-50 to-white overflow-y-auto min-h-0">
+            <div className="w-full md:w-1/2 p-6 md:border-r bg-gradient-to-br from-gray-50 to-white md:overflow-y-auto min-h-0">
               <div className="h-full flex flex-col">
                 <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                   📊 Resumen del Turno
@@ -1655,7 +1655,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
             </div>
 
             {/* Panel Derecho: Comprobantes y Validación */}
-            <div className="w-1/2 p-6 flex flex-col overflow-y-auto min-h-0">
+            <div className="w-full md:w-1/2 p-6 flex flex-col md:overflow-y-auto min-h-0">
               <h4 className="text-lg font-bold text-gray-800 mb-4">📄 Comprobantes Virtuales</h4>
 
               <div className="flex-1 space-y-4">
@@ -1833,7 +1833,7 @@ function ModalPinCierre({ onCerrar, onConfirmar, config }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-red-600 to-red-500 text-white rounded-t-2xl">
           <div>

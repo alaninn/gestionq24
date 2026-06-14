@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.8';
+export const VERSION_ACTUAL = '2.9.9';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.9',
+    fecha: '2026-06-14',
+    titulo: 'Los modales se adaptan a la pantalla',
+    cambios: [
+      { t: 'Se revisaron todos los modales del POS (cobro, cierre de caja, contar billetes, gastos, fiados, confirmaciones, etc.) para que se adapten al tamaño de la pantalla: en pantallas chicas o celulares ahora hacen scroll o se reorganizan, así no quedan botones tapados. En pantallas grandes se ven igual que antes.' },
+      { t: 'El modal de cierre de caja, que tenía dos columnas, ahora se apila en una sola en celulares.' },
+    ],
+  },
   {
     version: '2.9.8',
     fecha: '2026-06-14',

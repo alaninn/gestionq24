@@ -282,13 +282,13 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button"
                     onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: '' }))}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <p className="text-sm font-bold text-gray-800">Gasto X</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
                   </button>
                   <button type="button"
                     onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">En blanco · suma IVA crédito</p>
                   </button>
@@ -495,13 +495,13 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button"
                     onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: '' }))}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <p className="text-sm font-bold text-gray-800">Gasto X</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
                   </button>
                   <button type="button"
                     onClick={() => setFormulario(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">En blanco · suma IVA crédito</p>
                   </button>
