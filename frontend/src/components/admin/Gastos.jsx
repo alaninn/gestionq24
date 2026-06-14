@@ -156,8 +156,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[95vh] overflow-y-auto">
 
         {/* Encabezado */}
-        <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="text-lg font-bold text-gray-800">Nuevo Gasto</h3>
+        <div className="flex items-center justify-between p-3 sm:p-5 border-b">
+          <h3 className="text-base sm:text-lg font-bold text-gray-800">Nuevo Gasto</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
         </div>
 
@@ -183,7 +183,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
           </button>
         </div>
 
-        <form onSubmit={guardar} className="p-5 space-y-4">
+        <form onSubmit={guardar} className="p-3 sm:p-5 space-y-3 sm:space-y-4">
 
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">

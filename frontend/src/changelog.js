@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.9';
+export const VERSION_ACTUAL = '2.9.10';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.10',
+    fecha: '2026-06-14',
+    titulo: 'Mejoras de modales en celular',
+    cambios: [
+      { t: 'Modal de gastos más compacto en celular (menos espacios y botones más chicos) para que entre mejor sin tanto scroll.' },
+      { t: 'Modal de cierre de caja: en celular usa una sola columna con alturas naturales para que se vea ordenado (antes se veía apretado).' },
+    ],
+  },
   {
     version: '2.9.9',
     fecha: '2026-06-14',

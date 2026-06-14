@@ -1547,8 +1547,8 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
 
           <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
             {/* Panel Izquierdo: Resumen del Turno */}
-            <div className="w-full md:w-1/2 p-6 md:border-r bg-gradient-to-br from-gray-50 to-white md:overflow-y-auto min-h-0">
-              <div className="h-full flex flex-col">
+            <div className="w-full md:w-1/2 p-4 sm:p-6 md:border-r bg-gradient-to-br from-gray-50 to-white md:overflow-y-auto min-h-0">
+              <div className="flex flex-col md:h-full">
                 <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                   📊 Resumen del Turno
                   {infoRevelada && (
@@ -1655,7 +1655,7 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
             </div>
 
             {/* Panel Derecho: Comprobantes y Validación */}
-            <div className="w-full md:w-1/2 p-6 flex flex-col md:overflow-y-auto min-h-0">
+            <div className="w-full md:w-1/2 p-4 sm:p-6 flex flex-col md:overflow-y-auto min-h-0 border-t md:border-t-0">
               <h4 className="text-lg font-bold text-gray-800 mb-4">📄 Comprobantes Virtuales</h4>
 
               <div className="flex-1 space-y-4">
