@@ -390,7 +390,7 @@ const [comprobanteReimprimir, setComprobanteReimprimir] = useState(null);
         setVentaSeleccionada(null);
       }
     } catch (err) {
-      alert('Error al eliminar venta');
+      alert(err.response?.data?.error || 'Error al eliminar venta');
     } finally {
       setActualizando(false);
     }
@@ -2193,7 +2193,10 @@ function POS() {
   useCerrarConAtras(mostrarModalFiados, () => setMostrarModalFiados(false));
   useCerrarConAtras(mostrarModalHistorial, () => setMostrarModalHistorial(false));
   useCerrarConAtras(!!mostrarModalVentaProducto, () => setMostrarModalVentaProducto(null));
-  useCerrarConAtras(ventaExitosa, () => setVentaExitosa(false));
+  // OJO: el modal de "Venta Exitosa" NO usa useCerrarConAtras a propósito. Al confirmar,
+  // el modal de cobro se cierra y su cleanup hace history.back(), que dispara un popstate;
+  // si el modal de éxito tuviera su listener recién montado, ese popstate lo cerraría al
+  // instante (no llegaba a verse). Se cierra con "Seguir vendiendo" / ✕ / imprimir.
 
   const resetearFacturacion = (mantenerComprobante = false) => {
     setFacturacionElectronica(false);

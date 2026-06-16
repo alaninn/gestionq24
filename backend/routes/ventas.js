@@ -307,10 +307,13 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
         const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocioId]);
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
         
-        // Validar que el turno esté abierto
-        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, negocioId]);
-        if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
-            return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado' });
+        // Validar que el turno esté abierto (si la venta tiene turno asociado).
+        // Una venta sin turno (turno_id null) se puede eliminar sin este bloqueo.
+        if (venta.rows[0].turno_id) {
+            const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, negocioId]);
+            if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
+                return res.status(400).json({ error: 'No se puede eliminar una venta de un turno cerrado (cuadrá la caja antes o eliminala desde Reportes).' });
+            }
         }
         
         await db.query('BEGIN');

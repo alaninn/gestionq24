@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.15';
+export const VERSION_ACTUAL = '2.9.16';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.16',
+    fecha: '2026-06-16',
+    titulo: 'Arreglos: modal de venta exitosa y borrar venta',
+    cambios: [
+      { t: 'Volvió a aparecer el modal de "Venta Exitosa" con el botón para imprimir el ticket / ver el comprobante (se cerraba solo por un conflicto con el botón "atrás").' },
+      { t: 'Al eliminar una venta, si falla ahora se muestra el motivo real (por ej. "no se puede eliminar de un turno cerrado") en vez de un error genérico. Las ventas sin turno se pueden eliminar.' },
+    ],
+  },
   {
     version: '2.9.15',
     fecha: '2026-06-16',
