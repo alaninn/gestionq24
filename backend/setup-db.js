@@ -315,6 +315,12 @@ ALTER TABLE ventas ADD COLUMN IF NOT EXISTS metodo_virtual VARCHAR(30);
 -- (aviso anti-error de tipeo). Default $100.000, editable por negocio.
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS limite_aviso_pago_virtual NUMERIC(12,2) DEFAULT 100000;
 
+-- Idempotencia de ventas offline: cada venta sin internet trae un UUID propio
+-- y al sincronizar se evita duplicarla si el reenvio se repite.
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS offline_uuid VARCHAR(60);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ventas_offline_uuid
+    ON ventas(negocio_id, offline_uuid) WHERE offline_uuid IS NOT NULL;
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

@@ -14,9 +14,23 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.13';
+export const VERSION_ACTUAL = '2.9.14';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.14',
+    fecha: '2026-06-16',
+    titulo: 'Modo offline: vender sin internet',
+    destacados: [
+      {
+        titulo: '🔌 El POS funciona sin internet',
+        detalle: 'Si se corta internet (con el navegador abierto), el POS sigue vendiendo: el catálogo queda guardado en el dispositivo (se actualiza solo una vez al día) para poder buscar y escanear productos sin conexión. Las ventas se guardan localmente y, cuando vuelve internet, se cargan automáticamente y se factura lo que haya quedado en espera. Cada venta lleva un identificador único para que nunca se duplique al sincronizar.',
+      },
+    ],
+    cambios: [
+      { t: 'POS en celular: la barra de Productos/Carrito ya no queda tapada por el teclado, y se quitaron los textos de teclas (F8/F9) que no aplican en celular.' },
+    ],
+  },
   {
     version: '2.9.13',
     fecha: '2026-06-14',

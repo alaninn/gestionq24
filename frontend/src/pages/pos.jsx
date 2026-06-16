@@ -1042,9 +1042,9 @@ const ModalConfirmarVenta = forwardRef(function ModalConfirmarVenta({
           <button onClick={confirmar} disabled={cargando}
             style={{ backgroundColor: 'var(--color-primario)' }}
             className="flex-grow py-3 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50">
-            {cargando 
-  ? (facturacionElectronica ? '🧾 Emitiendo comprobante ARCA...' : 'Procesando...') 
-  : '✅ Confirmar Venta [F8]'}
+            {cargando
+  ? (facturacionElectronica ? '🧾 Emitiendo comprobante ARCA...' : 'Procesando...')
+  : (<>✅ Confirmar Venta <span className="hidden lg:inline">[F8]</span></>)}
           </button>
         </div>
       </div>
@@ -2089,7 +2089,7 @@ function SincronizacionExitosa({ ultimaSincronizacion }) {
 function POS() {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline } = useConectividad();
+  const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
   const [cajasAbiertas, setCajasAbiertas] = useState([]);
@@ -2234,6 +2234,15 @@ useEffect(() => {
     const terminoBuscado = buscar.trim();
 
     const timer = setTimeout(async () => {
+      // Sin internet: buscar en el catálogo cacheado localmente
+      if (!online) {
+        const resultados = buscarEnCatalogo(terminoBuscado);
+        if (terminoBuscado === buscar.trim()) {
+          setProductos(resultados);
+          if (resultados.length === 1) agregarAlCarrito(resultados[0]);
+        }
+        return;
+      }
       try {
         const res = await api.get(`/api/productos?buscar=${encodeURIComponent(terminoBuscado)}&rapida=1`);
         // Solo actualizar si el término no cambió mientras esperábamos la respuesta
@@ -2309,6 +2318,23 @@ useEffect(() => {
   }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, pestanaActiva, pestanas, carritoActivo, config]);
 
  const buscarPorCodigoScanner = async (codigo) => {
+    // Sin internet: buscar el código en el catálogo cacheado
+    if (!online) {
+      const prod = buscarCodigoEnCatalogo(codigo);
+      if (!prod) {
+        setMensajeScanner({ tipo: 'error', texto: `❌ No encontrado: ${codigo}` });
+        setTimeout(() => setMensajeScanner(null), 2500);
+        inputBuscarRef.current?.focus();
+        return;
+      }
+      agregarAlCarrito(prod);
+      setMensajeScanner({ tipo: 'ok', texto: `✅ ${prod.nombre}` });
+      setBuscar('');
+      setProductos([]);
+      setTimeout(() => setMensajeScanner(null), 2000);
+      inputBuscarRef.current?.focus();
+      return;
+    }
     try {
       const res = await api.get(`/api/productos/buscar-codigo/${encodeURIComponent(codigo)}`);
 
@@ -2554,9 +2580,30 @@ useEffect(() => {
       ? (parseFloat(montoVirtual) || 0)
       : parseFloat(totalFinal);
 
+    // Datos de la factura electrónica (sin venta_id). Se reutilizan online y, si
+    // la venta se hace offline, se guardan para emitir el comprobante al reconectar.
+    const datosFactura = facturacionElectronica ? {
+      tipo_comprobante: tipoComprobante,
+      punto_venta: config?.punto_venta_arca || 1,
+      tipo_documento: tipoDocumento,
+      numero_documento: numeroDocumento || null,
+      denominacion_comprador: denominacionComprador || null,
+      // Condición IVA receptor (RG 5616): A → RI; CUIT → lo elegido (def. monotributo); resto → consumidor final
+      condicion_iva_receptor: [1, 2, 3].includes(tipoComprobante) ? 1
+        : (tipoDocumento === 80 ? (condicionIvaReceptor || 6) : 5),
+      importe_total: importeFactura,
+      // Factura C (monotributista): IVA = 0, neto = total · Factura A/B (RI): IVA 21%
+      importe_neto: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
+        ? importeFactura
+        : parseFloat((importeFactura / 1.21).toFixed(2)),
+      importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
+        ? 0
+        : parseFloat((importeFactura - importeFactura / 1.21).toFixed(2)),
+    } : null;
+
     // ---- MODO OFFLINE ----
     if (!online) {
-      agregarVentaOffline(ventaPayload);
+      agregarVentaOffline({ ...ventaPayload, facturacion: datosFactura });
 
       // Limpiar carrito y mostrar éxito igual que online
       const nuevoNumero = contadorVentas + 1;
@@ -2580,26 +2627,7 @@ useEffect(() => {
       // Si es facturación electrónica, emitir comprobante
       if (facturacionElectronica && resVenta?.data?.id) {
         try {
-          const comprobanteData = {
-            venta_id: resVenta.data.id,
-            tipo_comprobante: tipoComprobante,
-            punto_venta: config?.punto_venta_arca || 1,
-            tipo_documento: tipoDocumento,
-            numero_documento: numeroDocumento || null,
-            denominacion_comprador: denominacionComprador || null,
-            // Condición IVA receptor (RG 5616): A → RI; CUIT → lo elegido (def. monotributo); resto → consumidor final
-            condicion_iva_receptor: [1, 2, 3].includes(tipoComprobante) ? 1
-              : (tipoDocumento === 80 ? (condicionIvaReceptor || 6) : 5),
-            importe_total: importeFactura,
-// Factura C (monotributista): IVA = 0, neto = total
-// Factura A/B (responsable inscripto): IVA = 21%
-importe_neto: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
-    ? importeFactura                                   // Factura C: neto = total (sin IVA)
-    : parseFloat((importeFactura / 1.21).toFixed(2)),  // Factura A/B: neto = total / 1.21
-importe_iva: (tipoComprobante === 11 || tipoComprobante === 13 || tipoComprobante === 12)
-    ? 0                                                // Factura C: sin IVA
-    : parseFloat((importeFactura - importeFactura / 1.21).toFixed(2)), // Factura A/B: IVA = total - neto
-          };
+          const comprobanteData = { ...datosFactura, venta_id: resVenta.data.id };
 
           const resComprobante = await api.post('/api/arca/emitir', comprobanteData);
 
@@ -2827,7 +2855,7 @@ const imprimirTicketDesdeModal = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: oscuro ? '#0f0f1a' : '#f1f5f9' }}>
+    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ background: oscuro ? '#0f0f1a' : '#f1f5f9' }}>
 
       {/* ---- BANNER OFFLINE ---- */}
       {!online && (
@@ -3212,7 +3240,7 @@ const imprimirTicketDesdeModal = () => {
                 </div>
                 <p className="text-base font-semibold mb-1" style={estilos.textoVacio}>Carrito vacío</p>
                 <p className="text-sm mt-1" style={{ ...estilos.textoVacio, opacity: 0.6 }}>Buscá o escaneá productos</p>
-                <div className="mt-5 flex gap-2">
+                <div className="mt-5 hidden lg:flex gap-2">
                   <span className="text-xs px-2.5 py-1 rounded-lg font-mono" style={estilos.textoSecundario}>F8 confirmar</span>
                   <span className="text-xs px-2.5 py-1 rounded-lg font-mono" style={estilos.textoSecundario}>F9 limpiar</span>
                 </div>
@@ -3364,7 +3392,7 @@ const imprimirTicketDesdeModal = () => {
               <button onClick={() => setMostrarModalVenta(true)} disabled={carritoActivo.length === 0}
                 style={carritoActivo.length > 0 ? { backgroundColor: 'var(--color-primario)' } : {}}
                 className="w-full disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40 text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg disabled:shadow-none hover:opacity-90 active:scale-98">
-                {carritoActivo.length > 0 ? '✅ Confirmar Venta [F8]' : 'Agregá productos para vender'}
+                {carritoActivo.length > 0 ? (<>✅ Confirmar Venta <span className="hidden lg:inline">[F8]</span></>) : 'Agregá productos para vender'}
               </button>
             </div>
           </div>

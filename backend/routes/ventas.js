@@ -54,7 +54,19 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { turno_id, cliente_id, items, metodo_pago, descuento, recargo, es_fiado, total,
-                monto_efectivo, monto_virtual, metodo_virtual } = req.body;
+                monto_efectivo, monto_virtual, metodo_virtual, offline_uuid } = req.body;
+
+        // Idempotencia: si esta venta offline ya se registró, devolver la existente
+        // (evita duplicados cuando el reenvío de la cola se repite).
+        if (offline_uuid) {
+            const yaExiste = await db.query(
+                'SELECT * FROM ventas WHERE negocio_id = $1 AND offline_uuid = $2 LIMIT 1',
+                [negocio_id, offline_uuid]
+            );
+            if (yaExiste.rows.length > 0) {
+                return res.json({ ...yaExiste.rows[0], duplicada: true });
+            }
+        }
 
         // Pago dividido: validar que las partes sumen el total
         const esDividido = metodo_pago === 'dividido';
@@ -163,10 +175,10 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
         const ventaResult = await db.query(`
             INSERT INTO ventas (turno_id, cliente_id, total, descuento, recargo, metodo_pago, es_fiado, negocio_id,
-                                monto_efectivo, monto_virtual, metodo_virtual)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+                                monto_efectivo, monto_virtual, metodo_virtual, offline_uuid)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
         `, [turno_id || null, cliente_id || null, total, descuento || 0, recargo || 0, metodo_pago || 'efectivo', es_fiado || false, negocio_id,
-            efectivoParte, virtualParte, virtualMetodo]);
+            efectivoParte, virtualParte, virtualMetodo, offline_uuid || null]);
 
         const ventaId = ventaResult.rows[0].id;
 

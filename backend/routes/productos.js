@@ -148,6 +148,29 @@ router.get('/por-revisar', async (req, res) => {
     }
 });
 
+// CATÁLOGO LIVIANO para cache offline del POS: todos los productos activos del
+// negocio con sus códigos de barra, para poder buscar/escanear sin internet.
+router.get('/catalogo', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const resultado = await db.query(`
+            SELECT p.id, p.nombre, p.codigo, p.precio_venta, p.precio_mayorista,
+                   p.stock, p.unidad, p.requiere_revision,
+                   COALESCE(ARRAY_AGG(pc.codigo) FILTER (WHERE pc.codigo IS NOT NULL), '{}') AS codigos
+            FROM productos p
+            LEFT JOIN producto_codigos pc ON pc.producto_id = p.id
+            WHERE p.activo = TRUE AND p.negocio_id = $1
+            GROUP BY p.id
+            ORDER BY p.nombre ASC
+        `, [negocio_id]);
+        res.json({ productos: resultado.rows, fecha: new Date().toISOString() });
+    } catch (error) {
+        console.error('Error obteniendo catálogo:', error);
+        res.status(500).json({ error: 'Error al obtener el catálogo' });
+    }
+});
+
 // Alta RÁPIDA desde el POS: solo el nombre es obligatorio; precio y código
 // son opcionales. Queda marcado requiere_revision para que un admin lo complete.
 // Lo puede usar cualquiera que venda (permiso ventas:crear).
