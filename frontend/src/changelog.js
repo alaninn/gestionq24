@@ -14,9 +14,23 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.16';
+export const VERSION_ACTUAL = '2.10.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.10.0',
+    fecha: '2026-06-16',
+    titulo: 'Centro de Control: ganancia real del negocio',
+    destacados: [
+      {
+        titulo: '🎯 Nuevo: Centro de Control',
+        detalle: 'Un módulo nuevo (menú Centro de Control) que muestra la ganancia REAL del negocio por día, mes o rango: ventas por método (efectivo, transferencia, Mercado Pago, tarjeta), la ganancia en efectivo (venta − costo de los productos) y la ganancia virtual (descontando el 21% de IVA de lo facturado). Podés cargar los gastos fijos del local (alquiler, luz, impuestos) con su valor mensual; se prorratean por día y se descuentan junto con los gastos variables para darte la ganancia neta real. Con tarjetas y gráficos claros.',
+      },
+    ],
+    cambios: [
+      { t: 'Cada venta ahora guarda el costo del producto al momento de venderlo, para que la ganancia histórica sea exacta aunque después cambien los precios de costo.' },
+    ],
+  },
   {
     version: '2.9.16',
     fecha: '2026-06-16',

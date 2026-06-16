@@ -24,6 +24,7 @@ const PLANTILLAS_DEFAULT = {
         gastos: ['ver', 'crear'],
         resumen_fiscal: ['ver'],
         reportes: ['ver'],
+        centro_control: ['ver'],
         ventas: ['ver', 'crear'],
     },
     cajero: {

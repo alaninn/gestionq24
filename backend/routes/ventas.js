@@ -125,7 +125,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
             // Obtener información del producto
             const productoResult = await db.query(
-                'SELECT nombre, precio_venta, stock, unidad FROM productos WHERE id = $1 AND negocio_id = $2',
+                'SELECT nombre, precio_venta, precio_costo, stock, unidad FROM productos WHERE id = $1 AND negocio_id = $2',
                 [item.producto_id, negocio_id]
             );
 
@@ -161,7 +161,8 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
                 nombre_producto: producto.nombre,
                 precio_unitario: precioUnitario,
                 cantidad: cantidad,
-                subtotal: subtotal
+                subtotal: subtotal,
+                costo_unitario: parseFloat(producto.precio_costo) || 0
             });
 
             totalCalculado += subtotal;
@@ -194,9 +195,9 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             }
 
             await db.query(`
-                INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
-                VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7)
-            `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id]);
+                INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id, costo_unitario)
+                VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric)
+            `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id, parseFloat(item.costo_unitario) || 0]);
 
             // Actualizar stock solo para productos con inventario
             await db.query(

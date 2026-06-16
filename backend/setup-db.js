@@ -321,6 +321,23 @@ ALTER TABLE ventas ADD COLUMN IF NOT EXISTS offline_uuid VARCHAR(60);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_ventas_offline_uuid
     ON ventas(negocio_id, offline_uuid) WHERE offline_uuid IS NOT NULL;
 
+-- Centro de Control: costo del producto al momento de la venta (para ganancia
+-- historica exacta, aunque despues cambie el precio de costo del producto).
+ALTER TABLE venta_items ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(12,2);
+
+-- Gastos fijos / operativos mensuales del local (luz, alquiler, impuestos, etc.)
+-- Se prorratean por dia para calcular la ganancia neta real.
+CREATE TABLE IF NOT EXISTS gastos_fijos (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    nombre VARCHAR(120) NOT NULL,
+    monto_mensual NUMERIC(12,2) NOT NULL DEFAULT 0,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_gastos_fijos_negocio ON gastos_fijos(negocio_id);
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

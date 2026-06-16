@@ -68,6 +68,9 @@ app.use('/api/ventas', verificarToken, validarLimitePlan, rutasVentas);
 // Gastos — cajero puede crear
 app.use('/api/gastos', verificarToken, validarLimitePlan, rutasGastos);
 
+// Gastos fijos / operativos mensuales (Centro de Control)
+app.use('/api/gastos-fijos', verificarToken, validarLimitePlan, require('./routes/gastosFijos'));
+
 // Turnos — todos pueden abrir/cerrar
 app.use('/api/turnos', verificarToken, validarLimitePlan, rutasTurnos);
 

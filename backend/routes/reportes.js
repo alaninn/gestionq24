@@ -544,4 +544,109 @@ router.get('/facturado-mes', async (req, res) => {
     }
 });
 
+// =============================================
+// CENTRO DE CONTROL: ganancia real por período (día/mes/rango)
+// Separa por método (efectivo / virtual / tarjeta), descuenta costo, IVA de lo
+// facturado (virtual) y gastos (variables + fijos prorrateados) → ganancia neta.
+// =============================================
+router.get('/centro-control', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const { desde, hasta } = rangoSeguro(req);
+
+        // Ventas del período con su costo (costo al momento de venta; fallback al costo actual)
+        const ventas = await db.query(`
+            SELECT v.id, v.total, v.metodo_pago, v.monto_efectivo, v.monto_virtual, v.metodo_virtual,
+                   COALESCE(SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad), 0) AS costo_venta
+            FROM ventas v
+            LEFT JOIN venta_items vi ON vi.venta_id = v.id
+            LEFT JOIN productos p ON vi.producto_id = p.id
+            WHERE v.negocio_id = $1 AND v.fecha::date >= $2::date AND v.fecha::date <= $3::date
+            GROUP BY v.id
+        `, [negocio_id, desde, hasta]);
+
+        const acc = {
+            efectivo: { venta: 0, costo: 0 },
+            virtual: { venta: 0, costo: 0 }, // transferencia + mercadopago + tarjeta (facturado)
+        };
+        const porMetodo = { efectivo: 0, transferencia: 0, mercadopago: 0, tarjeta: 0, cuenta_corriente: 0 };
+        let totalVendido = 0;
+
+        for (const v of ventas.rows) {
+            const total = parseFloat(v.total) || 0;
+            const costo = parseFloat(v.costo_venta) || 0;
+            totalVendido += total;
+
+            // Montos por método (reparte el pago dividido)
+            const montos = {};
+            if (v.metodo_pago === 'dividido') {
+                montos.efectivo = parseFloat(v.monto_efectivo) || 0;
+                const mv = v.metodo_virtual || 'transferencia';
+                montos[mv] = (montos[mv] || 0) + (parseFloat(v.monto_virtual) || 0);
+            } else {
+                montos[v.metodo_pago] = total;
+            }
+
+            for (const [metodo, monto] of Object.entries(montos)) {
+                if (!monto) continue;
+                if (porMetodo[metodo] === undefined) porMetodo[metodo] = 0;
+                porMetodo[metodo] += monto;
+                const costoM = total > 0 ? costo * (monto / total) : 0;
+                if (metodo === 'efectivo') {
+                    acc.efectivo.venta += monto; acc.efectivo.costo += costoM;
+                } else if (metodo === 'cuenta_corriente') {
+                    // fiado: aún no cobrado → no se cuenta en ganancia real
+                } else {
+                    // transferencia / mercadopago / tarjeta → facturado (lleva IVA)
+                    acc.virtual.venta += monto; acc.virtual.costo += costoM;
+                }
+            }
+        }
+
+        // IVA contenido (21%) de lo facturado virtual
+        const ivaVirtual = acc.virtual.venta - acc.virtual.venta / 1.21;
+        const gananciaEfectivo = acc.efectivo.venta - acc.efectivo.costo;
+        const gananciaVirtual = (acc.virtual.venta - acc.virtual.costo) - ivaVirtual;
+
+        // Gastos variables del período (libro de gastos)
+        const gv = await db.query(
+            'SELECT COALESCE(SUM(monto), 0) AS total FROM gastos WHERE negocio_id = $1 AND fecha::date >= $2::date AND fecha::date <= $3::date',
+            [negocio_id, desde, hasta]
+        );
+        const gastosVariables = parseFloat(gv.rows[0].total) || 0;
+
+        // Gastos fijos prorrateados: (suma mensual / 30) × días del período
+        const gf = await db.query(
+            'SELECT COALESCE(SUM(monto_mensual), 0) AS total FROM gastos_fijos WHERE negocio_id = $1 AND activo = TRUE',
+            [negocio_id]
+        );
+        const fijosMensual = parseFloat(gf.rows[0].total) || 0;
+        const diasPeriodo = Math.max(1, Math.round((new Date(hasta) - new Date(desde)) / 86400000) + 1);
+        const gastoOperativoDiario = fijosMensual / 30;
+        const gastosOperativos = gastoOperativoDiario * diasPeriodo;
+
+        const gananciaBruta = gananciaEfectivo + (acc.virtual.venta - acc.virtual.costo);
+        const gananciaNeta = gananciaEfectivo + gananciaVirtual - gastosVariables - gastosOperativos;
+
+        res.json({
+            desde, hasta, diasPeriodo,
+            totalVendido,
+            porMetodo,
+            efectivo: { venta: acc.efectivo.venta, costo: acc.efectivo.costo, ganancia: gananciaEfectivo },
+            virtual: { venta: acc.virtual.venta, costo: acc.virtual.costo, iva: ivaVirtual, ganancia: gananciaVirtual },
+            iva_virtual: ivaVirtual,
+            ganancia_bruta: gananciaBruta,
+            gastos_variables: gastosVariables,
+            gastos_operativos: gastosOperativos,
+            gasto_operativo_diario: gastoOperativoDiario,
+            fijos_mensual: fijosMensual,
+            ganancia_neta: gananciaNeta,
+        });
+    } catch (error) {
+        console.error('Error en centro-control:', error);
+        res.status(500).json({ error: 'Error al generar el informe del Centro de Control' });
+    }
+});
+
 module.exports = router

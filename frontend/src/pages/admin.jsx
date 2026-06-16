@@ -5,6 +5,7 @@ import Categorias from '../components/admin/Categorias';
 import Gastos from '../components/admin/Gastos';
 import Configuracion from '../components/admin/Configuracion';
 import Reportes from '../components/admin/Reportes';
+import ControlCentral from '../components/admin/ControlCentral';
 import CuentasCorrientes from '../components/admin/cuentascorrientes';
 import ControlCaja from '../components/admin/controlcaja';
 import { useAuth } from '../context/AuthContext';
@@ -201,6 +202,9 @@ function Admin() {
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
+          {tienePermiso('centro_control', 'ver') && (
+            <NavLink to="/admin/centro-control" icon="🎯" label="Centro de Control" />
+          )}
 
           {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
@@ -301,6 +305,7 @@ function Admin() {
             <Route path="/gastos" element={<Gastos />} />
             <Route path="/stock" element={<Stock />} />
             <Route path="/reportes" element={<Reportes />} />
+            <Route path="/centro-control" element={<ControlCentral />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/cuentas-corrientes" element={<CuentasCorrientes />} />
             <Route path="/caja" element={<ControlCaja />} />
