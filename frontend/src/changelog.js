@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.9.14';
+export const VERSION_ACTUAL = '2.9.15';
 
 export const CHANGELOG = [
+  {
+    version: '2.9.15',
+    fecha: '2026-06-16',
+    titulo: 'Facturación más tolerante cuando AFIP está lento',
+    cambios: [
+      { t: 'Al facturar, el sistema ahora espera lo suficiente a AFIP (antes cortaba a los 10 segundos y mostraba un error de "tiempo excedido" aunque la factura pudiera salir). Útil de madrugada, cuando AFIP suele estar lento por mantenimiento.' },
+      { t: 'Cuando AFIP rechaza un comprobante, el sistema ahora registra el motivo exacto (observaciones/errores) para poder resolverlo más rápido.' },
+    ],
+  },
   {
     version: '2.9.14',
     fecha: '2026-06-16',

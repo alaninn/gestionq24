@@ -467,30 +467,39 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
         
         const feDetResp = feCAESolicitarResult.FeDetResp?.FECAEDetResponse;
         const cabecera = feCAESolicitarResult.FeCabResp;
-        
+
+        // Helper: extrae "Code: Msg | Code: Msg" de Obs/Err/Evt (vengan como objeto o array)
+        const extraerMsgs = (x) => {
+            if (!x) return '';
+            const arr = Array.isArray(x) ? x : [x];
+            return arr.map(o => `${o?.Code ?? '?'}: ${o?.Msg ?? ''}`).join(' | ');
+        };
+        const erroresResult = extraerMsgs(feCAESolicitarResult.Errors?.Err);
+        const eventosResult = extraerMsgs(feCAESolicitarResult.Events?.Evt);
+
         // 11. Verificar resultado
         if (!feDetResp) {
-            const errores = feCAESolicitarResult.Errors?.Err;
-            const mensajeError = Array.isArray(errores) 
-                ? errores.map(e => `${e.Code}: ${e.Msg}`).join(', ')
-                : (errores ? `${errores.Code}: ${errores.Msg}` : 'Error desconocido');
-            throw new Error(`Error WSFEv1: ${mensajeError}`);
+            const detalle = [erroresResult && `Errores: ${erroresResult}`, eventosResult && `Eventos: ${eventosResult}`]
+                .filter(Boolean).join(' · ') || 'Error desconocido';
+            throw new Error(`Error WSFEv1: ${detalle}`);
         }
-        
+
         const cae = feDetResp.CAE;
         const caeVencimiento = feDetResp.CAEFchVto;
         const resultadoOperacion = feDetResp.Resultado;
-        
-        // Verificar si el CAE fue aprobado
-       // Verificar si el CAE fue aprobado
-if (resultadoOperacion !== 'A') {
-   
-    const observaciones = feDetResp.Observaciones?.Obs;
-    const mensajeObs = Array.isArray(observaciones)
-        ? observaciones.map(o => `${o.Code}: ${o.Msg}`).join(', ')
-        : (observaciones ? `${observaciones.Code}: ${observaciones.Msg}` : '');
-    throw new Error(`CAE no aprobado: ${mensajeObs}`);
-}
+
+        // Verificar si el CAE fue aprobado. Si no, capturar TODO el detalle de AFIP
+        // (observaciones + errores + eventos) para poder diagnosticar el motivo real.
+        if (resultadoOperacion !== 'A') {
+            const obs = extraerMsgs(feDetResp.Observaciones?.Obs);
+            const detalle = [
+                `Resultado=${resultadoOperacion || '?'}`,
+                obs && `Obs: ${obs}`,
+                erroresResult && `Errores: ${erroresResult}`,
+                eventosResult && `Eventos: ${eventosResult}`,
+            ].filter(Boolean).join(' · ');
+            throw new Error(`CAE no aprobado — ${detalle}`);
+        }
         
         // 12. Guardar comprobante en BD con CAE real
         const caeVencimientoDate = new Date(

@@ -2629,7 +2629,9 @@ useEffect(() => {
         try {
           const comprobanteData = { ...datosFactura, venta_id: resVenta.data.id };
 
-          const resComprobante = await api.post('/api/arca/emitir', comprobanteData);
+          // AFIP puede tardar (sobre todo de madrugada): damos margen amplio para no
+          // cortar antes que el backend (que espera hasta ~30-60s a AFIP).
+          const resComprobante = await api.post('/api/arca/emitir', comprobanteData, { timeout: 90000 });
 
           if (resComprobante.data.exito) {
             console.log('✅ Comprobante electrónico emitido:', resComprobante.data.comprobante.cae);

@@ -133,7 +133,7 @@ export function ConectividadProvider({ children }) {
         // Si la venta pedía factura electrónica, emitirla ahora
         if (ventaId && facturacion) {
           try {
-            await api.post('/api/arca/emitir', { ...facturacion, venta_id: ventaId });
+            await api.post('/api/arca/emitir', { ...facturacion, venta_id: ventaId }, { timeout: 90000 });
           } catch {
             facturasFallidas++; // la venta quedó registrada; la factura se reintenta a mano
           }
