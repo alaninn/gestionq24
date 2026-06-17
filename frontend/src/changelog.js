@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.10.0';
+export const VERSION_ACTUAL = '2.10.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.10.1',
+    fecha: '2026-06-16',
+    titulo: 'Centro de Control: accesos y facturación total',
+    cambios: [
+      { t: 'El Dashboard ahora tiene un botón "🎯 Centro de Control" para entrar directo.' },
+      { t: 'En el Centro de Control se agregó la tarjeta de "Facturación total" del período (arriba de la ganancia neta) para entender mejor el número real.' },
+      { t: 'Tarjeta de "Gastos fijos del local" con el total mensual; al tocarla muestra (y deja editar) cuáles son.' },
+    ],
+  },
   {
     version: '2.10.0',
     fecha: '2026-06-16',

@@ -125,6 +125,16 @@ export default function ControlCentral() {
 
       {d && !cargando && (
         <>
+          {/* Facturación total del período (para entender el número real) */}
+          <div className="rounded-2xl p-5 bg-white border border-gray-100 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Facturación total</p>
+              <p className="text-3xl font-bold text-gray-800 mt-1">{fmt(d.totalVendido)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">Todo lo vendido en el período ({d.diasPeriodo} día/s)</p>
+            </div>
+            <span className="text-4xl">🧾</span>
+          </div>
+
           {/* GANANCIA NETA REAL — destacada */}
           <div className="rounded-3xl p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden"
             style={{ background: 'linear-gradient(135deg, #064e3b 0%, #0f766e 60%, #155e75 100%)' }}>
@@ -173,8 +183,8 @@ export default function ControlCentral() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <CardChica titulo="🧾 IVA facturado" valor={fmt(d.iva_virtual)} color="from-rose-500 to-pink-600" />
             <CardChica titulo="💸 Gastos varios" valor={fmt(d.gastos_variables)} color="from-orange-500 to-red-600" />
-            <CardChica titulo="🏠 Gastos operativos" valor={fmt(d.gastos_operativos)} color="from-slate-500 to-gray-700"
-              sub={`${fmt(d.gasto_operativo_diario)}/día`} />
+            <CardChica titulo="🏠 Gastos fijos (mes)" valor={fmt(d.fijos_mensual)} color="from-slate-500 to-gray-700"
+              sub={`${fmt(d.gastos_operativos)} en el período · tocá para ver`} onClick={() => setMostrarGastos(true)} />
             <CardChica titulo="📈 Ganancia bruta" valor={fmt(d.ganancia_bruta)} color="from-teal-500 to-cyan-600" />
           </div>
 
@@ -224,9 +234,10 @@ export default function ControlCentral() {
   );
 }
 
-function CardChica({ titulo, valor, color, sub }) {
+function CardChica({ titulo, valor, color, sub, onClick }) {
   return (
-    <div className={`bg-gradient-to-br ${color} rounded-2xl p-4 sm:p-5 text-white shadow-lg`}>
+    <div onClick={onClick}
+      className={`bg-gradient-to-br ${color} rounded-2xl p-4 sm:p-5 text-white shadow-lg ${onClick ? 'cursor-pointer hover:scale-[1.03] active:scale-95 transition-transform' : ''}`}>
       <p className="text-white/80 text-xs font-medium">{titulo}</p>
       <p className="text-xl sm:text-2xl font-bold mt-1">{valor}</p>
       {sub && <p className="text-white/70 text-[11px] mt-0.5">{sub}</p>}

@@ -255,6 +255,10 @@ if (error) return (
               ✅ Actualizado a las {ultimaActualizacion.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
+          <button onClick={() => { window.location.href = '/admin/centro-control'; }}
+            className="bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 mr-2">
+            🎯 Centro de Control
+          </button>
           <button onClick={cargarDatos} disabled={cargando}
             className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:transform-none">
             {cargando ? '⏳ Actualizando...' : '🔄 Actualizar'}
