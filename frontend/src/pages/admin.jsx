@@ -202,9 +202,6 @@ function Admin() {
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
-          {tienePermiso('centro_control', 'ver') && (
-            <NavLink to="/admin/centro-control" icon="🎯" label="Centro de Control" />
-          )}
 
           {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
