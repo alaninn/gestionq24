@@ -57,6 +57,9 @@ export function ConectividadProvider({ children }) {
   // CATÁLOGO OFFLINE: cachear una vez y refrescar a diario (tras las 3 AM)
   // ============================================================
   const cachearCatalogo = async (forzar = false) => {
+    // Sin sesión iniciada no se cachea (evita llamar al catálogo en el login,
+    // que daba 401 → el interceptor redirige a /login → loop → 429).
+    if (!localStorage.getItem('token')) return;
     if (!navigator.onLine) return;
     try {
       const tieneCache = !!localStorage.getItem(CLAVE_CATALOGO);

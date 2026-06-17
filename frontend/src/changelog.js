@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.10.1';
+export const VERSION_ACTUAL = '2.10.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.10.2',
+    fecha: '2026-06-17',
+    titulo: 'Fix: pantalla de login en loop',
+    cambios: [
+      { t: 'Corregido un bucle en la pantalla de login (el catálogo offline se intentaba cargar sin sesión y reiniciaba la página una y otra vez). Ahora solo se cachea estando logueado.' },
+    ],
+  },
   {
     version: '2.10.1',
     fecha: '2026-06-16',
