@@ -303,10 +303,19 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        const { monto, metodo_pago, tipo_pago, descripcion, recibo_url } = req.body;
+        const { monto, metodo_pago, tipo_pago, descripcion, recibo_url, fecha } = req.body;
 
         if (!monto || monto <= 0) {
             return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
+        }
+
+        // Fecha del pago: si se eligió un día distinto a HOY, se respeta (a las
+        // 12:00 para evitar saltos por zona horaria). Si es hoy o no vino, se usa
+        // CURRENT_TIMESTAMP para conservar la hora real.
+        let fechaPago = null;
+        if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            const hoyArg = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+            if (fecha !== hoyArg) fechaPago = `${fecha} 12:00:00`;
         }
 
         // Verificar que el proveedor existe
@@ -326,7 +335,7 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
         const gasto = await db.query(`
             INSERT INTO gastos
             (monto, metodo_pago, tipo, descripcion, fecha, proveedor_id, negocio_id, recibo_url, tipo_pago_proveedor, usuario_id, origen_dinero)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, 'local')
+            VALUES ($1, $2, $3, $4, COALESCE($10, CURRENT_TIMESTAMP), $5, $6, $7, $8, $9, 'local')
             RETURNING *
         `, [
             monto,
@@ -337,7 +346,8 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
             negocio_id,
             recibo_url || null,
             tipo_pago || 'pago_deuda',
-            req.usuario?.id || null
+            req.usuario?.id || null,
+            fechaPago
         ]);
 
         // Actualizar saldos del proveedor

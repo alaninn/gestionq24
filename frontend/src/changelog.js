@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.10.3';
+export const VERSION_ACTUAL = '2.10.4';
 
 export const CHANGELOG = [
+  {
+    version: '2.10.4',
+    fecha: '2026-06-20',
+    titulo: 'Proveedores y Gastos: arreglos',
+    cambios: [
+      { t: 'Proveedores: las tarjetas de totales "Les debemos" y "Nos deben" mostraban NaN. Ahora suman bien y muestran el total real de deudas.' },
+      { t: 'Pago a proveedor: ahora podés elegir la fecha del pago (por si registrás uno de otro día); antes siempre quedaba con la fecha de hoy.' },
+      { t: 'Editar un gasto ahora abre el formulario completo (igual que al crear uno nuevo), precargado, para poder cambiar todos los campos incluida la fecha. Antes el editor era muy reducido.' },
+    ],
+  },
   {
     version: '2.10.3',
     fecha: '2026-06-20',

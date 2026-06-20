@@ -271,6 +271,8 @@ function Proveedores() {
         tipo_pago: tipoPago,
         descripcion: descripcionPago,
         recibo_url: formPago.recibo_url || null,
+        // Fecha elegida (puede ser otro día); el backend usa hoy si coincide.
+        fecha: formPago.fecha || null,
       });
 
       setExito('Pago registrado');
@@ -353,8 +355,10 @@ function Proveedores() {
 
   const calcularTotales = () => {
     const total = proveedores.length;
-    const deuda = proveedores.reduce((sum, p) => sum + (p.saldo_deuda || 0), 0);
-    const favor = proveedores.reduce((sum, p) => sum + (p.saldo_a_favor || 0), 0);
+    // Los saldos llegan de Postgres como string ("1500.00"); hay que pasarlos a
+    // Number antes de sumar, si no JS los concatena y el total da NaN.
+    const deuda = proveedores.reduce((sum, p) => sum + (Number(p.saldo_deuda) || 0), 0);
+    const favor = proveedores.reduce((sum, p) => sum + (Number(p.saldo_a_favor) || 0), 0);
     const cuentaNeta = favor - deuda;
     return { total, deuda, favor, cuentaNeta };
   };
@@ -1132,6 +1136,15 @@ function Proveedores() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha del pago</label>
+                    <input type="date"
+                      value={formPago.fecha || new Date().toLocaleDateString('en-CA')}
+                      onChange={(e) => setFormPago(p => ({ ...p, fecha: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                    <p className="text-[11px] text-gray-400 mt-1">Por defecto es hoy. Cambiala si registrás un pago de otro día.</p>
                   </div>
 
                   <div>

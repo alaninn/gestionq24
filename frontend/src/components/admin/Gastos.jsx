@@ -12,25 +12,35 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 // COMPONENTE MODAL DE GASTO
 // Se exporta para poder usarlo también en el POS
 // =============================================
-export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = null }) {
+export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = null, gastoExistente = null }) {
 
-  const [tabActiva, setTabActiva] = useState('gasto'); // 'gasto' | 'proveedor'
+  // Modo edición: si llega un gasto existente, el modal abre completo y
+  // precargado (mismos campos que al crear) y al guardar hace PUT en vez de POST.
+  const esEdicion = !!gastoExistente;
+  const fechaHoy = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+  const fechaExistente = gastoExistente?.fecha
+    ? String(gastoExistente.fecha).split('T')[0]
+    : fechaHoy;
+
+  const [tabActiva, setTabActiva] = useState(
+    gastoExistente?.tipo === 'pago_proveedor' ? 'proveedor' : 'gasto'
+  ); // 'gasto' | 'proveedor'
   const [formulario, setFormulario] = useState({
-    descripcion: '',
-    monto: '',
-    metodo_pago: 'efectivo',
+    descripcion: gastoExistente?.descripcion || '',
+    monto: gastoExistente?.monto != null ? String(gastoExistente.monto) : '',
+    metodo_pago: gastoExistente?.metodo_pago || 'efectivo',
     // De dónde sale el dinero: 'caja' descuenta del cierre del turno;
     // 'local' (plata del negocio) y 'otro' no afectan la caja.
-    origen_dinero: turno ? 'caja' : 'local',
-    proveedor_id: '',
-    tipo_pago_proveedor: 'a_cuenta',
-    recibo_url: '',
+    origen_dinero: gastoExistente?.origen_dinero || (turno ? 'caja' : 'local'),
+    proveedor_id: gastoExistente?.proveedor_id ? String(gastoExistente.proveedor_id) : '',
+    tipo_pago_proveedor: gastoExistente?.tipo_pago_proveedor || 'a_cuenta',
+    recibo_url: gastoExistente?.recibo_url || '',
     // Dato fiscal: '' = gasto X (sin comprobante fiscal); 'factura_a' = en
     // blanco con Factura A → suma IVA crédito al Resumen Fiscal.
-    tipo_comprobante: '',
+    tipo_comprobante: gastoExistente?.tipo_comprobante === 'factura_a' ? 'factura_a' : '',
     registrar_factura: false,
-    total_factura: '',
-    fecha: new Date().toISOString().split('T')[0]
+    total_factura: gastoExistente?.total_factura || '',
+    fecha: fechaExistente,
   });
   const [proveedores, setProveedores] = useState([]);
   const [error, setError] = useState('');
@@ -144,11 +154,22 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
         }
       }
 
-      await api.post('/api/gastos', datosEnvio);
+      if (esEdicion) {
+        // En edición conservamos lo que no se toca en el formulario (turno,
+        // productos de una compra, etc.) y pisamos lo editado.
+        await api.put(`/api/gastos/${gastoExistente.id}`, {
+          ...gastoExistente,
+          ...datosEnvio,
+          turno_id: gastoExistente.turno_id || null,
+          productos_json: gastoExistente.productos_json || null,
+        });
+      } else {
+        await api.post('/api/gastos', datosEnvio);
+      }
       if (onGuardado) onGuardado();
       onCerrar();
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al registrar el gasto');
+      setError(err.response?.data?.error || (esEdicion ? 'Error al actualizar el gasto' : 'Error al registrar el gasto'));
     } finally {
       setGuardando(false);
     }
@@ -160,12 +181,12 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
 
         {/* Encabezado */}
         <div className="flex items-center justify-between p-3 sm:p-5 border-b">
-          <h3 className="text-base sm:text-lg font-bold text-gray-800">Nuevo Gasto</h3>
+          <h3 className="text-base sm:text-lg font-bold text-gray-800">{esEdicion ? '✏️ Editar Gasto' : 'Nuevo Gasto'}</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
         </div>
 
-        {/* Pestañas */}
-        <div className="flex border-b">
+        {/* Pestañas (al editar se ocultan: no se cambia el tipo de un gasto existente) */}
+        <div className={`flex border-b ${esEdicion ? 'hidden' : ''}`}>
           <button 
             type="button"
             onClick={() => setTabActiva('gasto')}
@@ -525,7 +546,7 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
             </button>
             <button type="submit" disabled={guardando}
               className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50">
-              {guardando ? 'Guardando...' : 'Registrar gasto'}
+              {guardando ? 'Guardando...' : (esEdicion ? '💾 Guardar cambios' : 'Registrar gasto')}
             </button>
           </div>
 
@@ -547,10 +568,8 @@ function Gastos() {
   const [proveedores, setProveedores] = useState([]);
   const [exito, setExito] = useState('');
 
-  // Edición de un gasto existente (por si hubo un error al cargarlo)
+  // Edición de un gasto existente: abre el modal completo precargado.
   const [gastoEditando, setGastoEditando] = useState(null);
-  const [formEditarGasto, setFormEditarGasto] = useState({});
-  const [guardandoEdicionGasto, setGuardandoEdicionGasto] = useState(false);
 
   const [compra, setCompra] = useState({
     proveedor_id: '',
@@ -754,41 +773,9 @@ function Gastos() {
   };
 
   // ---- Editar un gasto existente ----
+  // Abre el modal completo (ModalGasto) precargado con este gasto.
   const abrirEditarGasto = (gasto) => {
     setGastoEditando(gasto);
-    setFormEditarGasto({
-      descripcion: gasto.descripcion || '',
-      monto: gasto.monto,
-      categoria: gasto.categoria || '',
-      metodo_pago: gasto.metodo_pago || 'efectivo',
-      origen_dinero: gasto.origen_dinero || 'caja',
-    });
-  };
-
-  const guardarEdicionGasto = async (e) => {
-    e.preventDefault();
-    try {
-      setGuardandoEdicionGasto(true);
-      // El PUT del backend actualiza todos los campos: enviamos los editados
-      // y conservamos el resto tal como estaba en el gasto original.
-      await api.put(`/api/gastos/${gastoEditando.id}`, {
-        ...gastoEditando,
-        descripcion: formEditarGasto.descripcion,
-        monto: formEditarGasto.monto,
-        categoria: formEditarGasto.categoria,
-        metodo_pago: formEditarGasto.metodo_pago,
-        origen_dinero: formEditarGasto.origen_dinero,
-        productos_json: gastoEditando.productos_json || null,
-      });
-      setGastoEditando(null);
-      setExito('Gasto actualizado');
-      cargarGastos();
-      setTimeout(() => setExito(''), 2500);
-    } catch (err) {
-      alert(err.response?.data?.error || 'Error al actualizar el gasto');
-    } finally {
-      setGuardandoEdicionGasto(false);
-    }
   };
 
   const guardarCompra = async () => {
@@ -1779,90 +1766,18 @@ function Gastos() {
         />
       )}
 
-      {/* Modal Editar Gasto */}
+      {/* Modal Editar Gasto: ahora abre el MISMO modal completo que "Nuevo Gasto",
+          precargado, para poder editar todos los campos (incluida la fecha). */}
       {gastoEditando && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
-              <div>
-                <h3 className="font-bold text-gray-800">✏️ Editar gasto</h3>
-                <p className="text-xs text-gray-400">Registrado por {gastoEditando.usuario_nombre || 'Admin'} · {new Date(gastoEditando.fecha).toLocaleString('es-AR')}</p>
-              </div>
-              <button onClick={() => setGastoEditando(null)} className="text-2xl text-gray-400 hover:text-gray-600">×</button>
-            </div>
-
-            <form onSubmit={guardarEdicionGasto} className="p-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                    <input type="number" min="0.01" step="0.01" required value={formEditarGasto.monto}
-                      onChange={(e) => setFormEditarGasto(p => ({ ...p, monto: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-xl pl-7 pr-3 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                  <input type="text" value={formEditarGasto.categoria}
-                    onChange={(e) => setFormEditarGasto(p => ({ ...p, categoria: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                <input type="text" value={formEditarGasto.descripcion}
-                  onChange={(e) => setFormEditarGasto(p => ({ ...p, descripcion: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
-                <select value={formEditarGasto.metodo_pago}
-                  onChange={(e) => setFormEditarGasto(p => ({ ...p, metodo_pago: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
-                  <option value="efectivo">💵 Efectivo</option>
-                  <option value="tarjeta">💳 Tarjeta</option>
-                  <option value="transferencia">🏦 Transferencia</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">¿De dónde salió el dinero?</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'caja', label: '🧰 Caja del turno' },
-                    { id: 'local', label: '🏪 Dinero del local' },
-                    { id: 'otro', label: '📱 MP del local' },
-                  ].map(o => (
-                    <button key={o.id} type="button"
-                      onClick={() => setFormEditarGasto(p => ({ ...p, origen_dinero: o.id }))}
-                      className={`p-2 rounded-lg border-2 text-xs font-semibold transition-all ${
-                        formEditarGasto.origen_dinero === o.id
-                          ? 'border-green-500 bg-green-50 text-gray-800'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400 mt-1">"Caja del turno" descuenta del cierre de esa caja; los otros no afectan.</p>
-              </div>
-
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setGastoEditando(null)}
-                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={guardandoEdicionGasto}
-                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50">
-                  {guardandoEdicionGasto ? 'Guardando...' : '💾 Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ModalGasto
+          gastoExistente={gastoEditando}
+          onCerrar={() => setGastoEditando(null)}
+          onGuardado={() => {
+            cargarGastos();
+            setExito('Gasto actualizado');
+            setTimeout(() => setExito(''), 2500);
+          }}
+        />
       )}
     </div>
   );
