@@ -1617,11 +1617,12 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                       </div>
                     )}
 
-                    {/* Gráfico de torta */}
+                    {/* Gráfico de torta. Las etiquetas van en una leyenda DEBAJO
+                        (no encima del gráfico) para que no se superpongan entre sí. */}
                     {datosGrafico.length > 0 && (
                       <div className="bg-white rounded-xl p-4 border border-gray-200 flex-1">
                         <h5 className="font-medium text-gray-700 mb-3 text-center">📈 Distribución de Pagos</h5>
-                        <div className="h-48">
+                        <div className="h-44">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
@@ -1629,9 +1630,8 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                                 cx="50%"
                                 cy="50%"
                                 innerRadius={40}
-                                outerRadius={80}
+                                outerRadius={75}
                                 dataKey="value"
-                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                               >
                                 {datosGrafico.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={entry.color} />
@@ -1640,6 +1640,22 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
                               <Tooltip formatter={(value) => fmt(value)} />
                             </PieChart>
                           </ResponsiveContainer>
+                        </div>
+                        {/* Leyenda en texto, debajo del gráfico */}
+                        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                          {datosGrafico.map(item => {
+                            const totalG = datosGrafico.reduce((a, x) => a + x.value, 0) || 1;
+                            const pct = Math.round((item.value / totalG) * 100);
+                            return (
+                              <div key={item.name} className="flex items-center justify-between gap-2 min-w-0">
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: item.color }}></span>
+                                  <span className="text-xs text-gray-600 truncate">{item.name}</span>
+                                </span>
+                                <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">{pct}%</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}

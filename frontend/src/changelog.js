@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.10.4';
+export const VERSION_ACTUAL = '2.11.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.11.0',
+    fecha: '2026-06-20',
+    titulo: 'Control de Caja: cierre general por día',
+    cambios: [
+      { t: 'El historial de Control de Caja ahora se agrupa por día: cada día es una "caja general" que suma todas las cajas (mañana, tarde, trasnoche…). La cantidad de cajas por día puede variar.' },
+      { t: 'Al tocar un día se abre el "Cierre general del día" con el total consolidado (facturación, efectivo, virtual, gastos y ganancia neta) y el detalle de cada caja individual; desde ahí podés abrir el detalle completo de cada una.' },
+      { t: 'Arreglos visuales en los modales de cierre: se quitó el efecto que agrandaba el modal (tapaba texto) y la distribución de pagos del cierre de caja ahora usa una leyenda debajo del gráfico para que no se superpongan las etiquetas.' },
+    ],
+  },
   {
     version: '2.10.4',
     fecha: '2026-06-20',

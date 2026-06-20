@@ -15,6 +15,176 @@ const fmtFecha = (f) => new Date(f).toLocaleDateString('es-AR', {
   hour: '2-digit', minute: '2-digit'
 });
 
+// Solo la hora (HH:MM) — para mostrar el horario de cada caja dentro de un día
+const fmtHora = (f) => f ? new Date(f).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+// Fecha del día en texto largo (ej: "Mié 18/06/2026")
+const fmtDiaLargo = (iso) => {
+  // iso = 'YYYY-MM-DD' → armamos un Date local a mediodía para no saltar de día
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(a, m - 1, d, 12).toLocaleDateString('es-AR', {
+    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'
+  });
+};
+
+const virtualDe = (t) => parseFloat(t.ventas_tarjeta || 0) + parseFloat(t.ventas_mp || 0) + parseFloat(t.ventas_transferencia || 0);
+
+// Agrupa los turnos (cajas) por día (según la fecha de apertura, hora Argentina).
+// Cada día es una "caja general": la suma de todas las cajas (mañana, tarde,
+// trasnoche...) que se abrieron ese día. La cantidad de cajas por día es variable.
+function agruparPorDia(turnos) {
+  const mapa = new Map();
+  for (const t of turnos) {
+    const dia = fechaArgentina(t.fecha_apertura); // 'YYYY-MM-DD'
+    if (!mapa.has(dia)) mapa.set(dia, []);
+    mapa.get(dia).push(t);
+  }
+  const dias = [];
+  for (const [dia, cajas] of mapa) {
+    // Ordenamos las cajas del día por horario de apertura
+    cajas.sort((a, b) => new Date(a.fecha_apertura) - new Date(b.fecha_apertura));
+    const totales = cajas.reduce((acc, t) => ({
+      total_facturado: acc.total_facturado + parseFloat(t.total_facturado || 0),
+      total_ventas: acc.total_ventas + parseInt(t.total_ventas || 0),
+      ventas_efectivo: acc.ventas_efectivo + parseFloat(t.ventas_efectivo || 0),
+      ventas_tarjeta: acc.ventas_tarjeta + parseFloat(t.ventas_tarjeta || 0),
+      ventas_mp: acc.ventas_mp + parseFloat(t.ventas_mp || 0),
+      ventas_transferencia: acc.ventas_transferencia + parseFloat(t.ventas_transferencia || 0),
+      total_gastos: acc.total_gastos + parseFloat(t.total_gastos || 0),
+      inicio_caja: acc.inicio_caja + parseFloat(t.inicio_caja || 0),
+      efectivo_retirado: acc.efectivo_retirado + parseFloat(t.efectivo_retirado || 0),
+      dinero_siguiente: acc.dinero_siguiente + parseFloat(t.dinero_siguiente || 0),
+    }), {
+      total_facturado: 0, total_ventas: 0, ventas_efectivo: 0, ventas_tarjeta: 0,
+      ventas_mp: 0, ventas_transferencia: 0, total_gastos: 0, inicio_caja: 0,
+      efectivo_retirado: 0, dinero_siguiente: 0,
+    });
+    totales.virtual = totales.ventas_tarjeta + totales.ventas_mp + totales.ventas_transferencia;
+    totales.ganancia = totales.total_facturado - totales.total_gastos;
+    dias.push({
+      dia,
+      cajas,
+      totales,
+      algunaAbierta: cajas.some(c => c.estado === 'abierto'),
+    });
+  }
+  // Más reciente primero
+  dias.sort((a, b) => (a.dia < b.dia ? 1 : -1));
+  return dias;
+}
+
+// =============================================
+// MODAL: CIERRE GENERAL DEL DÍA
+// Consolida todas las cajas (mañana/tarde/trasnoche) de un mismo día.
+// =============================================
+function ModalCierreGeneralDia({ diaData, onCerrar, onVerCaja }) {
+  const { dia, cajas, totales, algunaAbierta } = diaData;
+
+  const metodos = [
+    { label: '💵 Efectivo', valor: totales.ventas_efectivo, color: 'text-green-600' },
+    { label: '💳 Tarjeta', valor: totales.ventas_tarjeta, color: 'text-blue-600' },
+    { label: '📱 Mercado Pago', valor: totales.ventas_mp, color: 'text-purple-600' },
+    { label: '🏦 Transferencia', valor: totales.ventas_transferencia, color: 'text-orange-600' },
+  ].filter(m => parseFloat(m.valor) > 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
+
+        {/* Encabezado */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 py-4 flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-lg sm:text-xl font-bold capitalize">🗓️ Cierre general · {fmtDiaLargo(dia)}</h3>
+            <p className="text-slate-300 text-xs sm:text-sm mt-1">
+              {cajas.length} caja{cajas.length !== 1 ? 's' : ''} en el día
+              {algunaAbierta && <span className="ml-2 bg-green-400/20 text-green-300 border border-green-400/30 px-2 py-0.5 rounded-full text-[11px]">una sigue abierta</span>}
+            </p>
+          </div>
+          <button onClick={onCerrar} className="text-slate-300 hover:text-white text-3xl leading-none flex-shrink-0">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
+
+          {/* TOTAL GENERAL DEL DÍA */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-2">Total general del día</p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="border border-gray-200 rounded-xl p-3.5 bg-green-50/50">
+                <p className="text-[11px] text-gray-500 font-medium">Facturación total</p>
+                <p className="text-xl font-bold text-green-700 mt-0.5 tabular-nums break-words">{fmt(totales.total_facturado)}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{totales.total_ventas} ventas</p>
+              </div>
+              <div className="border border-gray-200 rounded-xl p-3.5">
+                <p className="text-[11px] text-gray-500 font-medium">Efectivo</p>
+                <p className="text-xl font-bold text-gray-800 mt-0.5 tabular-nums break-words">{fmt(totales.ventas_efectivo)}</p>
+              </div>
+              <div className="border border-gray-200 rounded-xl p-3.5">
+                <p className="text-[11px] text-gray-500 font-medium">Virtual</p>
+                <p className="text-xl font-bold text-gray-800 mt-0.5 tabular-nums break-words">{fmt(totales.virtual)}</p>
+              </div>
+              <div className="border border-gray-200 rounded-xl p-3.5 bg-blue-50/50">
+                <p className="text-[11px] text-gray-500 font-medium">Ganancia neta</p>
+                <p className="text-xl font-bold text-blue-700 mt-0.5 tabular-nums break-words">{fmt(totales.ganancia)}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">menos {fmt(totales.total_gastos)} gastos</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Desglose por método del día */}
+          {metodos.length > 0 && (
+            <div className="border border-gray-200 rounded-xl p-3.5">
+              <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-2">Ventas por método (día)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {metodos.map(m => (
+                  <div key={m.label} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">{m.label}</span>
+                    <span className={`font-bold tabular-nums ${m.color}`}>{fmt(m.valor)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cada caja individual del día */}
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-2">Cajas del día (individuales)</p>
+            <div className="space-y-2">
+              {cajas.map(caja => (
+                <div key={caja.id} className="border border-gray-200 rounded-xl p-3.5 flex items-center justify-between gap-3 hover:border-slate-300 transition-colors">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-800 truncate">{caja.nombre || 'Caja'}</p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        caja.estado === 'abierto' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      }`}>{caja.estado}</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {fmtHora(caja.fecha_apertura)} → {caja.fecha_cierre ? fmtHora(caja.fecha_cierre) : 'en curso'}
+                      {caja.usuario_cierre_nombre ? ` · cerró ${caja.usuario_cierre_nombre}` : ''}
+                    </p>
+                    <div className="flex gap-3 mt-1 text-[11px] text-gray-500 flex-wrap">
+                      <span>💵 {fmt(caja.ventas_efectivo)}</span>
+                      <span>📲 {fmt(virtualDe(caja))}</span>
+                      <span className="text-red-500">💸 {fmt(caja.total_gastos)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-green-600 tabular-nums">{fmt(caja.total_facturado)}</p>
+                    <button onClick={() => onVerCaja(caja)}
+                      className="mt-1 text-xs font-semibold text-slate-600 border border-gray-300 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap">
+                      Ver detalle
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // =============================================
 // MODAL: DETALLE DE CIERRE
 // =============================================
@@ -73,7 +243,7 @@ function ModalDetalleCierre({ turno, onCerrar }) {
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-black via-gray-900 to-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col transform transition-all duration-500 hover:scale-105">
+      <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
 
         {/* Encabezado */}
         <div className="bg-gradient-to-r from-green-600 via-green-500 to-emerald-600 text-white p-6 flex items-center justify-between flex-shrink-0 shadow-lg">
@@ -426,6 +596,8 @@ function ControlCaja() {
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [turnoSeleccionado, setTurnoSeleccionado] = useState(null);
+  // Día (caja general) seleccionado para ver el cierre general del día
+  const [diaSeleccionado, setDiaSeleccionado] = useState(null);
   const [mesSeleccionado, setMesSeleccionado] = useState(() => {
     const h = new Date();
     return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}`;
@@ -567,116 +739,70 @@ function ControlCaja() {
             </div>
           </div>
 
-          {/* Tabla de turnos */}
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="p-4 border-b">
-              <h3 className="font-semibold text-gray-700">
-                Historial de Cierres — {datos.turnos.length} turnos
-              </h3>
-            </div>
-            {datos.turnos.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <p className="text-4xl mb-2">📭</p>
-                <p>No hay cierres de caja en este período</p>
-              </div>
-            ) : (
-              <>
-              {/* Vista móvil: tarjetas por turno */}
-              <div className="sm:hidden divide-y divide-gray-100">
-                {datos.turnos.map(turno => (
-                  <div key={turno.id} className="p-3" onClick={() => setTurnoSeleccionado(turno)}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800">{turno.nombre ? `${turno.nombre} · ` : ''}{fmtFecha(turno.fecha_apertura)}</p>
-                        <p className="text-xs text-gray-400">
-                          {turno.fecha_cierre ? `Cierre: ${fmtFecha(turno.fecha_cierre)}` : 'Turno en curso'} · {turno.total_ventas} venta(s)
-                          {turno.usuario_cierre_nombre ? ` · cerró ${turno.usuario_cierre_nombre}` : ''}
-                        </p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-green-600">{fmt(turno.total_facturado)}</p>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                          turno.estado === 'abierto' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                        }`}>{turno.estado}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 mt-1.5 text-xs text-gray-500">
-                      <span>💵 {fmt(turno.ventas_efectivo)}</span>
-                      <span>📱 {fmt(parseFloat(turno.ventas_tarjeta || 0) + parseFloat(turno.ventas_mp || 0) + parseFloat(turno.ventas_transferencia || 0))}</span>
-                      <span className="text-red-500">💸 {fmt(turno.total_gastos)}</span>
-                    </div>
+          {/* Historial por DÍA: cada día es una "caja general" (suma de las
+              cajas mañana/tarde/trasnoche). Al tocarlo se ve el cierre general
+              del día con el detalle de cada caja individual. */}
+          {(() => {
+            const dias = agruparPorDia(datos.turnos);
+            return (
+              <div className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="p-4 border-b flex items-center justify-between gap-2 flex-wrap">
+                  <h3 className="font-semibold text-gray-700">
+                    Cierres por día — {dias.length} día{dias.length !== 1 ? 's' : ''}
+                  </h3>
+                  <p className="text-xs text-gray-400">Tocá un día para ver el cierre general y cada caja</p>
+                </div>
+                {dias.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <p className="text-4xl mb-2">📭</p>
+                    <p>No hay cierres de caja en este período</p>
                   </div>
-                ))}
-              </div>
-
-              {/* Vista escritorio: tabla completa */}
-              <div className="hidden sm:block overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Caja</th>
-                      <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Apertura</th>
-                      <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Cierre</th>
-                      <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Ventas</th>
-                      <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Total</th>
-                      <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Efectivo</th>
-                      <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Virtual</th>
-                      <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Gastos</th>
-                      <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Estado</th>
-                      <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Detalle</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {datos.turnos.map(turno => (
-                      <tr key={turno.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800">{turno.nombre || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{fmtFecha(turno.fecha_apertura)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {turno.fecha_cierre ? fmtFecha(turno.fecha_cierre) : '-'}
-                          {turno.usuario_cierre_nombre && (
-                            <span className="block text-[11px] text-gray-400">por {turno.usuario_cierre_nombre}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center font-medium text-gray-700">{turno.total_ventas}</td>
-                        <td className="px-4 py-3 text-right font-bold text-green-600">{fmt(turno.total_facturado)}</td>
-                        <td className="px-4 py-3 text-right text-gray-600 text-sm">{fmt(turno.ventas_efectivo)}</td>
-                        <td className="px-4 py-3 text-right text-gray-600 text-sm">
-                          {fmt(
-                            parseFloat(turno.ventas_tarjeta || 0) +
-                            parseFloat(turno.ventas_mp || 0) +
-                            parseFloat(turno.ventas_transferencia || 0)
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right text-red-500 text-sm">{fmt(turno.total_gastos)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            turno.estado === 'abierto'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {turno.estado}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => setTurnoSeleccionado(turno)}
-                            className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            Ver Detalles
-                          </button>
-                        </td>
-                      </tr>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {dias.map(d => (
+                      <button key={d.dia} onClick={() => setDiaSeleccionado(d)}
+                        className="w-full text-left p-4 hover:bg-gray-50 transition-colors flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-800 capitalize">{fmtDiaLargo(d.dia)}</p>
+                            <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                              {d.cajas.length} caja{d.cajas.length !== 1 ? 's' : ''}
+                            </span>
+                            {d.algunaAbierta && (
+                              <span className="text-[11px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">en curso</span>
+                            )}
+                          </div>
+                          <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                            <span>💵 {fmt(d.totales.ventas_efectivo)}</span>
+                            <span>📲 {fmt(d.totales.virtual)}</span>
+                            <span className="text-red-500">💸 {fmt(d.totales.total_gastos)}</span>
+                            <span className="text-gray-400">· {d.totales.total_ventas} ventas</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-bold text-green-600 tabular-nums">{fmt(d.totales.total_facturado)}</p>
+                          <p className="text-[11px] text-blue-600 tabular-nums">Neta {fmt(d.totales.ganancia)}</p>
+                        </div>
+                      </button>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
-              </>
-            )}
-          </div>
+            );
+          })()}
         </>
       )}
 
-      {/* Modal detalle */}
+      {/* Modal cierre general del día (caja general) */}
+      {diaSeleccionado && (
+        <ModalCierreGeneralDia
+          diaData={diaSeleccionado}
+          onCerrar={() => setDiaSeleccionado(null)}
+          onVerCaja={(caja) => setTurnoSeleccionado(caja)}
+        />
+      )}
+
+      {/* Modal detalle de una caja individual (se abre encima del general) */}
       {turnoSeleccionado && (
         <ModalDetalleCierre
           turno={turnoSeleccionado}
