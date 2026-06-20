@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
-import { hoyArgentina, fechaArgentina } from '../../utils/fecha';
+import { hoyArgentina } from '../../utils/fecha';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
@@ -29,13 +29,38 @@ const fmtDiaLargo = (iso) => {
 
 const virtualDe = (t) => parseFloat(t.ventas_tarjeta || 0) + parseFloat(t.ventas_mp || 0) + parseFloat(t.ventas_transferencia || 0);
 
-// Agrupa los turnos (cajas) por día (según la fecha de apertura, hora Argentina).
+// DÍA COMERCIAL: una caja que abre de noche (la trasnoche) cuenta para el día
+// SIGUIENTE. Ej: trasnoche abierta a las 22:00 del 12/06 → cuenta para el 13/06.
+// Se decide por la hora de apertura (hora Argentina): si abre a partir de esta
+// hora, su día comercial es la fecha de apertura + 1. Así también funciona si la
+// trasnoche abre pasada la medianoche (esa ya cae en el día correcto).
+// Si tus turnos arrancan a otra hora, cambiá este número.
+const CORTE_DIA_COMERCIAL_HORA = 18; // 18:00 (6 PM)
+
+function diaComercial(fechaApertura) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  }).formatToParts(new Date(fechaApertura));
+  const val = (t) => partes.find(p => p.type === t)?.value;
+  let y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
+  let h = Number(val('hour'));
+  if (h === 24) h = 0; // algunos motores devuelven '24' a la medianoche
+  if (h >= CORTE_DIA_COMERCIAL_HORA) {
+    // Sumamos un día usando UTC para no depender de la zona local del navegador
+    const sig = new Date(Date.UTC(y, m - 1, d + 1));
+    y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
+  }
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// Agrupa los turnos (cajas) por DÍA COMERCIAL (ver diaComercial).
 // Cada día es una "caja general": la suma de todas las cajas (mañana, tarde,
-// trasnoche...) que se abrieron ese día. La cantidad de cajas por día es variable.
+// trasnoche...) de ese día comercial. La cantidad de cajas por día es variable.
 function agruparPorDia(turnos) {
   const mapa = new Map();
   for (const t of turnos) {
-    const dia = fechaArgentina(t.fecha_apertura); // 'YYYY-MM-DD'
+    const dia = diaComercial(t.fecha_apertura); // 'YYYY-MM-DD' (día comercial)
     if (!mapa.has(dia)) mapa.set(dia, []);
     mapa.get(dia).push(t);
   }
