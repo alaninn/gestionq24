@@ -121,6 +121,9 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
         proveedor_id: esPagoProveedor ? formulario.proveedor_id : null,
         tipo_pago_proveedor: esPagoProveedor ? formulario.tipo_pago_proveedor : null,
         recibo_url: formulario.recibo_url,
+        // Fecha elegida por el usuario (puede ser un día anterior). El backend
+        // usa NOW() si coincide con hoy y respeta la fecha si se eligió otro día.
+        fecha: formulario.fecha || null,
         // Dato fiscal: Factura A "en blanco" suma IVA crédito al Resumen Fiscal
         tipo_comprobante: esFacturaA ? 'factura_a' : null,
         tipo_documento: esFacturaA ? 'factura' : 'sin_boleta',
@@ -801,6 +804,7 @@ function Gastos() {
         monto: totalCompra,
         categoria: 'Compras',
         tipo: 'compra',
+        fecha: compra.fecha || null,
         metodo_pago: compra.metodo_pago,
         proveedor_id: compra.proveedor_id || null,
         es_compra: true,

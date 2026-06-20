@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.10.2';
+export const VERSION_ACTUAL = '2.10.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.10.3',
+    fecha: '2026-06-20',
+    titulo: 'POS y Gastos: 3 mejoras',
+    cambios: [
+      { t: 'En el POS, el cartel de "Venta Exitosa" ahora se cierra también con la tecla F8, sin necesidad del mouse, para arrancar la próxima venta más rápido.' },
+      { t: 'Gastos: si elegías una fecha de otro día (ej. un gasto de hace 3 días) igual se guardaba con la fecha de hoy. Ahora se respeta la fecha que pongas.' },
+      { t: 'POS: los ajustes de precio (recargo y redondeo) ya no se trasladan a una venta nueva. Cada venta en espera mantiene los suyos por separado.' },
+    ],
+  },
   {
     version: '2.10.2',
     fecha: '2026-06-17',

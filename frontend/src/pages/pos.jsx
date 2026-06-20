@@ -1074,8 +1074,9 @@ const ModalVentaExitosa = ({ total, onSeguirVendiendo, onImprimir, config, tiene
           
           <div className="space-y-3">
             <button onClick={onSeguirVendiendo}
-              className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors">
+              className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
               🛒 Seguir vendiendo
+              <span className="hidden sm:inline text-xs font-mono bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">F8</span>
             </button>
             <button onClick={onImprimir}
               className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors">
@@ -2224,6 +2225,15 @@ function POS() {
     localStorage.setItem('pos_pestana_activa', pestanaActiva.toString());
   }, [pestanaActiva]);
 
+  // Los ajustes de precio (descuento / recargo / redondeo) son por venta.
+  // Al cambiar de pestaña arrancan limpios para que NO se trasladen los de la
+  // venta anterior (que quedó en espera) a la venta nueva.
+  useEffect(() => {
+    setDescuentoActivo(false);
+    setRecargoActivo(false);
+    setRedondeoVenta(0);
+  }, [pestanaActiva]);
+
   useEffect(() => {
     localStorage.setItem('pos_contador_ventas', contadorVentas.toString());
   }, [contadorVentas]);
@@ -2279,14 +2289,18 @@ useEffect(() => {
       if (e.key === 'F4') { e.preventDefault(); setMostrarModalCierre(true); return; }
       if (e.key === 'F5') { e.preventDefault(); setMostrarModalHistorial(true); return; }
       if (e.key === 'F7') { e.preventDefault(); setMostrarModalProductoRapido(true); return; }
-      if (e.key === 'F8') { 
-        e.preventDefault(); 
-        if (mostrarModalVenta && modalVentaRef.current) {
+      if (e.key === 'F8') {
+        e.preventDefault();
+        if (ventaExitosa) {
+          // Cierra el modal de "Venta Exitosa" con F8 (= "Seguir vendiendo"),
+          // así el usuario no necesita el mouse para arrancar la próxima venta.
+          setVentaExitosa(false);
+        } else if (mostrarModalVenta && modalVentaRef.current) {
           modalVentaRef.current.confirmar();
         } else if (carritoActivo.length > 0) {
           setMostrarModalVenta(true);
         }
-        return; 
+        return;
       }
       if (e.key === 'F9') { e.preventDefault(); if (window.confirm('¿Limpiar carrito?')) limpiarCarrito(); return; }
       if (e.key === 'F10') { e.preventDefault(); setMostrarModalGasto(true); return; }
@@ -2318,7 +2332,7 @@ useEffect(() => {
 
     window.addEventListener('keydown', manejarTeclado);
     return () => window.removeEventListener('keydown', manejarTeclado);
-  }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, pestanaActiva, pestanas, carritoActivo, config]);
+  }, [mostrarModalVenta, mostrarModalGasto, mostrarModalCierre, mostrarModalRapida, mostrarModalFiados, mostrarModalHistorial, ventaExitosa, pestanaActiva, pestanas, carritoActivo, config]);
 
  const buscarPorCodigoScanner = async (codigo) => {
     // Sin internet: buscar el código en el catálogo cacheado

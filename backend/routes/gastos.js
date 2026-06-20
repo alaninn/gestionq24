@@ -61,7 +61,8 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             porcentaje_iva,
             productos_json,
             tipo_pago_proveedor,
-            estado_pago
+            estado_pago,
+            fecha
         } = req.body;
 
         // ✅ FIX Error 22P02: Validar cadena vacia y asegurar que sea numero valido
@@ -98,9 +99,20 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
         const origenDinero = ['caja', 'local', 'otro'].includes(req.body.origen_dinero)
             ? req.body.origen_dinero : 'caja';
 
+        // Fecha del gasto: si el usuario eligió un día distinto a HOY (ej. cargar
+        // un gasto de hace 3 días), se respeta esa fecha (a las 12:00 para evitar
+        // saltos por zona horaria). Si es hoy o no vino, se usa NOW() para
+        // conservar la hora real. Antes el INSERT no enviaba `fecha` y siempre
+        // quedaba el día de hoy aunque el usuario eligiera otro.
+        let fechaGasto = null;
+        if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            const hoyArg = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+            if (fecha !== hoyArg) fechaGasto = `${fecha} 12:00:00`;
+        }
+
         const resultado = await db.query(`
-            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago, registrar_nueva_factura, total_factura, usuario_id, origen_dinero)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *
+            INSERT INTO gastos (descripcion, monto, categoria, turno_id, tipo, metodo_pago, negocio_id, proveedor_id, recibo_url, es_compra, tipo_documento, tipo_comprobante, condicion_iva_proveedor, numero_boleta, iva_incluido, porcentaje_iva, monto_iva, productos_json, tipo_pago_proveedor, estado_pago, registrar_nueva_factura, total_factura, usuario_id, origen_dinero, fecha)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24, COALESCE($25, NOW())) RETURNING *
         `, [
             descripcion || '',
             montoNumerico,
@@ -125,7 +137,8 @@ router.post('/', verificarPermiso('gastos', 'crear'), async (req, res) => {
             registrar_nueva_factura || false,
             total_factura || null,
             req.usuario?.id || null,   // quién registró el gasto (del token, no editable)
-            origenDinero
+            origenDinero,
+            fechaGasto                 // null → NOW() (vía COALESCE); si no, la fecha elegida
         ]);
 
         // Si es pago a proveedor, actualizar saldo
