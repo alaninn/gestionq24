@@ -45,4 +45,7 @@ echo "🔄 Reiniciando servidor..."
 pm2 restart gestionq24
 
 echo "✅ Actualización completada"
-pm2 logs gestionq24 --lines 10
+# --nostream: imprime las últimas líneas y SALE. Sin esto, al correr el script
+# por SSH (sin terminal) el "pm2 logs" quedaba colando para siempre, dejando
+# procesos huérfanos de ~64MB de RAM cada vez que se actualizaba.
+pm2 logs gestionq24 --lines 10 --nostream
