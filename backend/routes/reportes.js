@@ -566,9 +566,34 @@ router.get('/centro-control', async (req, res) => {
             GROUP BY v.id
         `, [negocio_id, desde, hasta]);
 
+        // Cigarrillos: venta y costo por venta, detectados por categoría de stock
+        // cuyo nombre empiece con "cigarr". Se muestran aparte (margen muy distinto)
+        // y se RESTAN del escenario normal, pero su plata sí entra al disponible.
+        const cigRows = await db.query(`
+            SELECT v.id,
+                   COALESCE(SUM(vi.subtotal), 0) AS cig_venta,
+                   COALESCE(SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad), 0) AS cig_costo
+            FROM ventas v
+            JOIN venta_items vi ON vi.venta_id = v.id
+            JOIN productos p ON vi.producto_id = p.id
+            JOIN stock_categorias sc ON p.stock_categoria_id = sc.id
+            WHERE v.negocio_id = $1 AND v.fecha::date >= $2::date AND v.fecha::date <= $3::date
+              AND sc.nombre ILIKE 'cigarr%'
+            GROUP BY v.id
+        `, [negocio_id, desde, hasta]);
+        const cigPorVenta = {};
+        for (const r of cigRows.rows) {
+            cigPorVenta[r.id] = { venta: parseFloat(r.cig_venta) || 0, costo: parseFloat(r.cig_costo) || 0 };
+        }
+
+        // acc = TODO; cig = solo cigarrillos. El escenario "normal" = acc - cig.
         const acc = {
             efectivo: { venta: 0, costo: 0 },
             virtual: { venta: 0, costo: 0 }, // transferencia + mercadopago + tarjeta (facturado)
+        };
+        const cig = {
+            efectivo: { venta: 0, costo: 0 },
+            virtual: { venta: 0, costo: 0 },
         };
         const porMetodo = { efectivo: 0, transferencia: 0, mercadopago: 0, tarjeta: 0, cuenta_corriente: 0 };
         let totalVendido = 0;
@@ -577,6 +602,7 @@ router.get('/centro-control', async (req, res) => {
             const total = parseFloat(v.total) || 0;
             const costo = parseFloat(v.costo_venta) || 0;
             totalVendido += total;
+            const cigV = cigPorVenta[v.id] || { venta: 0, costo: 0 };
 
             // Montos por método (reparte el pago dividido)
             const montos = {};
@@ -592,22 +618,48 @@ router.get('/centro-control', async (req, res) => {
                 if (!monto) continue;
                 if (porMetodo[metodo] === undefined) porMetodo[metodo] = 0;
                 porMetodo[metodo] += monto;
-                const costoM = total > 0 ? costo * (monto / total) : 0;
+                const prop = total > 0 ? (monto / total) : 0;
+                const costoM = costo * prop;
+                // Porción de cigarrillos de esta venta atribuida a este método
+                const cigVentaM = cigV.venta * prop;
+                const cigCostoM = cigV.costo * prop;
                 if (metodo === 'efectivo') {
                     acc.efectivo.venta += monto; acc.efectivo.costo += costoM;
+                    cig.efectivo.venta += cigVentaM; cig.efectivo.costo += cigCostoM;
                 } else if (metodo === 'cuenta_corriente') {
                     // fiado: aún no cobrado → no se cuenta en ganancia real
                 } else {
                     // transferencia / mercadopago / tarjeta → facturado (lleva IVA)
                     acc.virtual.venta += monto; acc.virtual.costo += costoM;
+                    cig.virtual.venta += cigVentaM; cig.virtual.costo += cigCostoM;
                 }
             }
         }
 
-        // IVA contenido (21%) de lo facturado virtual
-        const ivaVirtual = acc.virtual.venta - acc.virtual.venta / 1.21;
-        const gananciaEfectivo = acc.efectivo.venta - acc.efectivo.costo;
-        const gananciaVirtual = (acc.virtual.venta - acc.virtual.costo) - ivaVirtual;
+        // Escenario NORMAL = todo menos cigarrillos
+        const normEfVenta = acc.efectivo.venta - cig.efectivo.venta;
+        const normEfCosto = acc.efectivo.costo - cig.efectivo.costo;
+        const normViVenta = acc.virtual.venta - cig.virtual.venta;
+        const normViCosto = acc.virtual.costo - cig.virtual.costo;
+
+        // IVA contenido (21%) de lo facturado virtual (sin cigarrillos)
+        const ivaVirtual = normViVenta - normViVenta / 1.21;
+        const gananciaEfectivo = normEfVenta - normEfCosto;
+        const gananciaVirtual = (normViVenta - normViCosto) - ivaVirtual;
+
+        // Cigarrillos: panel aparte. Foco en el COSTO (cuánto reponer).
+        const cigIvaVirtual = cig.virtual.venta - cig.virtual.venta / 1.21;
+        const cigGananciaEfectivo = cig.efectivo.venta - cig.efectivo.costo;
+        const cigGananciaVirtual = (cig.virtual.venta - cig.virtual.costo) - cigIvaVirtual;
+        const cigarrillos = {
+            costo: cig.efectivo.costo + cig.virtual.costo, // total a reponer
+            venta_efectivo: cig.efectivo.venta,
+            venta_virtual: cig.virtual.venta,
+            iva_virtual: cigIvaVirtual,
+            ganancia_efectivo: cigGananciaEfectivo,
+            ganancia_virtual: cigGananciaVirtual,
+            ganancia: cigGananciaEfectivo + cigGananciaVirtual,
+        };
 
         // Gastos variables del período (libro de gastos)
         const gv = await db.query(
@@ -626,15 +678,18 @@ router.get('/centro-control', async (req, res) => {
         const gastoOperativoDiario = fijosMensual / 30;
         const gastosOperativos = gastoOperativoDiario * diasPeriodo;
 
-        const gananciaBruta = gananciaEfectivo + (acc.virtual.venta - acc.virtual.costo);
+        const gananciaBruta = gananciaEfectivo + (normViVenta - normViCosto);
         const gananciaNeta = gananciaEfectivo + gananciaVirtual - gastosVariables - gastosOperativos;
+        const totalCig = cig.efectivo.venta + cig.virtual.venta;
 
         res.json({
             desde, hasta, diasPeriodo,
             totalVendido,
+            totalVendido_sin_cigarrillos: totalVendido - totalCig,
             porMetodo,
-            efectivo: { venta: acc.efectivo.venta, costo: acc.efectivo.costo, ganancia: gananciaEfectivo },
-            virtual: { venta: acc.virtual.venta, costo: acc.virtual.costo, iva: ivaVirtual, ganancia: gananciaVirtual },
+            // Escenario normal (SIN cigarrillos)
+            efectivo: { venta: normEfVenta, costo: normEfCosto, ganancia: gananciaEfectivo },
+            virtual: { venta: normViVenta, costo: normViCosto, iva: ivaVirtual, ganancia: gananciaVirtual },
             iva_virtual: ivaVirtual,
             ganancia_bruta: gananciaBruta,
             gastos_variables: gastosVariables,
@@ -642,10 +697,155 @@ router.get('/centro-control', async (req, res) => {
             gasto_operativo_diario: gastoOperativoDiario,
             fijos_mensual: fijosMensual,
             ganancia_neta: gananciaNeta,
+            // Cigarrillos aparte (su plata igual entra al disponible)
+            cigarrillos,
         });
     } catch (error) {
         console.error('Error en centro-control:', error);
         res.status(500).json({ error: 'Error al generar el informe del Centro de Control' });
+    }
+});
+
+// =============================================
+// DINERO DISPONIBLE (capital rotativo del local) - total a HOY, acumulado.
+// La plata de una caja cuenta recién cuando esa caja (turno) está CERRADA: ahí
+// el efectivo y el MP del turno pasan a "caja del local" y "MP del local".
+// disponible = saldo_inicial + ventas(cajas cerradas, sin fiado) - gastos - retiros.
+// Gastos por ORIGEN: caja del local (local) y caja del turno (caja, cerrado) bajan
+// efectivo; MP del local (otro) baja virtual. cobro_deuda no resta (es ingreso).
+// =============================================
+router.get('/disponible', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const cfg = await db.query(
+            'SELECT disponible_fecha_inicio, disponible_inicial_efectivo, disponible_inicial_virtual FROM negocios WHERE id = $1',
+            [negocio_id]
+        );
+        const conf = cfg.rows[0] || {};
+        const inicialEf = parseFloat(conf.disponible_inicial_efectivo) || 0;
+        const inicialVi = parseFloat(conf.disponible_inicial_virtual) || 0;
+        // fecha de inicio en 'YYYY-MM-DD' o null (cuenta todo desde el principio)
+        const desde = conf.disponible_fecha_inicio
+            ? new Date(conf.disponible_fecha_inicio).toISOString().split('T')[0]
+            : null;
+
+        // Ventas de turnos CERRADOS (sin fiado)
+        const ventas = await db.query(`
+            SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual
+            FROM ventas v
+            JOIN turnos t ON t.id = v.turno_id
+            WHERE v.negocio_id = $1 AND t.estado = 'cerrado'
+              AND ($2::date IS NULL OR v.fecha::date >= $2::date)
+              AND v.metodo_pago <> 'cuenta_corriente' AND COALESCE(v.es_fiado, false) = false
+        `, [negocio_id, desde]);
+
+        let ventasEf = 0, ventasVi = 0;
+        for (const v of ventas.rows) {
+            const total = parseFloat(v.total) || 0;
+            if (v.metodo_pago === 'efectivo') {
+                ventasEf += total;
+            } else if (v.metodo_pago === 'dividido') {
+                ventasEf += parseFloat(v.monto_efectivo) || 0;
+                ventasVi += parseFloat(v.monto_virtual) || 0;
+            } else {
+                ventasVi += total; // transferencia / mercadopago / tarjeta
+            }
+        }
+
+        // Gastos que bajan EFECTIVO: origen 'local' (siempre) + origen 'caja' de
+        // turnos cerrados. Excluye cobro_deuda (es un ingreso).
+        const gEf = await db.query(`
+            SELECT COALESCE(SUM(g.monto), 0) AS total
+            FROM gastos g LEFT JOIN turnos t ON t.id = g.turno_id
+            WHERE g.negocio_id = $1
+              AND ($2::date IS NULL OR g.fecha::date >= $2::date)
+              AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
+              AND ( g.origen_dinero = 'local' OR (g.origen_dinero = 'caja' AND t.estado = 'cerrado') )
+        `, [negocio_id, desde]);
+        const gastosEf = parseFloat(gEf.rows[0].total) || 0;
+
+        // Gastos que bajan VIRTUAL: origen 'otro' (MP del local).
+        const gVi = await db.query(`
+            SELECT COALESCE(SUM(g.monto), 0) AS total
+            FROM gastos g
+            WHERE g.negocio_id = $1
+              AND ($2::date IS NULL OR g.fecha::date >= $2::date)
+              AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
+              AND g.origen_dinero = 'otro'
+        `, [negocio_id, desde]);
+        const gastosVi = parseFloat(gVi.rows[0].total) || 0;
+
+        // Retiros por tipo
+        const ret = await db.query(`
+            SELECT tipo, COALESCE(SUM(monto), 0) AS total
+            FROM retiros
+            WHERE negocio_id = $1 AND ($2::date IS NULL OR fecha::date >= $2::date)
+            GROUP BY tipo
+        `, [negocio_id, desde]);
+        let retEf = 0, retVi = 0;
+        for (const r of ret.rows) {
+            if (r.tipo === 'virtual') retVi += parseFloat(r.total) || 0;
+            else retEf += parseFloat(r.total) || 0;
+        }
+
+        const efectivo = inicialEf + ventasEf - gastosEf - retEf;
+        const virtual = inicialVi + ventasVi - gastosVi - retVi;
+        res.json({
+            desde,
+            efectivo,
+            virtual,
+            total: efectivo + virtual,
+            detalle: {
+                inicial_efectivo: inicialEf, inicial_virtual: inicialVi,
+                ventas_efectivo: ventasEf, ventas_virtual: ventasVi,
+                gastos_efectivo: gastosEf, gastos_virtual: gastosVi,
+                retiros_efectivo: retEf, retiros_virtual: retVi,
+            },
+        });
+    } catch (error) {
+        console.error('Error en disponible:', error);
+        res.status(500).json({ error: 'Error al calcular el dinero disponible' });
+    }
+});
+
+// Config del saldo inicial del disponible
+router.get('/disponible-config', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await db.query(
+            'SELECT disponible_fecha_inicio AS fecha_inicio, disponible_inicial_efectivo AS inicial_efectivo, disponible_inicial_virtual AS inicial_virtual FROM negocios WHERE id = $1',
+            [negocio_id]
+        );
+        res.json(r.rows[0] || { fecha_inicio: null, inicial_efectivo: 0, inicial_virtual: 0 });
+    } catch (error) {
+        console.error('Error en disponible-config GET:', error);
+        res.status(500).json({ error: 'Error al obtener la configuración del disponible' });
+    }
+});
+
+router.put('/disponible-config', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const { fecha_inicio, inicial_efectivo, inicial_virtual } = req.body;
+        const fecha = (fecha_inicio && /^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio)) ? fecha_inicio : null;
+        const r = await db.query(`
+            UPDATE negocios SET
+                disponible_fecha_inicio = $1,
+                disponible_inicial_efectivo = $2,
+                disponible_inicial_virtual = $3
+            WHERE id = $4
+            RETURNING disponible_fecha_inicio AS fecha_inicio,
+                      disponible_inicial_efectivo AS inicial_efectivo,
+                      disponible_inicial_virtual AS inicial_virtual
+        `, [fecha, parseFloat(inicial_efectivo) || 0, parseFloat(inicial_virtual) || 0, negocio_id]);
+        res.json(r.rows[0]);
+    } catch (error) {
+        console.error('Error en disponible-config PUT:', error);
+        res.status(500).json({ error: 'Error al guardar la configuración del disponible' });
     }
 });
 

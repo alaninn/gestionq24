@@ -338,6 +338,27 @@ CREATE TABLE IF NOT EXISTS gastos_fijos (
 );
 CREATE INDEX IF NOT EXISTS idx_gastos_fijos_negocio ON gastos_fijos(negocio_id);
 
+-- Centro de Control: DINERO DISPONIBLE (capital rotativo). Saldo inicial que
+-- carga el dueño (efectivo y virtual) desde una fecha; de ahi se acumula con las
+-- ventas de cajas cerradas menos gastos y retiros.
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_fecha_inicio DATE;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_efectivo NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_virtual NUMERIC(12,2) DEFAULT 0;
+
+-- Retiros de dinero del local (tomar ganancia). Bajan el dinero disponible pero
+-- NO son gastos del negocio (no afectan la ganancia). tipo: efectivo o virtual.
+CREATE TABLE IF NOT EXISTS retiros (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    monto NUMERIC(12,2) NOT NULL DEFAULT 0,
+    tipo VARCHAR(10) NOT NULL DEFAULT 'efectivo',
+    nota TEXT,
+    usuario_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_retiros_negocio_fecha ON retiros(negocio_id, fecha);
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

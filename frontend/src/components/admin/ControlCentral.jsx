@@ -34,6 +34,11 @@ export default function ControlCentral() {
   const [gastosFijos, setGastosFijos] = useState([]);
   const [mostrarGastos, setMostrarGastos] = useState(false);
 
+  // Dinero disponible (capital rotativo, en tiempo real, independiente del período)
+  const [disponible, setDisponible] = useState(null);
+  const [mostrarSaldoInicial, setMostrarSaldoInicial] = useState(false);
+  const [mostrarRetiro, setMostrarRetiro] = useState(false);
+
   const calcularFechas = () => {
     if (periodo === 'hoy') { const h = hoyISO(); return { desde: h, hasta: h }; }
     if (periodo === 'dia') return { desde: dia, hasta: dia };
@@ -63,8 +68,13 @@ export default function ControlCentral() {
     try { const r = await api.get('/api/gastos-fijos'); setGastosFijos(r.data); } catch { /* */ }
   };
 
+  // El disponible es un total a HOY (no depende del período seleccionado)
+  const cargarDisponible = async () => {
+    try { const r = await api.get('/api/reportes/disponible'); setDisponible(r.data); } catch { /* */ }
+  };
+
   useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [periodo, dia, mes, rangoDesde, rangoHasta]);
-  useEffect(() => { cargarGastosFijos(); }, []);
+  useEffect(() => { cargarGastosFijos(); cargarDisponible(); }, []);
 
   const d = datos;
   const datosPie = d ? Object.entries(d.porMetodo || {})
@@ -88,10 +98,50 @@ export default function ControlCentral() {
           </h2>
           <p className="text-gray-500 text-sm">Ganancia real del negocio, descontando costos, IVA y gastos.</p>
         </div>
-        <button onClick={() => setMostrarGastos(true)}
-          className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
-          ⚙️ Gastos fijos del local
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setMostrarGastos(true)}
+            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+            ⚙️ Gastos fijos del local
+          </button>
+        </div>
+      </div>
+
+      {/* DINERO DISPONIBLE AHORA (capital rotativo, tiempo real) */}
+      <div className="rounded-3xl p-6 sm:p-7 text-white shadow-2xl relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 55%, #0e7490 100%)' }}>
+        <div className="relative z-10">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-blue-200 text-sm font-medium uppercase tracking-wider">💰 Dinero disponible ahora</p>
+              <p className="text-4xl sm:text-5xl font-bold mt-1">{fmt(disponible?.total)}</p>
+              <p className="text-blue-100/70 text-xs mt-2">
+                Plata real para comprar o retirar. Se acumula hasta gastarse.
+                {disponible?.desde ? ` Desde ${disponible.desde}.` : ' Configurá el saldo inicial →'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setMostrarRetiro(true)}
+                className="bg-white/15 hover:bg-white/25 border border-white/20 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+                ➖ Registrar retiro
+              </button>
+              <button onClick={() => setMostrarSaldoInicial(true)}
+                className="bg-white/15 hover:bg-white/25 border border-white/20 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+                ⚙️ Saldo inicial
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-4 max-w-md">
+            <div className="bg-white/10 border border-white/15 rounded-xl px-4 py-3">
+              <p className="text-blue-100/80 text-xs">💵 Caja del local (efectivo)</p>
+              <p className="text-xl font-bold mt-0.5">{fmt(disponible?.efectivo)}</p>
+            </div>
+            <div className="bg-white/10 border border-white/15 rounded-xl px-4 py-3">
+              <p className="text-blue-100/80 text-xs">📲 MP del local (virtual)</p>
+              <p className="text-xl font-bold mt-0.5">{fmt(disponible?.virtual)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 rounded-full bg-blue-400/10 blur-3xl" />
       </div>
 
       {/* Filtro de período */}
@@ -142,7 +192,7 @@ export default function ControlCentral() {
               <p className="text-emerald-200 text-sm font-medium uppercase tracking-wider">Ganancia neta real del período</p>
               <p className={`text-4xl sm:text-5xl font-bold mt-2 ${d.ganancia_neta < 0 ? 'text-red-300' : 'text-white'}`}>{fmt(d.ganancia_neta)}</p>
               <p className="text-emerald-100/70 text-xs mt-2">
-                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido)} · descontados costo, IVA y gastos
+                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · descontados costo, IVA y gastos
               </p>
             </div>
             <div className="absolute -right-10 -bottom-10 w-48 h-48 rounded-full bg-emerald-400/10 blur-3xl" />
@@ -160,7 +210,7 @@ export default function ControlCentral() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <h3 className="font-bold text-gray-800 mb-1">💵 Ganancia en efectivo</h3>
-              <p className="text-xs text-gray-400 mb-3">Venta − costo de lo vendido (sin IVA)</p>
+              <p className="text-xs text-gray-400 mb-3">Venta − costo de lo vendido (sin IVA) · sin cigarrillos</p>
               <p className="text-3xl font-bold text-emerald-600">{fmt(d.efectivo?.ganancia)}</p>
               <div className="mt-3 text-sm text-gray-500 space-y-1">
                 <Linea label="Venta efectivo" valor={fmt(d.efectivo?.venta)} />
@@ -169,7 +219,7 @@ export default function ControlCentral() {
             </div>
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
               <h3 className="font-bold text-gray-800 mb-1">🧾 Ganancia virtual (facturado)</h3>
-              <p className="text-xs text-gray-400 mb-3">Venta − costo − IVA 21% (transferencia, MP, tarjeta)</p>
+              <p className="text-xs text-gray-400 mb-3">Venta − costo − IVA 21% (transferencia, MP, tarjeta) · sin cigarrillos</p>
               <p className="text-3xl font-bold text-violet-600">{fmt(d.virtual?.ganancia)}</p>
               <div className="mt-3 text-sm text-gray-500 space-y-1">
                 <Linea label="Venta virtual" valor={fmt(d.virtual?.venta)} />
@@ -178,6 +228,37 @@ export default function ControlCentral() {
               </div>
             </div>
           </div>
+
+          {/* Cigarrillos (aparte: margen muy distinto). Foco: cuánto reponer. */}
+          {d.cigarrillos && (d.cigarrillos.venta_efectivo > 0 || d.cigarrillos.venta_virtual > 0 || d.cigarrillos.costo > 0) && (
+            <div className="bg-white rounded-2xl shadow-xl p-6 border border-amber-200">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h3 className="font-bold text-gray-800">🚬 Cigarrillos (aparte)</h3>
+                <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  No entran en la ganancia de arriba; su plata sí está en el disponible
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">Sirve para saber cuánto reponer (sin descuento; el virtual lleva +10%).</p>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-xl p-4 bg-amber-50 border border-amber-200">
+                  <p className="text-amber-700 text-xs font-semibold">📦 Costo a reponer</p>
+                  <p className="text-2xl font-bold text-amber-800 mt-0.5">{fmt(d.cigarrillos.costo)}</p>
+                </div>
+                <div className="rounded-xl p-4 bg-gray-50 border border-gray-200">
+                  <p className="text-gray-500 text-xs font-semibold">💵 Venta efectivo</p>
+                  <p className="text-xl font-bold text-gray-800 mt-0.5">{fmt(d.cigarrillos.venta_efectivo)}</p>
+                </div>
+                <div className="rounded-xl p-4 bg-gray-50 border border-gray-200">
+                  <p className="text-gray-500 text-xs font-semibold">📲 Venta virtual (+10%)</p>
+                  <p className="text-xl font-bold text-gray-800 mt-0.5">{fmt(d.cigarrillos.venta_virtual)}</p>
+                </div>
+                <div className="rounded-xl p-4 bg-emerald-50 border border-emerald-200">
+                  <p className="text-emerald-700 text-xs font-semibold">📈 Ganancia cigarrillos</p>
+                  <p className="text-xl font-bold text-emerald-700 mt-0.5">{fmt(d.cigarrillos.ganancia)}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Gastos */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -228,6 +309,20 @@ export default function ControlCentral() {
           gastos={gastosFijos}
           onClose={() => setMostrarGastos(false)}
           onCambio={() => { cargarGastosFijos(); cargar(); }}
+        />
+      )}
+
+      {mostrarSaldoInicial && (
+        <ModalSaldoInicial
+          onClose={() => setMostrarSaldoInicial(false)}
+          onGuardado={() => { setMostrarSaldoInicial(false); cargarDisponible(); }}
+        />
+      )}
+
+      {mostrarRetiro && (
+        <ModalRetiro
+          onClose={() => setMostrarRetiro(false)}
+          onGuardado={() => { setMostrarRetiro(false); cargarDisponible(); }}
         />
       )}
     </div>
@@ -325,6 +420,183 @@ function ModalGastosFijos({ gastos, onClose, onCambio }) {
               <p className="text-[11px] text-emerald-600">≈ {fmt(totalMensual / 30)}/día</p>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Saldo inicial del dinero disponible (punto de arranque del capital rotativo)
+function ModalSaldoInicial({ onClose, onGuardado }) {
+  const [fecha, setFecha] = useState('');
+  const [efectivo, setEfectivo] = useState('');
+  const [virtual, setVirtual] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api.get('/api/reportes/disponible-config');
+        const c = r.data || {};
+        setFecha(c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : hoyISO());
+        setEfectivo(c.inicial_efectivo != null ? String(c.inicial_efectivo) : '');
+        setVirtual(c.inicial_virtual != null ? String(c.inicial_virtual) : '');
+      } catch { setFecha(hoyISO()); }
+    })();
+  }, []);
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await api.put('/api/reportes/disponible-config', {
+        fecha_inicio: fecha || null,
+        inicial_efectivo: parseFloat(efectivo) || 0,
+        inicial_virtual: parseFloat(virtual) || 0,
+      });
+      onGuardado();
+    } catch (e) { alert(e.response?.data?.error || 'Error al guardar'); } finally { setGuardando(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b bg-blue-700 text-white rounded-t-2xl">
+          <div>
+            <h3 className="text-lg font-bold">⚙️ Saldo inicial del disponible</h3>
+            <p className="text-blue-200 text-xs">Cuánta plata hay disponible hoy. De acá el sistema acumula.</p>
+          </div>
+          <button onClick={onClose} className="text-blue-200 hover:text-white text-2xl">×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de arranque</label>
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[11px] text-gray-400 mt-1">Las ventas y gastos anteriores a esta fecha no se cuentan.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">💵 Efectivo inicial</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-gray-400 text-sm">$</span>
+                <input type="number" value={efectivo} onChange={e => setEfectivo(e.target.value)} placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">📲 Virtual inicial</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2 text-gray-400 text-sm">$</span>
+                <input type="number" value={virtual} onChange={e => setVirtual(e.target.value)} placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-2 text-sm" />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50">Cancelar</button>
+            <button onClick={guardar} disabled={guardando}
+              className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Registrar un retiro (bajar plata del disponible). No es un gasto del negocio.
+function ModalRetiro({ onClose, onGuardado }) {
+  const [monto, setMonto] = useState('');
+  const [tipo, setTipo] = useState('efectivo');
+  const [nota, setNota] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [retiros, setRetiros] = useState([]);
+
+  const cargarRetiros = async () => {
+    try { const r = await api.get('/api/retiros'); setRetiros(r.data || []); } catch { /* */ }
+  };
+  useEffect(() => { cargarRetiros(); }, []);
+
+  const guardar = async () => {
+    const m = parseFloat(monto);
+    if (!m || m <= 0) { alert('El monto debe ser mayor a 0'); return; }
+    setGuardando(true);
+    try {
+      await api.post('/api/retiros', { monto: m, tipo, nota });
+      setMonto(''); setNota('');
+      await cargarRetiros();
+      onGuardado();
+    } catch (e) { alert(e.response?.data?.error || 'Error al registrar'); } finally { setGuardando(false); }
+  };
+  const eliminar = async (r) => {
+    if (!window.confirm('¿Eliminar este retiro?')) return;
+    try { await api.delete(`/api/retiros/${r.id}`); await cargarRetiros(); onGuardado(); } catch { /* */ }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b bg-blue-700 text-white rounded-t-2xl">
+          <div>
+            <h3 className="text-lg font-bold">➖ Registrar retiro</h3>
+            <p className="text-blue-200 text-xs">Sacar plata del local (tomar ganancia). Baja el disponible.</p>
+          </div>
+          <button onClick={onClose} className="text-blue-200 hover:text-white text-2xl">×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setTipo('efectivo')}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${tipo === 'efectivo' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <p className="text-sm font-bold text-gray-800">💵 Efectivo</p>
+              <p className="text-[11px] text-gray-500">Caja del local</p>
+            </button>
+            <button onClick={() => setTipo('virtual')}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${tipo === 'virtual' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <p className="text-sm font-bold text-gray-800">📲 Virtual</p>
+              <p className="text-[11px] text-gray-500">MP del local</p>
+            </button>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Monto a retirar</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-400">$</span>
+              <input type="number" value={monto} onChange={e => setMonto(e.target.value)} autoFocus placeholder="0"
+                className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-lg" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nota (opcional)</label>
+            <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Ej: retiro de ganancia"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50">Cerrar</button>
+            <button onClick={guardar} disabled={guardando}
+              className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
+              {guardando ? 'Guardando…' : 'Registrar retiro'}
+            </button>
+          </div>
+
+          {retiros.length > 0 && (
+            <div className="pt-2 border-t">
+              <p className="text-xs font-semibold text-gray-500 mb-2">Últimos retiros</p>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {retiros.map(r => (
+                  <div key={r.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                    <span className="text-sm">{r.tipo === 'virtual' ? '📲' : '💵'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800">{fmt(r.monto)}</p>
+                      <p className="text-[11px] text-gray-400 truncate">
+                        {new Date(r.fecha).toLocaleDateString('es-AR')}{r.nota ? ` · ${r.nota}` : ''}
+                      </p>
+                    </div>
+                    <button onClick={() => eliminar(r)} className="text-red-400 hover:text-red-600 text-lg px-1">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

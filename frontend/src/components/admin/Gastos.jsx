@@ -273,8 +273,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { id: 'caja', label: '🧰 Caja del turno', desc: 'Descuenta del cierre', soloConTurno: true },
-                    { id: 'local', label: '🏪 Dinero del local', desc: 'No afecta la caja' },
-                    { id: 'otro', label: '📱 MP del local', desc: 'No afecta la caja' },
+                    { id: 'local', label: '🏪 Dinero del local', desc: 'Baja el dinero disponible' },
+                    { id: 'otro', label: '📱 MP del local', desc: 'Baja el dinero disponible' },
                   ].map(o => {
                     const deshabilitado = o.soloConTurno && !turno;
                     return (
@@ -481,8 +481,8 @@ export function ModalGasto({ onCerrar, onGuardado, modoCompra = false, turno = n
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { id: 'caja', label: '🧰 Caja del turno', desc: 'Descuenta del cierre', soloConTurno: true },
-                    { id: 'local', label: '🏪 Dinero del local', desc: 'No afecta la caja' },
-                    { id: 'otro', label: '📱 MP del local', desc: 'No afecta la caja' },
+                    { id: 'local', label: '🏪 Dinero del local', desc: 'Baja el dinero disponible' },
+                    { id: 'otro', label: '📱 MP del local', desc: 'Baja el dinero disponible' },
                   ].map(o => {
                     const deshabilitado = o.soloConTurno && !turno;
                     return (

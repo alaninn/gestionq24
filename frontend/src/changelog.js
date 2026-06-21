@@ -14,9 +14,21 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.11.0';
+export const VERSION_ACTUAL = '2.12.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.12.0',
+    fecha: '2026-06-21',
+    titulo: 'Centro de Control: dinero disponible + cigarrillos aparte',
+    cambios: [
+      { t: 'Nueva tarjeta "Dinero disponible ahora": muestra la plata real que hay para comprar o retirar (efectivo = caja del local, virtual = MP del local). Se acumula en el tiempo: la plata de una caja entra al disponible cuando se CIERRA esa caja, y baja con los gastos y los retiros.' },
+      { t: 'Botón "Saldo inicial" para cargar desde qué fecha y con cuánta plata (efectivo y virtual) arranca el cálculo del disponible.' },
+      { t: 'Botón "Registrar retiro" para sacar plata del local (tomar ganancia): baja el dinero disponible pero NO cuenta como gasto del negocio.' },
+      { t: 'Los cigarrillos ahora se muestran en un panel aparte (con su costo a reponer, venta en efectivo/virtual y ganancia) y NO se mezclan con la ganancia del resto; igual su plata suma al dinero disponible. Se identifican por la categoría de stock cuyo nombre empiece con "Cigarr".' },
+      { t: 'En Gastos, las opciones "Dinero del local" y "MP del local" ahora aclaran que descuentan del dinero disponible.' },
+    ],
+  },
   {
     version: '2.11.0',
     fecha: '2026-06-20',

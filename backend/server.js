@@ -71,6 +71,9 @@ app.use('/api/gastos', verificarToken, validarLimitePlan, rutasGastos);
 // Gastos fijos / operativos mensuales (Centro de Control)
 app.use('/api/gastos-fijos', verificarToken, validarLimitePlan, require('./routes/gastosFijos'));
 
+// Retiros de dinero del local (Centro de Control: bajan el dinero disponible)
+app.use('/api/retiros', verificarToken, validarLimitePlan, require('./routes/retiros'));
+
 // Turnos — todos pueden abrir/cerrar
 app.use('/api/turnos', verificarToken, validarLimitePlan, rutasTurnos);
 
