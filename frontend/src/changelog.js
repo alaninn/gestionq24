@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.12.1';
+export const VERSION_ACTUAL = '2.12.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.12.2',
+    fecha: '2026-06-21',
+    titulo: 'Dinero disponible: virtual en tiempo real + gastos que sí descuentan',
+    cambios: [
+      { t: 'El dinero virtual (MP del local) ahora figura disponible en tiempo real: suma también lo de las cajas que están ABIERTAS (no es plata física, ya está en MP). El efectivo sigue sumando recién cuando se cierra la caja.' },
+      { t: 'Corregido: un gasto pagado con "MP del local" (o dinero del local) no siempre descontaba del disponible. Ahora el cálculo usa la hora real de creación del gasto, así descuenta bien aunque la fecha del gasto sea de otro día.' },
+    ],
+  },
   {
     version: '2.12.1',
     fecha: '2026-06-21',

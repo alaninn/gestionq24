@@ -361,6 +361,13 @@ CREATE TABLE IF NOT EXISTS retiros (
 );
 CREATE INDEX IF NOT EXISTS idx_retiros_negocio_fecha ON retiros(negocio_id, fecha);
 
+-- Marca de creacion REAL del gasto (no editable). El campo fecha lo puede
+-- backdatear o editar el usuario, asi que para el dinero disponible (reset por
+-- timestamp) usamos created_at, que se setea una sola vez al crear el gasto.
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+UPDATE gastos SET created_at = fecha WHERE created_at IS NULL;
+ALTER TABLE gastos ALTER COLUMN created_at SET DEFAULT now();
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';

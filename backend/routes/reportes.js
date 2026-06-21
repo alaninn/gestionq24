@@ -735,29 +735,37 @@ router.get('/disponible', async (req, res) => {
             ? new Date(conf.disponible_fecha_inicio).toISOString()
             : null;
 
-        // Ventas de turnos CERRADOS DESPUÉS del reset (al cerrar la caja, su plata
-        // pasa al local). Las cajas cerradas antes del reset ya están contadas en el
-        // saldo inicial que cargó el usuario.
+        // EFECTIVO: solo cuenta de cajas YA CERRADAS después del reset (al cerrar, su
+        // plata física pasa al local). VIRTUAL: cuenta en tiempo real, también de las
+        // cajas ABIERTAS (no es plata física, ya está en MP). Las cajas cerradas antes
+        // del reset ya están contadas en el saldo inicial.
         const ventas = await db.query(`
-            SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual
+            SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual, t.estado AS turno_estado
             FROM ventas v
             JOIN turnos t ON t.id = v.turno_id
-            WHERE v.negocio_id = $1 AND t.estado = 'cerrado'
-              AND ($2::timestamp IS NULL OR t.fecha_cierre > $2::timestamp)
+            WHERE v.negocio_id = $1
               AND v.metodo_pago <> 'cuenta_corriente' AND COALESCE(v.es_fiado, false) = false
+              AND ( t.estado = 'abierto'
+                    OR (t.estado = 'cerrado' AND ($2::timestamp IS NULL OR t.fecha_cierre > $2::timestamp)) )
         `, [negocio_id, desde]);
 
         let ventasEf = 0, ventasVi = 0;
         for (const v of ventas.rows) {
             const total = parseFloat(v.total) || 0;
+            // Porción efectivo / virtual de la venta
+            let efPortion = 0, viPortion = 0;
             if (v.metodo_pago === 'efectivo') {
-                ventasEf += total;
+                efPortion = total;
             } else if (v.metodo_pago === 'dividido') {
-                ventasEf += parseFloat(v.monto_efectivo) || 0;
-                ventasVi += parseFloat(v.monto_virtual) || 0;
+                efPortion = parseFloat(v.monto_efectivo) || 0;
+                viPortion = parseFloat(v.monto_virtual) || 0;
             } else {
-                ventasVi += total; // transferencia / mercadopago / tarjeta
+                viPortion = total; // transferencia / mercadopago / tarjeta
             }
+            // Efectivo: solo si la caja ya está cerrada (post-reset, garantizado por WHERE)
+            if (v.turno_estado === 'cerrado') ventasEf += efPortion;
+            // Virtual: siempre (cajas abiertas y cerradas post-reset) → tiempo real
+            ventasVi += viPortion;
         }
 
         // Gastos que bajan EFECTIVO: origen 'local' (siempre) + origen 'caja' de
@@ -766,7 +774,7 @@ router.get('/disponible', async (req, res) => {
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g LEFT JOIN turnos t ON t.id = g.turno_id
             WHERE g.negocio_id = $1
-              AND ($2::timestamp IS NULL OR g.fecha > $2::timestamp)
+              AND ($2::timestamp IS NULL OR g.created_at > $2::timestamp)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND ( g.origen_dinero = 'local' OR (g.origen_dinero = 'caja' AND t.estado = 'cerrado') )
         `, [negocio_id, desde]);
@@ -777,7 +785,7 @@ router.get('/disponible', async (req, res) => {
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g
             WHERE g.negocio_id = $1
-              AND ($2::timestamp IS NULL OR g.fecha > $2::timestamp)
+              AND ($2::timestamp IS NULL OR g.created_at > $2::timestamp)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND g.origen_dinero = 'otro'
         `, [negocio_id, desde]);
