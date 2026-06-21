@@ -569,6 +569,8 @@ router.get('/centro-control', async (req, res) => {
         // Cigarrillos: venta y costo por venta, detectados por categoría de stock
         // cuyo nombre empiece con "cigarr". Se muestran aparte (margen muy distinto)
         // y se RESTAN del escenario normal, pero su plata sí entra al disponible.
+        // Detecta cigarrillos por categoría (rubro) O por categoría de stock, si el
+        // nombre empieza con "cigarr" (cubre "Cigarrillos" y "Cigarros").
         const cigRows = await db.query(`
             SELECT v.id,
                    COALESCE(SUM(vi.subtotal), 0) AS cig_venta,
@@ -576,9 +578,10 @@ router.get('/centro-control', async (req, res) => {
             FROM ventas v
             JOIN venta_items vi ON vi.venta_id = v.id
             JOIN productos p ON vi.producto_id = p.id
-            JOIN stock_categorias sc ON p.stock_categoria_id = sc.id
+            LEFT JOIN categorias c ON p.categoria_id = c.id
+            LEFT JOIN stock_categorias sc ON p.stock_categoria_id = sc.id
             WHERE v.negocio_id = $1 AND v.fecha::date >= $2::date AND v.fecha::date <= $3::date
-              AND sc.nombre ILIKE 'cigarr%'
+              AND (c.nombre ILIKE 'cigarr%' OR sc.nombre ILIKE 'cigarr%')
             GROUP BY v.id
         `, [negocio_id, desde, hasta]);
         const cigPorVenta = {};
