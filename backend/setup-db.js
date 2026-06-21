@@ -342,7 +342,8 @@ CREATE INDEX IF NOT EXISTS idx_gastos_fijos_negocio ON gastos_fijos(negocio_id);
 -- carga el dueño (efectivo y virtual) desde una fecha y de ahi se acumula con
 -- las ventas de cajas cerradas menos gastos y retiros.
 -- OJO no usar punto y coma en estos comentarios porque setup-db divide por el.
-ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_fecha_inicio DATE;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_fecha_inicio TIMESTAMP;
+ALTER TABLE negocios ALTER COLUMN disponible_fecha_inicio TYPE TIMESTAMP USING disponible_fecha_inicio::timestamp;
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_efectivo NUMERIC(12,2) DEFAULT 0;
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_virtual NUMERIC(12,2) DEFAULT 0;
 

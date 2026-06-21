@@ -729,18 +729,21 @@ router.get('/disponible', async (req, res) => {
         const conf = cfg.rows[0] || {};
         const inicialEf = parseFloat(conf.disponible_inicial_efectivo) || 0;
         const inicialVi = parseFloat(conf.disponible_inicial_virtual) || 0;
-        // fecha de inicio en 'YYYY-MM-DD' o null (cuenta todo desde el principio)
+        // Momento del último "saldo inicial" (reset). Desde ahí se acumula.
+        // null = nunca se seteó → cuenta todo desde el principio.
         const desde = conf.disponible_fecha_inicio
-            ? new Date(conf.disponible_fecha_inicio).toISOString().split('T')[0]
+            ? new Date(conf.disponible_fecha_inicio).toISOString()
             : null;
 
-        // Ventas de turnos CERRADOS (sin fiado)
+        // Ventas de turnos CERRADOS DESPUÉS del reset (al cerrar la caja, su plata
+        // pasa al local). Las cajas cerradas antes del reset ya están contadas en el
+        // saldo inicial que cargó el usuario.
         const ventas = await db.query(`
             SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual
             FROM ventas v
             JOIN turnos t ON t.id = v.turno_id
             WHERE v.negocio_id = $1 AND t.estado = 'cerrado'
-              AND ($2::date IS NULL OR v.fecha::date >= $2::date)
+              AND ($2::timestamp IS NULL OR t.fecha_cierre > $2::timestamp)
               AND v.metodo_pago <> 'cuenta_corriente' AND COALESCE(v.es_fiado, false) = false
         `, [negocio_id, desde]);
 
@@ -763,7 +766,7 @@ router.get('/disponible', async (req, res) => {
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g LEFT JOIN turnos t ON t.id = g.turno_id
             WHERE g.negocio_id = $1
-              AND ($2::date IS NULL OR g.fecha::date >= $2::date)
+              AND ($2::timestamp IS NULL OR g.fecha > $2::timestamp)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND ( g.origen_dinero = 'local' OR (g.origen_dinero = 'caja' AND t.estado = 'cerrado') )
         `, [negocio_id, desde]);
@@ -774,7 +777,7 @@ router.get('/disponible', async (req, res) => {
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g
             WHERE g.negocio_id = $1
-              AND ($2::date IS NULL OR g.fecha::date >= $2::date)
+              AND ($2::timestamp IS NULL OR g.fecha > $2::timestamp)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND g.origen_dinero = 'otro'
         `, [negocio_id, desde]);
@@ -784,7 +787,7 @@ router.get('/disponible', async (req, res) => {
         const ret = await db.query(`
             SELECT tipo, COALESCE(SUM(monto), 0) AS total
             FROM retiros
-            WHERE negocio_id = $1 AND ($2::date IS NULL OR fecha::date >= $2::date)
+            WHERE negocio_id = $1 AND ($2::timestamp IS NULL OR fecha > $2::timestamp)
             GROUP BY tipo
         `, [negocio_id, desde]);
         let retEf = 0, retVi = 0;
@@ -833,18 +836,18 @@ router.put('/disponible-config', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { fecha_inicio, inicial_efectivo, inicial_virtual } = req.body;
-        const fecha = (fecha_inicio && /^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio)) ? fecha_inicio : null;
+        const { inicial_efectivo, inicial_virtual } = req.body;
+        // El saldo inicial es un RESET: arranca a acumular DESDE ESTE MOMENTO (NOW()).
         const r = await db.query(`
             UPDATE negocios SET
-                disponible_fecha_inicio = $1,
-                disponible_inicial_efectivo = $2,
-                disponible_inicial_virtual = $3
-            WHERE id = $4
+                disponible_fecha_inicio = NOW(),
+                disponible_inicial_efectivo = $1,
+                disponible_inicial_virtual = $2
+            WHERE id = $3
             RETURNING disponible_fecha_inicio AS fecha_inicio,
                       disponible_inicial_efectivo AS inicial_efectivo,
                       disponible_inicial_virtual AS inicial_virtual
-        `, [fecha, parseFloat(inicial_efectivo) || 0, parseFloat(inicial_virtual) || 0, negocio_id]);
+        `, [parseFloat(inicial_efectivo) || 0, parseFloat(inicial_virtual) || 0, negocio_id]);
         res.json(r.rows[0]);
     } catch (error) {
         console.error('Error en disponible-config PUT:', error);

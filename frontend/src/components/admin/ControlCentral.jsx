@@ -116,7 +116,7 @@ export default function ControlCentral() {
               <p className="text-4xl sm:text-5xl font-bold mt-1">{fmt(disponible?.total)}</p>
               <p className="text-blue-100/70 text-xs mt-2">
                 Plata real para comprar o retirar. Se acumula hasta gastarse.
-                {disponible?.desde ? ` Desde ${disponible.desde}.` : ' Configurá el saldo inicial →'}
+                {disponible?.desde ? ` Desde ${new Date(disponible.desde).toLocaleString('es-AR')}.` : ' Configurá el saldo inicial →'}
               </p>
             </div>
             <div className="flex gap-2">
@@ -428,9 +428,9 @@ function ModalGastosFijos({ gastos, onClose, onCambio }) {
 
 // Saldo inicial del dinero disponible (punto de arranque del capital rotativo)
 function ModalSaldoInicial({ onClose, onGuardado }) {
-  const [fecha, setFecha] = useState('');
   const [efectivo, setEfectivo] = useState('');
   const [virtual, setVirtual] = useState('');
+  const [ultimoReset, setUltimoReset] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -438,18 +438,18 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
       try {
         const r = await api.get('/api/reportes/disponible-config');
         const c = r.data || {};
-        setFecha(c.fecha_inicio ? String(c.fecha_inicio).slice(0, 10) : hoyISO());
+        setUltimoReset(c.fecha_inicio || null);
         setEfectivo(c.inicial_efectivo != null ? String(c.inicial_efectivo) : '');
         setVirtual(c.inicial_virtual != null ? String(c.inicial_virtual) : '');
-      } catch { setFecha(hoyISO()); }
+      } catch { /* */ }
     })();
   }, []);
 
   const guardar = async () => {
+    if (!window.confirm('Esto reinicia el dinero disponible con estos montos y arranca a acumular DESDE AHORA. ¿Confirmás?')) return;
     setGuardando(true);
     try {
       await api.put('/api/reportes/disponible-config', {
-        fecha_inicio: fecha || null,
         inicial_efectivo: parseFloat(efectivo) || 0,
         inicial_virtual: parseFloat(virtual) || 0,
       });
@@ -468,11 +468,12 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
           <button onClick={onClose} className="text-blue-200 hover:text-white text-2xl">×</button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de arranque</label>
-            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <p className="text-[11px] text-gray-400 mt-1">Las ventas y gastos anteriores a esta fecha no se cuentan.</p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
+            Contá la plata real que tenés ahora y cargala acá. El disponible se <b>reinicia</b> con
+            estos montos y empieza a acumular <b>desde este momento</b> (lo de antes no se cuenta).
+            {ultimoReset && (
+              <p className="text-blue-500 mt-1">Último reset: {new Date(ultimoReset).toLocaleString('es-AR')}</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -496,7 +497,7 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
             <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50">Cancelar</button>
             <button onClick={guardar} disabled={guardando}
               className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
-              {guardando ? 'Guardando…' : 'Guardar'}
+              {guardando ? 'Guardando…' : '🔄 Reiniciar disponible'}
             </button>
           </div>
         </div>

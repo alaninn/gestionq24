@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.12.0';
+export const VERSION_ACTUAL = '2.12.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.12.1',
+    fecha: '2026-06-21',
+    titulo: 'Dinero disponible: saldo inicial = reset desde ese momento',
+    cambios: [
+      { t: 'El "Saldo inicial" ahora funciona como un reinicio: cargás la plata real que tenés en ese momento y el dinero disponible arranca a acumular DESDE ese instante (antes contaba todo el día). Lo anterior a ese momento ya no se suma.' },
+      { t: 'El panel de cigarrillos ahora también reconoce la categoría normal (rubro), no solo la categoría de stock, así aparece aunque tengas los cigarrillos en el rubro "Cigarrillos".' },
+    ],
+  },
   {
     version: '2.12.0',
     fecha: '2026-06-21',
