@@ -682,7 +682,14 @@ router.get('/centro-control', async (req, res) => {
         const gastosOperativos = gastoOperativoDiario * diasPeriodo;
 
         const gananciaBruta = gananciaEfectivo + (normViVenta - normViCosto);
-        const gananciaNeta = gananciaEfectivo + gananciaVirtual - gastosVariables - gastosOperativos;
+        // Ganancia neta REAL: solo descuenta gastos reales (gastos_variables, que ya
+        // incluyen el pago real de la luz/alquiler cuando llega). Los gastos fijos
+        // prorrateados NO se descuentan acá: son a modo de especulación y, si se
+        // descontaran, se contarían dos veces cuando se carga el gasto real.
+        const gananciaNeta = gananciaEfectivo + gananciaVirtual - gastosVariables;
+        // Ganancia ESTIMADA: la real menos el gasto fijo prorrateado del período
+        // (especulación para saber cuánto se gana descontando los fijos del mes).
+        const gananciaNetaEstimada = gananciaNeta - gastosOperativos;
         const totalCig = cig.efectivo.venta + cig.virtual.venta;
 
         res.json({
@@ -700,6 +707,8 @@ router.get('/centro-control', async (req, res) => {
             gasto_operativo_diario: gastoOperativoDiario,
             fijos_mensual: fijosMensual,
             ganancia_neta: gananciaNeta,
+            // Estimación descontando los gastos fijos prorrateados (especulación)
+            ganancia_neta_estimada: gananciaNetaEstimada,
             // Cigarrillos aparte (su plata igual entra al disponible)
             cigarrillos,
         });

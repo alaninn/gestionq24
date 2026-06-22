@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.12.4';
+export const VERSION_ACTUAL = '2.13.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.13.0',
+    fecha: '2026-06-22',
+    titulo: 'Gastos fijos informativos + repaso de reportes',
+    cambios: [
+      { t: 'Los gastos fijos del local (luz, alquiler…) ya NO se descuentan de la ganancia neta real: eran a modo de especulación y, al pagar el gasto real, se contaban dos veces. Ahora la ganancia neta real solo resta los gastos reales. Igual se muestra una "ganancia estimada" descontando los fijos prorrateados, a modo de referencia.' },
+      { t: 'La tarjeta de Gastos fijos aclara que es una referencia (no se descuenta) y muestra el costo diario prorrateado.' },
+      { t: 'Reportes: el reporte "Por Categoría" ahora se puede exportar a PDF y Excel (antes los botones no hacían nada).' },
+    ],
+  },
   {
     version: '2.12.4',
     fecha: '2026-06-21',

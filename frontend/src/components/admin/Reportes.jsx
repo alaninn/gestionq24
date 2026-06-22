@@ -206,6 +206,16 @@ const calcularFechas = () => {
         ])
       };
     }
+    if (reporteActivo === 'por-categoria' && datosReporte) {
+      return {
+        titulo: 'Ventas por Categoría',
+        columnas: ['Producto', 'Cantidad', 'Veces Vendido', 'Total Facturado', 'Ganancia'],
+        filas: (datosReporte.productos || []).map(p => [
+          p.nombre_producto, p.total_cantidad, p.veces_vendido,
+          fmt(p.total_facturado), fmt(p.ganancia)
+        ])
+      };
+    }
     return null;
   };
 

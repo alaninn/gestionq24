@@ -83,8 +83,8 @@ export default function ControlCentral() {
   const datosBarras = d ? [
     { name: 'Ganancia efectivo', valor: Math.round(d.efectivo?.ganancia || 0), color: '#10b981' },
     { name: 'Ganancia virtual', valor: Math.round(d.virtual?.ganancia || 0), color: '#8b5cf6' },
-    { name: 'Gastos operativos', valor: -Math.round(d.gastos_operativos || 0), color: '#f59e0b' },
     { name: 'Gastos varios', valor: -Math.round(d.gastos_variables || 0), color: '#ef4444' },
+    { name: 'Fijos (estim.)', valor: -Math.round(d.gastos_operativos || 0), color: '#f59e0b' },
   ] : [];
 
   return (
@@ -187,8 +187,13 @@ export default function ControlCentral() {
               <p className="text-emerald-200 text-sm font-medium uppercase tracking-wider">Ganancia neta real del período</p>
               <p className={`text-4xl sm:text-5xl font-bold mt-2 ${d.ganancia_neta < 0 ? 'text-red-300' : 'text-white'}`}>{fmt(d.ganancia_neta)}</p>
               <p className="text-emerald-100/70 text-xs mt-2">
-                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · descontados costo, IVA y gastos
+                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · descontados costo, IVA y gastos reales
               </p>
+              {/* Estimación: descuenta los gastos fijos prorrateados (especulación) */}
+              <div className="mt-3 inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5">
+                <span className="text-emerald-100/80 text-xs">💡 Estimada (menos gastos fijos {fmt(d.gastos_operativos)}):</span>
+                <span className={`text-sm font-bold ${d.ganancia_neta_estimada < 0 ? 'text-red-300' : 'text-white'}`}>{fmt(d.ganancia_neta_estimada)}</span>
+              </div>
             </div>
             <div className="absolute -right-10 -bottom-10 w-48 h-48 rounded-full bg-emerald-400/10 blur-3xl" />
           </div>
@@ -260,7 +265,7 @@ export default function ControlCentral() {
             <CardChica titulo="🧾 IVA facturado" valor={fmt(d.iva_virtual)} color="from-rose-500 to-pink-600" />
             <CardChica titulo="💸 Gastos varios" valor={fmt(d.gastos_variables)} color="from-orange-500 to-red-600" />
             <CardChica titulo="🏠 Gastos fijos (mes)" valor={fmt(d.fijos_mensual)} color="from-slate-500 to-gray-700"
-              sub={`${fmt(d.gastos_operativos)} en el período · tocá para ver`} onClick={() => setMostrarGastos(true)} />
+              sub={`${fmt(d.gasto_operativo_diario)}/día · referencia, no se descuenta · tocá para ver`} onClick={() => setMostrarGastos(true)} />
             <CardChica titulo="📈 Ganancia bruta" valor={fmt(d.ganancia_bruta)} color="from-teal-500 to-cyan-600" />
           </div>
 
