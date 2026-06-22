@@ -739,15 +739,18 @@ router.get('/disponible', async (req, res) => {
         // plata física pasa al local). VIRTUAL: cuenta en tiempo real, también de las
         // cajas ABIERTAS (no es plata física, ya está en MP). Las cajas cerradas antes
         // del reset ya están contadas en el saldo inicial.
+        // OJO: el reset se compara COLUMNA-CONTRA-COLUMNA (CROSS JOIN) para evitar el
+        // desfase de zona horaria que daba al pasar el timestamp como ISO desde JS.
         const ventas = await db.query(`
             SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual, t.estado AS turno_estado
             FROM ventas v
             JOIN turnos t ON t.id = v.turno_id
+            CROSS JOIN (SELECT disponible_fecha_inicio AS reset FROM negocios WHERE id = $1) r
             WHERE v.negocio_id = $1
               AND v.metodo_pago <> 'cuenta_corriente' AND COALESCE(v.es_fiado, false) = false
               AND ( t.estado = 'abierto'
-                    OR (t.estado = 'cerrado' AND ($2::timestamp IS NULL OR t.fecha_cierre > $2::timestamp)) )
-        `, [negocio_id, desde]);
+                    OR (t.estado = 'cerrado' AND (r.reset IS NULL OR t.fecha_cierre > r.reset)) )
+        `, [negocio_id]);
 
         let ventasEf = 0, ventasVi = 0;
         for (const v of ventas.rows) {
@@ -773,31 +776,34 @@ router.get('/disponible', async (req, res) => {
         const gEf = await db.query(`
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g LEFT JOIN turnos t ON t.id = g.turno_id
+            CROSS JOIN (SELECT disponible_fecha_inicio AS reset FROM negocios WHERE id = $1) r
             WHERE g.negocio_id = $1
-              AND ($2::timestamp IS NULL OR g.created_at > $2::timestamp)
+              AND (r.reset IS NULL OR g.created_at > r.reset)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND ( g.origen_dinero = 'local' OR (g.origen_dinero = 'caja' AND t.estado = 'cerrado') )
-        `, [negocio_id, desde]);
+        `, [negocio_id]);
         const gastosEf = parseFloat(gEf.rows[0].total) || 0;
 
         // Gastos que bajan VIRTUAL: origen 'otro' (MP del local).
         const gVi = await db.query(`
             SELECT COALESCE(SUM(g.monto), 0) AS total
             FROM gastos g
+            CROSS JOIN (SELECT disponible_fecha_inicio AS reset FROM negocios WHERE id = $1) r
             WHERE g.negocio_id = $1
-              AND ($2::timestamp IS NULL OR g.created_at > $2::timestamp)
+              AND (r.reset IS NULL OR g.created_at > r.reset)
               AND COALESCE(g.tipo_pago_proveedor, '') <> 'cobro_deuda'
               AND g.origen_dinero = 'otro'
-        `, [negocio_id, desde]);
+        `, [negocio_id]);
         const gastosVi = parseFloat(gVi.rows[0].total) || 0;
 
         // Retiros por tipo
         const ret = await db.query(`
             SELECT tipo, COALESCE(SUM(monto), 0) AS total
             FROM retiros
-            WHERE negocio_id = $1 AND ($2::timestamp IS NULL OR fecha > $2::timestamp)
+            CROSS JOIN (SELECT disponible_fecha_inicio AS reset FROM negocios WHERE id = $1) r
+            WHERE negocio_id = $1 AND (r.reset IS NULL OR fecha > r.reset)
             GROUP BY tipo
-        `, [negocio_id, desde]);
+        `, [negocio_id]);
         let retEf = 0, retVi = 0;
         for (const r of ret.rows) {
             if (r.tipo === 'virtual') retVi += parseFloat(r.total) || 0;

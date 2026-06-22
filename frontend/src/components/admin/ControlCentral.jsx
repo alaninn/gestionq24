@@ -37,7 +37,6 @@ export default function ControlCentral() {
   // Dinero disponible (capital rotativo, en tiempo real, independiente del período)
   const [disponible, setDisponible] = useState(null);
   const [mostrarSaldoInicial, setMostrarSaldoInicial] = useState(false);
-  const [mostrarRetiro, setMostrarRetiro] = useState(false);
 
   const calcularFechas = () => {
     if (periodo === 'hoy') { const h = hoyISO(); return { desde: h, hasta: h }; }
@@ -120,10 +119,6 @@ export default function ControlCentral() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setMostrarRetiro(true)}
-                className="bg-white/15 hover:bg-white/25 border border-white/20 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
-                ➖ Registrar retiro
-              </button>
               <button onClick={() => setMostrarSaldoInicial(true)}
                 className="bg-white/15 hover:bg-white/25 border border-white/20 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
                 ⚙️ Saldo inicial
@@ -319,12 +314,6 @@ export default function ControlCentral() {
         />
       )}
 
-      {mostrarRetiro && (
-        <ModalRetiro
-          onClose={() => setMostrarRetiro(false)}
-          onGuardado={() => { setMostrarRetiro(false); cargarDisponible(); }}
-        />
-      )}
     </div>
   );
 }
@@ -506,100 +495,3 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
   );
 }
 
-// Registrar un retiro (bajar plata del disponible). No es un gasto del negocio.
-function ModalRetiro({ onClose, onGuardado }) {
-  const [monto, setMonto] = useState('');
-  const [tipo, setTipo] = useState('efectivo');
-  const [nota, setNota] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [retiros, setRetiros] = useState([]);
-
-  const cargarRetiros = async () => {
-    try { const r = await api.get('/api/retiros'); setRetiros(r.data || []); } catch { /* */ }
-  };
-  useEffect(() => { cargarRetiros(); }, []);
-
-  const guardar = async () => {
-    const m = parseFloat(monto);
-    if (!m || m <= 0) { alert('El monto debe ser mayor a 0'); return; }
-    setGuardando(true);
-    try {
-      await api.post('/api/retiros', { monto: m, tipo, nota });
-      setMonto(''); setNota('');
-      await cargarRetiros();
-      onGuardado();
-    } catch (e) { alert(e.response?.data?.error || 'Error al registrar'); } finally { setGuardando(false); }
-  };
-  const eliminar = async (r) => {
-    if (!window.confirm('¿Eliminar este retiro?')) return;
-    try { await api.delete(`/api/retiros/${r.id}`); await cargarRetiros(); onGuardado(); } catch { /* */ }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b bg-blue-700 text-white rounded-t-2xl">
-          <div>
-            <h3 className="text-lg font-bold">➖ Registrar retiro</h3>
-            <p className="text-blue-200 text-xs">Sacar plata del local (tomar ganancia). Baja el disponible.</p>
-          </div>
-          <button onClick={onClose} className="text-blue-200 hover:text-white text-2xl">×</button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setTipo('efectivo')}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${tipo === 'efectivo' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-              <p className="text-sm font-bold text-gray-800">💵 Efectivo</p>
-              <p className="text-[11px] text-gray-500">Caja del local</p>
-            </button>
-            <button onClick={() => setTipo('virtual')}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${tipo === 'virtual' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-              <p className="text-sm font-bold text-gray-800">📲 Virtual</p>
-              <p className="text-[11px] text-gray-500">MP del local</p>
-            </button>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Monto a retirar</label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-gray-400">$</span>
-              <input type="number" value={monto} onChange={e => setMonto(e.target.value)} autoFocus placeholder="0"
-                className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-lg" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nota (opcional)</label>
-            <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Ej: retiro de ganancia"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50">Cerrar</button>
-            <button onClick={guardar} disabled={guardando}
-              className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
-              {guardando ? 'Guardando…' : 'Registrar retiro'}
-            </button>
-          </div>
-
-          {retiros.length > 0 && (
-            <div className="pt-2 border-t">
-              <p className="text-xs font-semibold text-gray-500 mb-2">Últimos retiros</p>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {retiros.map(r => (
-                  <div key={r.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                    <span className="text-sm">{r.tipo === 'virtual' ? '📲' : '💵'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800">{fmt(r.monto)}</p>
-                      <p className="text-[11px] text-gray-400 truncate">
-                        {new Date(r.fecha).toLocaleDateString('es-AR')}{r.nota ? ` · ${r.nota}` : ''}
-                      </p>
-                    </div>
-                    <button onClick={() => eliminar(r)} className="text-red-400 hover:text-red-600 text-lg px-1">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}

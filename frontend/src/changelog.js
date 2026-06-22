@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.12.3';
+export const VERSION_ACTUAL = '2.12.4';
 
 export const CHANGELOG = [
+  {
+    version: '2.12.4',
+    fecha: '2026-06-21',
+    titulo: 'Dinero disponible: fix descuento de gastos + se quita "Registrar retiro"',
+    cambios: [
+      { t: 'Corregido en serio: los gastos de "MP del local" / "dinero del local" no descontaban del dinero disponible por un desfase de zona horaria en el cálculo. Ahora descuentan bien.' },
+      { t: 'Se quitó el botón "Registrar retiro" del Centro de Control: los movimientos se cargan desde el panel de Gastos, y para corregir se usa el "Saldo inicial".' },
+    ],
+  },
   {
     version: '2.12.3',
     fecha: '2026-06-21',
