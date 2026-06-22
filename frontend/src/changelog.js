@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.12.2';
+export const VERSION_ACTUAL = '2.12.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.12.3',
+    fecha: '2026-06-21',
+    titulo: 'Dinero disponible: se refresca al actualizar',
+    cambios: [
+      { t: 'El "Dinero disponible" ahora se vuelve a calcular al tocar "Actualizar" o al cambiar el período en el Centro de Control. Antes solo se cargaba al entrar, por eso un gasto recién hecho parecía no descontarse hasta recargar la página.' },
+    ],
+  },
   {
     version: '2.12.2',
     fecha: '2026-06-21',

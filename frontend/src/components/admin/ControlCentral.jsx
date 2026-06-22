@@ -73,7 +73,7 @@ export default function ControlCentral() {
     try { const r = await api.get('/api/reportes/disponible'); setDisponible(r.data); } catch { /* */ }
   };
 
-  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [periodo, dia, mes, rangoDesde, rangoHasta]);
+  useEffect(() => { cargar(); cargarDisponible(); /* eslint-disable-next-line */ }, [periodo, dia, mes, rangoDesde, rangoHasta]);
   useEffect(() => { cargarGastosFijos(); cargarDisponible(); }, []);
 
   const d = datos;
@@ -167,7 +167,7 @@ export default function ControlCentral() {
             <input type="date" value={rangoHasta} onChange={e => setRangoHasta(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm" />
           </div>
         )}
-        <button onClick={cargar} className="ml-auto bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">🔄 Actualizar</button>
+        <button onClick={() => { cargar(); cargarDisponible(); }} className="ml-auto bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">🔄 Actualizar</button>
       </div>
 
       {cargando && <div className="text-center text-gray-400 py-10">Calculando…</div>}
