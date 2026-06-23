@@ -348,14 +348,16 @@ router.get('/dashboard', async (req, res) => {
         const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
         const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
 
+        // Hasta 1 año de datos para que los filtros del gráfico (7D/30D/3M/6M/1A)
+        // tengan información; el frontend recorta según el período elegido.
         const ventasPorDia = await db.query(`
-            SELECT 
+            SELECT
                 DATE(fecha) AS dia,
                 COUNT(*) AS cantidad,
                 COALESCE(SUM(total), 0) AS total
             FROM ventas
             WHERE negocio_id = $1
-              AND fecha::date >= NOW()::date - 30
+              AND fecha::date >= NOW()::date - 365
             GROUP BY DATE(fecha)
             ORDER BY dia ASC
         `, [negocio_id]);

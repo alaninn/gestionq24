@@ -217,8 +217,10 @@ if (error) return (
     { clave: 'mercadopago', label: 'Mercado Pago', icono: '📱', color: '#06b6d4', bg: 'bg-cyan-500' },
   ];
 
-  // Formateamos fechas para el gráfico
-  const datosGrafico = ventasPorDia.map(d => ({
+  // El gráfico usa los datos YA filtrados por el período seleccionado
+  // (datosFiltrados); si todavía no se calcularon, usa todo lo recibido.
+  const fuenteGrafico = datosFiltrados ?? ventasPorDia;
+  const datosGrafico = fuenteGrafico.map(d => ({
     dia: new Date(d.dia).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
     total: parseFloat(d.total),
     ventas: parseInt(d.cantidad),
@@ -235,6 +237,16 @@ if (error) return (
   const varPct = comparacion.ayer > 0
     ? ((comparacion.hoy - comparacion.ayer) / comparacion.ayer * 100).toFixed(1)
     : 0;
+
+  // Navegación rápida desde las tarjetas (cada una lleva a su módulo)
+  const irA = (ruta) => { window.location.href = ruta; };
+  // Ver el resumen de AYER en la sección "Tu día"
+  const verAyer = () => {
+    const ayer = new Date();
+    ayer.setDate(ayer.getDate() - 1);
+    cambiarFechaDia(ayer.toISOString().split('T')[0]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -420,65 +432,71 @@ if (error) return (
 
       {/* Tarjetas de stats del mes */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
+        <div onClick={() => irA('/admin/reportes')} title="Ver reportes e historial de ventas"
+          className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
           <div className="flex items-center justify-between">
             <p className="text-green-100 text-sm font-medium">VENTAS DEL MES</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">💰</span>
           </div>
           <p className="text-4xl font-bold mt-3 drop-shadow-lg">{fmt(stats.facturado_mes)}</p>
           <p className="text-green-100 text-sm mt-2 flex items-center gap-1">
-            <span className="bg-green-400/30 px-2 py-0.5 rounded-full">{stats.ventas_mes}</span> ventas realizadas
+            <span className="bg-green-400/30 px-2 py-0.5 rounded-full">{stats.ventas_mes}</span> ventas · ver reportes →
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer border-l-4 border-red-500 group">
+        <div onClick={() => irA('/admin/gastos')} title="Ver y registrar gastos"
+          className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer border-l-4 border-red-500 group">
           <div className="flex items-center justify-between">
             <p className="text-gray-500 text-sm font-medium">GASTOS DEL MES</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">📉</span>
           </div>
           <p className="text-4xl font-bold text-red-500 mt-3">{fmt(stats.gastos_mes)}</p>
-          <p className="text-gray-400 text-sm mt-2">Egresos operativos</p>
+          <p className="text-gray-400 text-sm mt-2">Egresos · ver gastos →</p>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
+        <div onClick={() => irA('/admin/centro-control')} title="Abrir el Centro de Control (ganancia real, disponible, cigarrillos)"
+          className="bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
           <div className="flex items-center justify-between">
-            <p className="text-blue-100 text-sm font-medium">GANANCIA NETA</p>
+            <p className="text-blue-100 text-sm font-medium">GANANCIA (aprox.)</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">📈</span>
           </div>
           <p className="text-4xl font-bold mt-3 drop-shadow-lg">
             {fmt(parseFloat(stats.facturado_mes) - parseFloat(stats.gastos_mes))}
           </p>
-          <p className="text-blue-100 text-sm mt-2">Ventas - Gastos</p>
+          <p className="text-blue-100 text-sm mt-2">Ventas − Gastos · ganancia real en Centro de Control →</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer border-l-4 border-purple-500 group">
+        <div onClick={() => irA('/admin/cuentas-corrientes')} title="Ver cuentas corrientes / fiados"
+          className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer border-l-4 border-purple-500 group">
           <div className="flex items-center justify-between">
             <p className="text-gray-500 text-sm font-medium">DEUDAS TOTALES</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">💳</span>
           </div>
           <p className="text-4xl font-bold text-purple-600 mt-3">{fmt(stats.total_deudas)}</p>
-          <p className="text-gray-400 text-sm mt-2">Cuentas corrientes</p>
+          <p className="text-gray-400 text-sm mt-2">Cuentas corrientes · ver →</p>
         </div>
       </div>
 
       {/* Comparación de rendimiento */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
+        <div onClick={verAyer} title="Ver el resumen completo de ayer arriba"
+          className="bg-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
           <div className="flex items-center justify-between">
             <p className="text-gray-500 text-sm font-medium">AYER</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">📅</span>
           </div>
           <p className="text-3xl font-bold text-gray-800 mt-2">{fmt(comparacion.ayer)}</p>
-          <p className="text-gray-400 text-sm mt-2">{comparacion.ventas_ayer} ventas</p>
+          <p className="text-gray-400 text-sm mt-2">{comparacion.ventas_ayer} ventas · ver el día →</p>
         </div>
 
-        <div className="bg-gradient-to-br from-cyan-400 to-blue-500 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
+        <div onClick={() => irA('/admin/productos')} title="Ver y administrar productos"
+          className="bg-gradient-to-br from-cyan-400 to-blue-500 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group">
           <div className="flex items-center justify-between">
             <p className="text-cyan-100 text-sm font-medium">PRODUCTOS</p>
             <span className="text-2xl group-hover:rotate-12 transition-transform duration-300">📦</span>
           </div>
           <p className="text-3xl font-bold mt-2">{stats.total_productos}</p>
-          <p className="text-cyan-100 text-sm mt-2">activos en stock</p>
+          <p className="text-cyan-100 text-sm mt-2">activos · administrar →</p>
         </div>
 
         <div className="bg-gradient-to-br from-orange-400 to-red-500 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 cursor-pointer group"

@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.13.1';
+export const VERSION_ACTUAL = '2.13.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.13.2',
+    fecha: '2026-06-23',
+    titulo: 'Dashboard: filtros del gráfico + tarjetas interactivas',
+    cambios: [
+      { t: 'Los filtros del gráfico "Análisis de Ventas" (7D/30D/3M/6M/1A) ahora funcionan: el gráfico se recorta según el período elegido y el sistema trae hasta 1 año de datos.' },
+      { t: 'Las tarjetas del Dashboard ahora son clickeables y llevan a su sección: Ventas del mes → Reportes, Gastos del mes → Gastos, Ganancia → Centro de Control, Deudas → Cuentas Corrientes, Productos → Productos. La tarjeta "Ayer" muestra el resumen completo de ayer arriba.' },
+      { t: 'La tarjeta "Ganancia" del Dashboard se aclara como aproximada (Ventas − Gastos); la ganancia real está en el Centro de Control.' },
+    ],
+  },
   {
     version: '2.13.1',
     fecha: '2026-06-23',
