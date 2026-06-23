@@ -777,21 +777,24 @@ router.get('/disponible', async (req, res) => {
             ? new Date(conf.disponible_fecha_inicio).toISOString()
             : null;
 
-        // EFECTIVO: solo cuenta de cajas YA CERRADAS después del reset (al cerrar, su
-        // plata física pasa al local). VIRTUAL: cuenta en tiempo real, también de las
-        // cajas ABIERTAS (no es plata física, ya está en MP). Las cajas cerradas antes
-        // del reset ya están contadas en el saldo inicial.
+        // EFECTIVO: cuenta cuando la caja YA CERRÓ después del reset (al cerrar, su
+        //   plata física pasa al local). Se evalúa por la fecha de CIERRE del turno.
+        // VIRTUAL: no es plata física (está en MP), cuenta en tiempo real por la HORA
+        //   DE LA VENTA. Solo las ventas virtuales POSTERIORES al reset: las anteriores
+        //   ya están contadas en el saldo inicial (MP) que cargó el usuario.
         // OJO: el reset se compara COLUMNA-CONTRA-COLUMNA (CROSS JOIN) para evitar el
         // desfase de zona horaria que daba al pasar el timestamp como ISO desde JS.
         const ventas = await db.query(`
-            SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual, t.estado AS turno_estado
+            SELECT v.metodo_pago, v.total, v.monto_efectivo, v.monto_virtual,
+                   (t.estado = 'cerrado' AND (r.reset IS NULL OR t.fecha_cierre > r.reset)) AS ef_ok,
+                   (r.reset IS NULL OR v.fecha > r.reset) AS vi_ok
             FROM ventas v
             JOIN turnos t ON t.id = v.turno_id
             CROSS JOIN (SELECT disponible_fecha_inicio AS reset FROM negocios WHERE id = $1) r
             WHERE v.negocio_id = $1
               AND v.metodo_pago <> 'cuenta_corriente' AND COALESCE(v.es_fiado, false) = false
-              AND ( t.estado = 'abierto'
-                    OR (t.estado = 'cerrado' AND (r.reset IS NULL OR t.fecha_cierre > r.reset)) )
+              AND ( (t.estado = 'cerrado' AND (r.reset IS NULL OR t.fecha_cierre > r.reset))
+                    OR (r.reset IS NULL OR v.fecha > r.reset) )
         `, [negocio_id]);
 
         let ventasEf = 0, ventasVi = 0;
@@ -807,10 +810,8 @@ router.get('/disponible', async (req, res) => {
             } else {
                 viPortion = total; // transferencia / mercadopago / tarjeta
             }
-            // Efectivo: solo si la caja ya está cerrada (post-reset, garantizado por WHERE)
-            if (v.turno_estado === 'cerrado') ventasEf += efPortion;
-            // Virtual: siempre (cajas abiertas y cerradas post-reset) → tiempo real
-            ventasVi += viPortion;
+            if (v.ef_ok) ventasEf += efPortion; // efectivo: caja cerrada post-reset
+            if (v.vi_ok) ventasVi += viPortion; // virtual: venta posterior al reset
         }
 
         // Gastos que bajan EFECTIVO: origen 'local' (siempre) + origen 'caja' de

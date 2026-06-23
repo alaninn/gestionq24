@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.14.0';
+export const VERSION_ACTUAL = '2.14.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.14.1',
+    fecha: '2026-06-23',
+    titulo: 'Dinero disponible: el saldo inicial virtual ya no se duplica',
+    cambios: [
+      { t: 'Al reiniciar el saldo inicial, el MP/virtual ya no suma de más: antes contaba las ventas virtuales de la caja en curso anteriores al reset (que vos ya contaste al cargar el saldo). Ahora el virtual cuenta solo las ventas posteriores al momento exacto en que guardás, y sigue sumando desde ahí. El efectivo sigue contando al cerrar la caja.' },
+    ],
+  },
   {
     version: '2.14.0',
     fecha: '2026-06-23',
