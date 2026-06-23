@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.14.1';
+export const VERSION_ACTUAL = '2.14.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.14.2',
+    fecha: '2026-06-23',
+    titulo: 'POS: usuario en sesión visible',
+    cambios: [
+      { t: 'En el POS, debajo del nombre del negocio ("Punto de Venta"), ahora aparece en chico el usuario que está usando el sistema con un puntito verde de "online".' },
+    ],
+  },
   {
     version: '2.14.1',
     fecha: '2026-06-23',

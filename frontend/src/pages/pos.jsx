@@ -2105,7 +2105,7 @@ function SincronizacionExitosa({ ultimaSincronizacion }) {
 
 function POS() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, usuario } = useAuth();
   const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
@@ -2938,6 +2938,12 @@ const imprimirTicketDesdeModal = () => {
           <div className="hidden sm:block leading-tight">
             <p className="text-sm font-bold text-white truncate max-w-[160px]">{config?.nombre_negocio || 'Mi Negocio'}</p>
             <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--color-primario)' }}>Punto de Venta</p>
+            {usuario && (
+              <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5 truncate max-w-[160px]" title="Usuario en sesión">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block flex-shrink-0 animate-pulse"></span>
+                {usuario.nombre || usuario.email}
+              </p>
+            )}
           </div>
         </div>
 
