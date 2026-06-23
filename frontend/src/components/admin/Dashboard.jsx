@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
 import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
@@ -33,6 +33,7 @@ const COLORES_PIE = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'];
 
 function Dashboard() {
   const [datos, setDatos] = useState(null);
+  const [gananciaMes, setGananciaMes] = useState(null); // ganancia real del mes (Centro de Control)
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [periodo, setPeriodo] = useState('30d');
@@ -90,10 +91,23 @@ function Dashboard() {
     }
   };
 
+  // Ganancia REAL del mes (misma lógica que el Centro de Control): venta − costo −
+  // IVA − gastos de la caja del turno (no resta reposición ni dinero/MP del local).
+  const cargarGananciaMes = async () => {
+    try {
+      const h = new Date();
+      const desde = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-01`;
+      const hasta = new Date(h - h.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const res = await api.get(`/api/reportes/centro-control?fecha_desde=${desde}&fecha_hasta=${hasta}`);
+      setGananciaMes(res.data?.ganancia_neta ?? null);
+    } catch { /* si falla, la tarjeta muestra el aprox */ }
+  };
+
   useEffect(() => {
     cargarDatos();
+    cargarGananciaMes();
     // Auto-actualizar cada 5 minutos
-    const intervalo = setInterval(() => cargarDatos(), 5 * 60 * 1000);
+    const intervalo = setInterval(() => { cargarDatos(); cargarGananciaMes(); }, 5 * 60 * 1000);
     return () => clearInterval(intervalo);
   }, []);
 
@@ -457,13 +471,15 @@ if (error) return (
         <div onClick={() => irA('/admin/centro-control')} title="Abrir el Centro de Control (ganancia real, disponible, cigarrillos)"
           className="bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 cursor-pointer group">
           <div className="flex items-center justify-between">
-            <p className="text-blue-100 text-sm font-medium">GANANCIA (aprox.)</p>
+            <p className="text-blue-100 text-sm font-medium">GANANCIA NETA REAL (MES)</p>
             <span className="text-2xl group-hover:scale-125 transition-transform duration-300">📈</span>
           </div>
           <p className="text-4xl font-bold mt-3 drop-shadow-lg">
-            {fmt(parseFloat(stats.facturado_mes) - parseFloat(stats.gastos_mes))}
+            {gananciaMes !== null ? fmt(gananciaMes) : fmt(parseFloat(stats.facturado_mes) - parseFloat(stats.gastos_mes))}
           </p>
-          <p className="text-blue-100 text-sm mt-2">Ventas − Gastos · ganancia real en Centro de Control →</p>
+          <p className="text-blue-100 text-sm mt-2">
+            {gananciaMes !== null ? 'venta − costo − IVA − gastos de caja · ver detalle →' : 'Ventas − Gastos (aprox.) · ver Centro de Control →'}
+          </p>
         </div>
 
         <div onClick={() => irA('/admin/cuentas-corrientes')} title="Ver cuentas corrientes / fiados"
@@ -577,69 +593,43 @@ if (error) return (
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            {tipoGrafico === 'area' ? (
-              <AreaChart data={datosGrafico} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="50%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
-                <YAxis tickFormatter={fmtCorto} tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  formatter={(value) => [fmt(value), '💰 Facturación']}
-                  labelFormatter={(label) => `📅 ${label}`}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)'
-                  }}
-                />
-                <Area type="monotone" dataKey="total" stroke="#10b981" strokeWidth={3}
-                  fill="url(#colorVentas)" dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }} 
-                  activeDot={{ r: 8, fill: '#059669', stroke: '#10b981', strokeWidth: 3 }} />
-              </AreaChart>
-            ) : tipoGrafico === 'bar' ? (
-              <BarChart data={datosGrafico} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
-                <YAxis tickFormatter={fmtCorto} tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  formatter={(value) => [fmt(value), '💰 Facturación']}
-                  labelFormatter={(label) => `📅 ${label}`}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)'
-                  }}
-                />
-                <Bar dataKey="total" fill="#10b981" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            ) : (
-              <AreaChart data={datosGrafico} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
-                <YAxis tickFormatter={fmtCorto} tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  formatter={(value) => [fmt(value), '💰 Facturación']}
-                  labelFormatter={(label) => `📅 ${label}`}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)'
-                  }}
-                />
-                <Area type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2}
-                  fill="none" dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }} 
-                  activeDot={{ r: 6, fill: '#2563eb', stroke: '#3b82f6', strokeWidth: 2 }} />
-              </AreaChart>
-            )}
+            <ComposedChart data={datosGrafico} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+              <defs>
+                <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                  <stop offset="50%" stopColor="#10b981" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+              {/* Eje izq: facturación ($) · Eje der: cantidad de ventas */}
+              <YAxis yAxisId="monto" tickFormatter={fmtCorto} tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="ventas" orientation="right" allowDecimals={false} tick={{ fontSize: 11, fill: '#3b82f6' }} tickLine={false} axisLine={false} />
+              <Tooltip
+                formatter={(value, name) => name === 'Ventas' ? [value, '🧾 Ventas'] : [fmt(value), '💰 Facturación']}
+                labelFormatter={(label) => `📅 ${label}`}
+                contentStyle={{
+                  borderRadius: '16px',
+                  border: 'none',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)'
+                }}
+              />
+              <Legend />
+              {tipoGrafico === 'bar' ? (
+                <Bar yAxisId="monto" name="Facturación" dataKey="total" fill="#10b981" radius={[6, 6, 0, 0]} />
+              ) : tipoGrafico === 'line' ? (
+                <Line yAxisId="monto" name="Facturación" type="monotone" dataKey="total" stroke="#10b981" strokeWidth={3}
+                  dot={{ fill: '#10b981', r: 3 }} activeDot={{ r: 7 }} />
+              ) : (
+                <Area yAxisId="monto" name="Facturación" type="monotone" dataKey="total" stroke="#10b981" strokeWidth={3}
+                  fill="url(#colorVentas)" dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }} activeDot={{ r: 7 }} />
+              )}
+              {/* Segunda serie: cantidad de ventas (eje derecho) */}
+              <Line yAxisId="ventas" name="Ventas" type="monotone" dataKey="ventas" stroke="#3b82f6" strokeWidth={2}
+                dot={{ fill: '#3b82f6', r: 2 }} activeDot={{ r: 5 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>

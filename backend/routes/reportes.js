@@ -149,19 +149,24 @@ router.get('/por-turno', async (req, res) => {
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'tarjeta' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS tarjeta,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'mercadopago' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS mercadopago,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'transferencia' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS transferencia,
-                COALESCE(g.total_gastos, 0) AS total_gastos
+                COALESCE(g.total_gastos, 0) AS total_gastos,
+                COALESCE(g.gastos_caja, 0) AS gastos_caja
             FROM turnos t
             LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
             LEFT JOIN ventas v ON v.turno_id = t.id
             LEFT JOIN (
-                SELECT turno_id, SUM(monto) AS total_gastos
+                SELECT turno_id,
+                       SUM(monto) AS total_gastos,
+                       SUM(CASE WHEN COALESCE(origen_dinero, 'caja') = 'caja'
+                                 AND COALESCE(tipo, 'variable') NOT IN ('compra', 'pago_proveedor')
+                                THEN monto ELSE 0 END) AS gastos_caja
                 FROM gastos WHERE negocio_id = $3
                 GROUP BY turno_id
             ) g ON g.turno_id = t.id
             WHERE t.fecha_apertura::date >= $1::date
               AND t.fecha_apertura::date <= $2::date
               AND t.negocio_id = $3
-            GROUP BY t.id, g.total_gastos, uc.nombre
+            GROUP BY t.id, g.total_gastos, g.gastos_caja, uc.nombre
             ORDER BY t.fecha_apertura DESC
         `, [desde, hasta, negocio_id]);
 
@@ -184,11 +189,11 @@ router.get('/rentabilidad', async (req, res) => {
                 p.codigo,
                 SUM(vi.cantidad) AS cantidad_vendida,
                 SUM(vi.subtotal) AS total_vendido,
-                SUM(vi.cantidad * p.precio_costo) AS total_costo,
-                SUM(vi.subtotal) - SUM(vi.cantidad * p.precio_costo) AS ganancia,
+                SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS total_costo,
+                SUM(vi.subtotal) - SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS ganancia,
                 CASE 
                     WHEN SUM(vi.subtotal) > 0 
-                    THEN ROUND(((SUM(vi.subtotal) - SUM(vi.cantidad * p.precio_costo)) / SUM(vi.subtotal) * 100)::numeric, 2)
+                    THEN ROUND(((SUM(vi.subtotal) - SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad)) / SUM(vi.subtotal) * 100)::numeric, 2)
                     ELSE 0 
                 END AS margen_porcentaje
             FROM venta_items vi
@@ -206,8 +211,8 @@ router.get('/rentabilidad', async (req, res) => {
                 COALESCE(c.nombre, 'Sin categoría') AS categoria,
                 SUM(vi.cantidad) AS cantidad_vendida,
                 SUM(vi.subtotal) AS total_vendido,
-                SUM(vi.cantidad * p.precio_costo) AS total_costo,
-                SUM(vi.subtotal) - SUM(vi.cantidad * p.precio_costo) AS ganancia
+                SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS total_costo,
+                SUM(vi.subtotal) - SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS ganancia
             FROM venta_items vi
             JOIN ventas v ON vi.venta_id = v.id
             LEFT JOIN productos p ON vi.producto_id = p.id
@@ -265,8 +270,8 @@ router.get('/por-categoria', async (req, res) => {
                 vi.nombre_producto, p.codigo,
                 SUM(vi.cantidad) AS total_cantidad,
                 SUM(vi.subtotal) AS total_facturado,
-                SUM(vi.cantidad * p.precio_costo) AS total_costo,
-                SUM(vi.subtotal) - SUM(vi.cantidad * p.precio_costo) AS ganancia,
+                SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS total_costo,
+                SUM(vi.subtotal) - SUM(COALESCE(vi.costo_unitario, p.precio_costo, 0) * vi.cantidad) AS ganancia,
                 COUNT(DISTINCT v.id) AS veces_vendido
             FROM venta_items vi
             JOIN ventas v ON vi.venta_id = v.id
@@ -311,19 +316,24 @@ router.get('/control-caja', async (req, res) => {
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'tarjeta' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'tarjeta' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_tarjeta,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'mercadopago' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'mercadopago' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_mp,
                 COALESCE(SUM(CASE WHEN v.metodo_pago = 'transferencia' THEN v.total WHEN v.metodo_pago = 'dividido' AND v.metodo_virtual = 'transferencia' THEN COALESCE(v.monto_virtual,0) ELSE 0 END), 0) AS ventas_transferencia,
-                COALESCE(g.total_gastos, 0) AS total_gastos
+                COALESCE(g.total_gastos, 0) AS total_gastos,
+                COALESCE(g.gastos_caja, 0) AS gastos_caja
             FROM turnos t
             LEFT JOIN usuarios uc ON uc.id = t.usuario_cierre_id
             LEFT JOIN ventas v ON v.turno_id = t.id
             LEFT JOIN (
-                SELECT turno_id, SUM(monto) AS total_gastos
+                SELECT turno_id,
+                       SUM(monto) AS total_gastos,
+                       SUM(CASE WHEN COALESCE(origen_dinero, 'caja') = 'caja'
+                                 AND COALESCE(tipo, 'variable') NOT IN ('compra', 'pago_proveedor')
+                                THEN monto ELSE 0 END) AS gastos_caja
                 FROM gastos WHERE negocio_id = $3
                 GROUP BY turno_id
             ) g ON g.turno_id = t.id
             WHERE t.fecha_apertura::date >= $1::date
               AND t.fecha_apertura::date <= $2::date
               AND t.negocio_id = $3
-            GROUP BY t.id, g.total_gastos, uc.nombre
+            GROUP BY t.id, g.total_gastos, g.gastos_caja, uc.nombre
             ORDER BY t.fecha_apertura DESC
         `, [desde, hasta, negocio_id]);
 

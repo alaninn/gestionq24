@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.13.2';
+export const VERSION_ACTUAL = '2.14.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.14.0',
+    fecha: '2026-06-23',
+    titulo: 'Dashboard, Centro de Control y Reportes alineados',
+    cambios: [
+      { t: 'Dashboard: la tarjeta de ganancia ahora muestra la GANANCIA NETA REAL del mes (mismo criterio que el Centro de Control), y el gráfico de ventas suma una segunda línea con la cantidad de ventas (eje derecho).' },
+      { t: 'Centro de Control: las tarjetas de método de pago (efectivo/transferencia/MP/tarjeta) ahora se pueden tocar para ver el detalle de esas ventas del período.' },
+      { t: 'Reportes: el Historial ahora incluye un "Resumen financiero" del período con el mismo criterio (ganancia real, ganancia efectivo/virtual, IVA, costo, gastos de caja, capital y cigarrillos).' },
+      { t: 'Reportes: la Rentabilidad por producto/categoría ahora usa el costo al momento de la venta (igual que el Centro de Control) y aclara que es margen bruto. El reporte por Turno muestra los "Gastos de caja" (los que restan de la ganancia) además del total.' },
+    ],
+  },
   {
     version: '2.13.2',
     fecha: '2026-06-23',

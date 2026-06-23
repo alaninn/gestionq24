@@ -37,6 +37,8 @@ export default function ControlCentral() {
   // Dinero disponible (capital rotativo, en tiempo real, independiente del período)
   const [disponible, setDisponible] = useState(null);
   const [mostrarSaldoInicial, setMostrarSaldoInicial] = useState(false);
+  // Detalle de ventas de un método de pago (al tocar su tarjeta)
+  const [detalleMetodo, setDetalleMetodo] = useState(null);
 
   const calcularFechas = () => {
     if (periodo === 'hoy') { const h = hoyISO(); return { desde: h, hasta: h }; }
@@ -198,12 +200,16 @@ export default function ControlCentral() {
             <div className="absolute -right-10 -bottom-10 w-48 h-48 rounded-full bg-emerald-400/10 blur-3xl" />
           </div>
 
-          {/* Totales por método */}
+          {/* Totales por método (clickeables → detalle de ventas del período) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <CardChica titulo="💵 Venta efectivo" valor={fmt(d.porMetodo?.efectivo)} color="from-emerald-500 to-green-600" />
-            <CardChica titulo="🏦 Venta transferencia" valor={fmt(d.porMetodo?.transferencia)} color="from-amber-500 to-orange-600" />
-            <CardChica titulo="📱 Venta Mercado Pago" valor={fmt(d.porMetodo?.mercadopago)} color="from-violet-500 to-purple-600" />
-            <CardChica titulo="💳 Venta tarjeta" valor={fmt(d.porMetodo?.tarjeta)} color="from-blue-500 to-indigo-600" />
+            <CardChica titulo="💵 Venta efectivo" valor={fmt(d.porMetodo?.efectivo)} color="from-emerald-500 to-green-600"
+              sub="tocá para ver las ventas →" onClick={() => setDetalleMetodo({ metodo: 'efectivo', label: '💵 Efectivo' })} />
+            <CardChica titulo="🏦 Venta transferencia" valor={fmt(d.porMetodo?.transferencia)} color="from-amber-500 to-orange-600"
+              sub="tocá para ver las ventas →" onClick={() => setDetalleMetodo({ metodo: 'transferencia', label: '🏦 Transferencia' })} />
+            <CardChica titulo="📱 Venta Mercado Pago" valor={fmt(d.porMetodo?.mercadopago)} color="from-violet-500 to-purple-600"
+              sub="tocá para ver las ventas →" onClick={() => setDetalleMetodo({ metodo: 'mercadopago', label: '📱 Mercado Pago' })} />
+            <CardChica titulo="💳 Venta tarjeta" valor={fmt(d.porMetodo?.tarjeta)} color="from-blue-500 to-indigo-600"
+              sub="tocá para ver las ventas →" onClick={() => setDetalleMetodo({ metodo: 'tarjeta', label: '💳 Tarjeta' })} />
           </div>
 
           {/* Ganancia por tipo */}
@@ -320,6 +326,17 @@ export default function ControlCentral() {
           onGuardado={() => { setMostrarSaldoInicial(false); cargarDisponible(); }}
         />
       )}
+
+      {detalleMetodo && (() => {
+        const { desde, hasta } = calcularFechas();
+        return (
+          <ModalDetalleMetodo
+            metodo={detalleMetodo.metodo} label={detalleMetodo.label}
+            desde={desde} hasta={hasta}
+            onClose={() => setDetalleMetodo(null)}
+          />
+        );
+      })()}
 
     </div>
   );
@@ -502,3 +519,65 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
   );
 }
 
+
+// Detalle de ventas de un método de pago en el período seleccionado
+function ModalDetalleMetodo({ metodo, label, desde, hasta, onClose }) {
+  const [ventas, setVentas] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api.get(`/api/reportes/historial?fecha_desde=${desde}&fecha_hasta=${hasta}`);
+        const todas = r.data?.ventas || [];
+        setVentas(todas.filter(v => v.metodo_pago === metodo));
+      } catch { setVentas([]); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const total = (ventas || []).reduce((a, v) => a + parseFloat(v.total || 0), 0);
+  const fmtDia = (f) => new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold">{label} — ventas del período</h3>
+            <p className="text-slate-300 text-xs mt-0.5">{desde} a {hasta}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-300 hover:text-white text-2xl leading-none">×</button>
+        </div>
+        <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+          <span className="text-sm text-gray-600">{ventas ? ventas.length : '…'} venta(s)</span>
+          <span className="text-emerald-600 font-bold tabular-nums">{fmt(total)}</span>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3">
+          {ventas === null ? (
+            <p className="text-center text-gray-400 text-sm py-10">Cargando…</p>
+          ) : ventas.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-10">No hay ventas con este método en el período. (Los pagos divididos no se listan acá.)</p>
+          ) : (
+            <div className="space-y-1.5">
+              {ventas.map(v => (
+                <div key={v.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                  <span className="text-xs text-gray-400 tabular-nums w-20">{fmtDia(v.fecha)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-800">Venta #{v.id}</p>
+                    <p className="text-[11px] text-gray-400">{v.cantidad_items} ítem(s)</p>
+                  </div>
+                  {v.tipo_facturacion === 'electronica' && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">🧾 ARCA</span>
+                  )}
+                  <span className="text-gray-800 font-semibold text-sm tabular-nums">{fmt(v.total)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t">
+          <button onClick={onClose} className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}

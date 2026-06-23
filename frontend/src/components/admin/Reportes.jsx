@@ -33,6 +33,7 @@ function Reportes() {
 
   // ---- ESTADOS HISTORIAL ----
   const [historial, setHistorial] = useState(null);
+  const [resumenFin, setResumenFin] = useState(null); // resumen financiero (Centro de Control)
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
   // Filtros del historial
@@ -96,8 +97,13 @@ const calcularFechas = () => {
     try {
       setCargandoHistorial(true);
       const { desde, hasta } = calcularFechas();
-      const res = await api.get(`/api/reportes/historial?fecha_desde=${desde}&fecha_hasta=${hasta}`);
-      setHistorial(res.data);
+      // Historial + resumen financiero (misma lógica que el Centro de Control)
+      const [resHist, resFin] = await Promise.all([
+        api.get(`/api/reportes/historial?fecha_desde=${desde}&fecha_hasta=${hasta}`),
+        api.get(`/api/reportes/centro-control?fecha_desde=${desde}&fecha_hasta=${hasta}`).catch(() => null),
+      ]);
+      setHistorial(resHist.data);
+      setResumenFin(resFin?.data || null);
     } catch (err) {
       console.error('Error:', err);
     } finally {
@@ -360,6 +366,58 @@ const calcularFechas = () => {
                   <p className="text-xs text-gray-400">{pctMetodo('mercadopago')}% del total</p>
                 </div>
               </div>
+
+              {/* Resumen financiero — mismo criterio que el Centro de Control */}
+              {resumenFin && (
+                <div className="bg-white rounded-xl p-4 sm:p-5 shadow">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                    <h3 className="font-semibold text-gray-700">💰 Resumen financiero del período</h3>
+                    <button onClick={() => { window.location.href = '/admin/centro-control'; }}
+                      className="text-xs font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-50 px-3 py-1 rounded-lg transition-colors">
+                      Ver Centro de Control →
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-xl p-3 bg-emerald-50 border border-emerald-100">
+                      <p className="text-[11px] text-emerald-700 font-semibold">Ganancia neta real</p>
+                      <p className="text-xl font-bold text-emerald-700 tabular-nums">{fmt(resumenFin.ganancia_neta)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">venta − costo − IVA − gastos de caja</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">💵 Ganancia efectivo</p>
+                      <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.efectivo?.ganancia)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">🧾 Ganancia virtual</p>
+                      <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.virtual?.ganancia)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">IVA facturado (21%)</p>
+                      <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.iva_virtual)}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">Costo de lo vendido</p>
+                      <p className="text-base font-bold text-red-500 tabular-nums">{fmt((Number(resumenFin.efectivo?.costo) || 0) + (Number(resumenFin.virtual?.costo) || 0))}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">💸 Gastos de caja (turno)</p>
+                      <p className="text-base font-bold text-red-500 tabular-nums">{fmt(resumenFin.gastos_variables)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-500 font-semibold">🏦 Pagado con dinero/MP del local</p>
+                      <p className="text-base font-bold text-gray-700 tabular-nums">{fmt(resumenFin.gastos_capital)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">no afecta la ganancia</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-amber-50 border border-amber-100">
+                      <p className="text-[11px] text-amber-700 font-semibold">🚬 Cigarrillos (ganancia)</p>
+                      <p className="text-base font-bold text-amber-700 tabular-nums">{fmt(resumenFin.cigarrillos?.ganancia)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">aparte · costo a reponer {fmt(resumenFin.cigarrillos?.costo)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Ventas por día */}
               {Object.keys(historial.porDia).length > 0 && (
@@ -673,7 +731,7 @@ const calcularFechas = () => {
                               <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Efectivo</th>
                               <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Tarjeta</th>
                               <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">MP</th>
-                              <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Gastos</th>
+                              <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm" title="Gastos pagados con la caja del turno (los que restan de la ganancia). Entre paréntesis, el total de gastos del turno.">Gastos caja</th>
                               <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Estado</th>
                             </tr>
                           </thead>
@@ -689,7 +747,12 @@ const calcularFechas = () => {
                                 <td className="px-4 py-3 text-right text-gray-600 text-sm">{fmt(t.efectivo)}</td>
                                 <td className="px-4 py-3 text-right text-gray-600 text-sm">{fmt(t.tarjeta)}</td>
                                 <td className="px-4 py-3 text-right text-gray-600 text-sm">{fmt(t.mercadopago)}</td>
-                                <td className="px-4 py-3 text-right text-red-600 text-sm">{fmt(t.total_gastos)}</td>
+                                <td className="px-4 py-3 text-right text-red-600 text-sm">
+                                  {fmt(t.gastos_caja)}
+                                  {Number(t.total_gastos) > Number(t.gastos_caja || 0) && (
+                                    <span className="block text-[10px] text-gray-400">total {fmt(t.total_gastos)}</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-3 text-center">
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                     t.estado === 'abierto'
@@ -710,6 +773,10 @@ const calcularFechas = () => {
                   {/* ---- REPORTE: RENTABILIDAD ---- */}
                   {reporteActivo === 'rentabilidad' && (
                     <div className="space-y-4">
+
+                      <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-2.5 text-xs">
+                        Esto es <b>margen bruto por producto</b> (venta − costo, con el costo al momento de la venta). No descuenta IVA ni gastos. La <b>ganancia neta real</b> del negocio está en el Centro de Control y en el resumen del Historial.
+                      </div>
 
                       {/* Por categoría */}
                       <div className="bg-white rounded-xl shadow overflow-hidden">
