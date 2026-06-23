@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.13.0';
+export const VERSION_ACTUAL = '2.13.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.13.1',
+    fecha: '2026-06-23',
+    titulo: 'Ganancia neta real: solo resta los gastos de la caja del turno',
+    cambios: [
+      { t: 'La ganancia neta real del Centro de Control ahora solo descuenta los gastos pagados con la CAJA DEL TURNO (plata del día). Lo pagado con "dinero del local" o "MP del local" (capital acumulado de días anteriores, que usás para reposición y compras) ya NO se descuenta de la ganancia: esa plata no salió de las ventas del día y baja del dinero disponible, no de la ganancia.' },
+      { t: 'Se agregó una tarjeta informativa "Pagado con dinero/MP del local" que muestra cuánto se gastó del capital acumulado (no afecta la ganancia).' },
+    ],
+  },
   {
     version: '2.13.0',
     fecha: '2026-06-22',

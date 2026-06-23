@@ -664,12 +664,32 @@ router.get('/centro-control', async (req, res) => {
             ganancia: cigGananciaEfectivo + cigGananciaVirtual,
         };
 
-        // Gastos variables del período (libro de gastos)
+        // Gastos que restan de la GANANCIA del día: solo los pagados con la CAJA DEL
+        // TURNO (plata de hoy) y que son gastos reales. NO entran los pagados con
+        // "dinero del local" / "MP del local" (capital acumulado de días anteriores)
+        // ni las compras/pagos a proveedor (reposición: su costo ya está en el costo
+        // de lo vendido).
         const gv = await db.query(
-            'SELECT COALESCE(SUM(monto), 0) AS total FROM gastos WHERE negocio_id = $1 AND fecha::date >= $2::date AND fecha::date <= $3::date',
+            `SELECT COALESCE(SUM(monto), 0) AS total
+             FROM gastos
+             WHERE negocio_id = $1 AND fecha::date >= $2::date AND fecha::date <= $3::date
+               AND COALESCE(origen_dinero, 'caja') = 'caja'
+               AND COALESCE(tipo, 'variable') NOT IN ('compra', 'pago_proveedor')`,
             [negocio_id, desde, hasta]
         );
         const gastosVariables = parseFloat(gv.rows[0].total) || 0;
+
+        // Informativo: lo pagado con capital acumulado (dinero/MP del local). NO afecta
+        // la ganancia (sale del disponible), pero se muestra aparte.
+        const gc = await db.query(
+            `SELECT COALESCE(SUM(monto), 0) AS total
+             FROM gastos
+             WHERE negocio_id = $1 AND fecha::date >= $2::date AND fecha::date <= $3::date
+               AND COALESCE(origen_dinero, 'caja') IN ('local', 'otro')
+               AND COALESCE(tipo_pago_proveedor, '') <> 'cobro_deuda'`,
+            [negocio_id, desde, hasta]
+        );
+        const gastosCapital = parseFloat(gc.rows[0].total) || 0;
 
         // Gastos fijos prorrateados: (suma mensual / 30) × días del período
         const gf = await db.query(
@@ -703,6 +723,7 @@ router.get('/centro-control', async (req, res) => {
             iva_virtual: ivaVirtual,
             ganancia_bruta: gananciaBruta,
             gastos_variables: gastosVariables,
+            gastos_capital: gastosCapital,
             gastos_operativos: gastosOperativos,
             gasto_operativo_diario: gastoOperativoDiario,
             fijos_mensual: fijosMensual,
