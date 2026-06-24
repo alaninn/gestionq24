@@ -369,8 +369,9 @@ UPDATE gastos SET created_at = fecha WHERE created_at IS NULL;
 ALTER TABLE gastos ALTER COLUMN created_at SET DEFAULT now();
 
 -- Cuentas corrientes: tipo de movimiento en pagos_deuda. 'pago' baja la deuda
--- (lo de siempre); 'deuda' es una deuda cargada a mano (prestamo, articulo fuera
--- de stock, etc.) que sube la deuda del cliente.
+-- (lo de siempre) y 'deuda' es una deuda cargada a mano (prestamo, articulo
+-- fuera de stock, etc.) que sube la deuda del cliente.
+-- OJO no usar punto y coma en estos comentarios (setup-db divide el SQL por el).
 ALTER TABLE pagos_deuda ADD COLUMN IF NOT EXISTS tipo VARCHAR(10) DEFAULT 'pago';
 
 -- Columnas nuevas en configuración para facturación electrónica
