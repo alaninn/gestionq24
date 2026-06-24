@@ -115,6 +115,12 @@ const calcularFechas = () => {
   const cargarReporte = async (tipo) => {
     try {
       setReporteActivo(tipo);
+      // El reporte por categoría necesita una categoría elegida
+      if (tipo === 'por-categoria' && !categoriaSeleccionada) {
+        setDatosReporte(null);
+        setCargandoReporte(false);
+        return;
+      }
       setCargandoReporte(true);
       setDatosReporte(null);
 
@@ -672,6 +678,12 @@ const calcularFechas = () => {
                   </div>
                 )}
               </div>
+
+              {reporteActivo === 'por-categoria' && !categoriaSeleccionada && !cargandoReporte && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-sm">
+                  Elegí una categoría arriba y tocá <b>Filtrar</b> para ver el reporte.
+                </div>
+              )}
 
               {cargandoReporte ? (
                 <div className="text-center py-12 text-gray-400">Generando reporte...</div>

@@ -262,7 +262,12 @@ router.get('/por-categoria', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const { categoria_id } = req.query;
+        // Si no se eligió una categoría válida, devolver vacío (evita el error 22P02
+        // "invalid input syntax for type integer" cuando llega categoria_id = '').
+        const categoria_id = parseInt(req.query.categoria_id, 10);
+        if (!categoria_id || isNaN(categoria_id)) {
+            return res.json({ productos: [], totalVendido: 0, totalCosto: 0, totalUnidades: 0, gananciaTotal: 0 });
+        }
         const { desde, hasta } = rangoSeguro(req);
 
         const resultado = await db.query(`

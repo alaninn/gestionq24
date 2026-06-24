@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.14.2';
+export const VERSION_ACTUAL = '2.14.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.14.3',
+    fecha: '2026-06-23',
+    titulo: 'Fix: reporte por categoría sin elegir categoría',
+    cambios: [
+      { t: 'El reporte "Por Categoría" daba un error en el servidor si se generaba sin elegir una categoría. Ahora pide elegir la categoría y no falla.' },
+    ],
+  },
   {
     version: '2.14.2',
     fecha: '2026-06-23',
