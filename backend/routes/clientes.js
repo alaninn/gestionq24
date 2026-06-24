@@ -82,9 +82,10 @@ router.get('/:id/historial', async (req, res) => {
             LIMIT 5
         `, [cliente_id, negocio_id]);
 
-        // Total pagado de deudas
+        // Total pagado de deudas (solo movimientos de tipo 'pago', no las deudas
+        // cargadas a mano que también viven en pagos_deuda con tipo 'deuda').
         const pagos = await db.query(
-            'SELECT COALESCE(SUM(monto), 0) AS total_pagado, COUNT(*) AS cantidad FROM pagos_deuda WHERE cliente_id = $1',
+            "SELECT COALESCE(SUM(monto), 0) AS total_pagado, COUNT(*) AS cantidad FROM pagos_deuda WHERE cliente_id = $1 AND COALESCE(tipo, 'pago') = 'pago'",
             [cliente_id]
         );
 
@@ -166,6 +167,35 @@ router.post('/:id/pago', async (req, res) => {
         res.json(resultado.rows[0]);
     } catch (error) {
         res.status(500).json({ error: 'Error al registrar pago' });
+    }
+});
+
+// Cargar deuda a mano a un cliente (préstamo, artículo fuera de stock, etc.).
+// Sube saldo_deuda y queda registrado en pagos_deuda con tipo 'deuda'.
+router.post('/:id/deuda', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const monto = Number(req.body.monto);
+        const { nota } = req.body;
+        if (!monto || isNaN(monto) || monto <= 0) return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
+
+        // Verificar que el cliente exista en este negocio
+        const cli = await db.query('SELECT id FROM clientes WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
+        if (cli.rows.length === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+        await db.query(
+            "INSERT INTO pagos_deuda (cliente_id, monto, metodo_pago, nota, negocio_id, tipo) VALUES ($1, $2, '-', $3, $4, 'deuda')",
+            [req.params.id, monto, nota || null, negocio_id]
+        );
+        const resultado = await db.query(
+            'UPDATE clientes SET saldo_deuda = COALESCE(saldo_deuda, 0) + $1 WHERE id = $2 AND negocio_id = $3 RETURNING *',
+            [monto, req.params.id, negocio_id]
+        );
+        res.json(resultado.rows[0]);
+    } catch (error) {
+        console.error('Error al cargar deuda:', error);
+        res.status(500).json({ error: 'Error al cargar la deuda' });
     }
 });
 

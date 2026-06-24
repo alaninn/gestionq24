@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.14.3';
+export const VERSION_ACTUAL = '2.15.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.15.0',
+    fecha: '2026-06-23',
+    titulo: 'Fiados: agregar deuda a mano',
+    cambios: [
+      { t: 'Ahora se puede cargar una deuda a mano a un cliente (préstamo, artículo fuera de stock, fiado sin pasar por el carrito), tanto en el panel de Fiados del POS (botón "➕ Agregar deuda") como en Cuentas Corrientes (botón "➕ Deuda" en la lista y en el detalle). Antes solo se podía cobrar.' },
+      { t: 'En el detalle del cliente, las deudas cargadas a mano se ven aparte de los pagos.' },
+    ],
+  },
   {
     version: '2.14.3',
     fecha: '2026-06-23',

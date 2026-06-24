@@ -1925,6 +1925,7 @@ function ModalPinCierre({ onCerrar, onConfirmar, config }) {
 // MODAL: FIADOS
 // =============================================
 function ModalFiados({ onCerrar }) {
+  const [modo, setModo] = useState('cobrar'); // 'cobrar' | 'deuda'
   const [buscar, setBuscar] = useState('');
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
@@ -1935,14 +1936,20 @@ function ModalFiados({ onCerrar }) {
 
   const fmtLocal = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n || 0);
 
-  useEffect(() => { cargarClientes(); }, [buscar]);
+  useEffect(() => { cargarClientes(); /* eslint-disable-next-line */ }, [buscar, modo]);
 
   const cargarClientes = async () => {
     try {
       setCargando(true);
       const res = await api.get(`/api/clientes${buscar ? `?buscar=${buscar}` : ''}`);
-      setClientes(res.data.filter(c => parseFloat(c.saldo_deuda) > 0));
+      // Cobrar: solo los que tienen deuda. Agregar deuda: cualquier cliente.
+      setClientes(modo === 'deuda' ? res.data : res.data.filter(c => parseFloat(c.saldo_deuda) > 0));
     } catch { } finally { setCargando(false); }
+  };
+
+  const cambiarModo = (m) => {
+    setModo(m); setClienteSeleccionado(null); setError('');
+    setFormPago({ monto: '', metodo_pago: 'efectivo', nota: '' });
   };
 
   const registrarPago = async (e) => {
@@ -1962,18 +1969,46 @@ function ModalFiados({ onCerrar }) {
     } catch (err) { setError(err.response?.data?.error || 'Error al registrar pago'); }
   };
 
+  const registrarDeuda = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!(parseFloat(formPago.monto) > 0)) { setError('El monto debe ser mayor a 0'); return; }
+    try {
+      await api.post(`/api/clientes/${clienteSeleccionado.id}/deuda`, { monto: formPago.monto, nota: formPago.nota });
+      setExito(`✅ Deuda de ${fmtLocal(formPago.monto)} cargada a ${clienteSeleccionado.nombre}`);
+      setClienteSeleccionado(null);
+      setFormPago({ monto: '', metodo_pago: 'efectivo', nota: '' });
+      cargarClientes();
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) { setError(err.response?.data?.error || 'Error al cargar la deuda'); }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b text-white rounded-t-2xl" style={{ backgroundColor: 'var(--color-primario)' }}>
           <div>
             <h3 className="text-lg font-bold">👥 Fiados</h3>
-            <p className="text-white text-opacity-80 text-sm">F3 · Cobrar deudas</p>
+            <p className="text-white text-opacity-80 text-sm">F3 · {modo === 'deuda' ? 'Agregar deuda a un cliente' : 'Cobrar deudas'}</p>
           </div>
           <button onClick={onCerrar} className="text-white text-opacity-80 hover:text-white text-2xl">×</button>
         </div>
         <div className="p-5 space-y-4">
           {exito && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-xl text-sm">{exito}</div>}
+          {!clienteSeleccionado && (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => cambiarModo('cobrar')}
+                style={modo === 'cobrar' ? { backgroundColor: 'var(--color-primario)', borderColor: 'var(--color-primario)' } : {}}
+                className={`py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${modo === 'cobrar' ? 'text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                💵 Cobrar deuda
+              </button>
+              <button type="button" onClick={() => cambiarModo('deuda')}
+                style={modo === 'deuda' ? { backgroundColor: 'var(--color-primario)', borderColor: 'var(--color-primario)' } : {}}
+                className={`py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${modo === 'deuda' ? 'text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                ➕ Agregar deuda
+              </button>
+            </div>
+          )}
           {!clienteSeleccionado ? (
             <>
               <input type="text" value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
@@ -1984,8 +2019,8 @@ function ModalFiados({ onCerrar }) {
                 <p className="text-center text-gray-400 py-4">Cargando...</p>
               ) : clientes.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
-                  <p className="text-4xl mb-2">✅</p>
-                  <p className="font-medium">No hay deudas pendientes</p>
+                  <p className="text-4xl mb-2">{modo === 'deuda' ? '🔍' : '✅'}</p>
+                  <p className="font-medium">{modo === 'deuda' ? 'No se encontraron clientes' : 'No hay deudas pendientes'}</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -2005,8 +2040,14 @@ function ModalFiados({ onCerrar }) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-gray-400">DEBE</p>
-                          <p className="font-bold text-red-500">{fmtLocal(c.saldo_deuda)}</p>
+                          {parseFloat(c.saldo_deuda) > 0 ? (
+                            <>
+                              <p className="text-xs text-gray-400">DEBE</p>
+                              <p className="font-bold text-red-500">{fmtLocal(c.saldo_deuda)}</p>
+                            </>
+                          ) : (
+                            <p className="text-xs font-medium text-green-500">Sin deuda</p>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -2015,7 +2056,7 @@ function ModalFiados({ onCerrar }) {
               )}
             </>
           ) : (
-            <form onSubmit={registrarPago} className="space-y-4">
+            <form onSubmit={modo === 'deuda' ? registrarDeuda : registrarPago} className="space-y-4">
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
@@ -2032,44 +2073,48 @@ function ModalFiados({ onCerrar }) {
               </div>
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl text-sm">❌ {error}</div>}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Monto a pagar *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{modo === 'deuda' ? 'Monto de la deuda *' : 'Monto a pagar *'}</label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-gray-500">$</span>
                   <input type="number" value={formPago.monto} onChange={(e) => setFormPago(p => ({ ...p, monto: e.target.value }))}
                     required autoFocus min="0"
                     className="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-lg focus:outline-none focus:ring-2 focus:ring-orange-400" placeholder="0" />
                 </div>
-                <div className="flex gap-2 mt-2">
-                  <button type="button" onClick={() => setFormPago(p => ({ ...p, monto: (parseFloat(clienteSeleccionado.saldo_deuda) / 2).toFixed(0) }))}
-                    className="flex-1 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors">50% de la deuda</button>
-                  <button type="button" onClick={() => setFormPago(p => ({ ...p, monto: clienteSeleccionado.saldo_deuda }))}
-                    className="flex-1 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition-colors">Pago Total</button>
-                </div>
+                {modo === 'cobrar' && parseFloat(clienteSeleccionado.saldo_deuda) > 0 && (
+                  <div className="flex gap-2 mt-2">
+                    <button type="button" onClick={() => setFormPago(p => ({ ...p, monto: (parseFloat(clienteSeleccionado.saldo_deuda) / 2).toFixed(0) }))}
+                      className="flex-1 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors">50% de la deuda</button>
+                    <button type="button" onClick={() => setFormPago(p => ({ ...p, monto: clienteSeleccionado.saldo_deuda }))}
+                      className="flex-1 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition-colors">Pago Total</button>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[{ id: 'efectivo', label: '💵 Efectivo' }, { id: 'transferencia', label: '🏦 Transferencia' }, { id: 'mercadopago', label: '📱 Mercado Pago' }, { id: 'tarjeta', label: '💳 Tarjeta' }].map(m => (
-                    <button key={m.id} type="button" onClick={() => setFormPago(p => ({ ...p, metodo_pago: m.id }))}
-                      style={formPago.metodo_pago === m.id ? { backgroundColor: 'var(--color-primario)', borderColor: 'var(--color-primario)' } : {}}
-                      className={`py-2 rounded-xl text-sm font-medium border-2 transition-colors ${formPago.metodo_pago === m.id ? 'text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-                      {m.label}
-                    </button>
-                  ))}
+              {modo === 'cobrar' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[{ id: 'efectivo', label: '💵 Efectivo' }, { id: 'transferencia', label: '🏦 Transferencia' }, { id: 'mercadopago', label: '📱 Mercado Pago' }, { id: 'tarjeta', label: '💳 Tarjeta' }].map(m => (
+                      <button key={m.id} type="button" onClick={() => setFormPago(p => ({ ...p, metodo_pago: m.id }))}
+                        style={formPago.metodo_pago === m.id ? { backgroundColor: 'var(--color-primario)', borderColor: 'var(--color-primario)' } : {}}
+                        className={`py-2 rounded-xl text-sm font-medium border-2 transition-colors ${formPago.metodo_pago === m.id ? 'text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nota (opcional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{modo === 'deuda' ? 'Concepto / nota' : 'Nota (opcional)'}</label>
                 <input type="text" value={formPago.nota} onChange={(e) => setFormPago(p => ({ ...p, nota: e.target.value }))}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="Ej: Pago parcial..." />
+                  placeholder={modo === 'deuda' ? 'Ej: préstamo, artículo fuera de stock...' : 'Ej: Pago parcial...'} />
               </div>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setClienteSeleccionado(null)}
                   className="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
                 <button type="submit"
                   style={{ backgroundColor: 'var(--color-primario)' }}
-                  className="flex-1 py-2.5 text-white rounded-xl font-bold transition-colors">✅ Confirmar Pago</button>
+                  className="flex-1 py-2.5 text-white rounded-xl font-bold transition-colors">{modo === 'deuda' ? '➕ Agregar deuda' : '✅ Confirmar Pago'}</button>
               </div>
             </form>
           )}

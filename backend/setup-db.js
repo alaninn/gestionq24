@@ -368,6 +368,11 @@ ALTER TABLE gastos ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
 UPDATE gastos SET created_at = fecha WHERE created_at IS NULL;
 ALTER TABLE gastos ALTER COLUMN created_at SET DEFAULT now();
 
+-- Cuentas corrientes: tipo de movimiento en pagos_deuda. 'pago' baja la deuda
+-- (lo de siempre); 'deuda' es una deuda cargada a mano (prestamo, articulo fuera
+-- de stock, etc.) que sube la deuda del cliente.
+ALTER TABLE pagos_deuda ADD COLUMN IF NOT EXISTS tipo VARCHAR(10) DEFAULT 'pago';
+
 -- Columnas nuevas en configuración para facturación electrónica
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS facturacion_electronica_activa BOOLEAN DEFAULT false;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DEFAULT 'responsable_inscripto';
