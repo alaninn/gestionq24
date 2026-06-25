@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.19.0';
+export const VERSION_ACTUAL = '2.19.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.19.1',
+    fecha: '2026-06-25',
+    titulo: 'Facturación: reintento ante error 10016 de AFIP',
+    cambios: [
+      { t: 'Si AFIP rechaza un comprobante con el error 10016 (el número/fecha no coincide con el próximo a autorizar, algo que pasa cuando se emiten dos facturas casi al mismo tiempo), ahora el sistema vuelve a consultar el último número autorizado y reintenta automáticamente, en vez de trabarse.' },
+    ],
+  },
   {
     version: '2.19.0',
     fecha: '2026-06-25',
