@@ -310,14 +310,6 @@ async function emitirComprobante(datos) {
         const cuitEmisor = configResult.rows[0]?.cuit?.replace(/[-\s]/g, '') || certificado.cuit?.replace(/[-\s]/g, '');
         const entorno = configResult.rows[0]?.entorno_arca || 'homologacion';
 
-        // Reintento ante el error 10016 de AFIP (el número o la fecha no se corresponden
-        // con el próximo a autorizar; típico cuando hay dos emisiones casi simultáneas y
-        // el número que pedimos quedó tomado entre la consulta y el envío). En cada intento
-        // volvemos a consultar FECompUltimoAutorizado y reintentamos con el número fresco.
-        let cae, caeVencimiento;
-        const MAX_INTENTOS_AFIP = 3;
-        for (let intentoAfip = 1; intentoAfip <= MAX_INTENTOS_AFIP; intentoAfip++) {
-
         // 5. Obtener último número de comprobante directamente desde AFIP
         const wsfeUrl2 = entorno === 'produccion'
     ? 'https://servicios1.afip.gov.ar/wsfev1/service.asmx'
@@ -492,8 +484,8 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
             throw new Error(`Error WSFEv1: ${detalle}`);
         }
 
-        cae = feDetResp.CAE;
-        caeVencimiento = feDetResp.CAEFchVto;
+        const cae = feDetResp.CAE;
+        const caeVencimiento = feDetResp.CAEFchVto;
         const resultadoOperacion = feDetResp.Resultado;
 
         // Verificar si el CAE fue aprobado. Si no, capturar TODO el detalle de AFIP
@@ -506,21 +498,9 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
                 erroresResult && `Errores: ${erroresResult}`,
                 eventosResult && `Eventos: ${eventosResult}`,
             ].filter(Boolean).join(' · ');
-            // Si es el 10016 (número/fecha desincronizada), reintentamos: en la próxima
-            // vuelta se vuelve a consultar el último autorizado y se pide un número fresco.
-            const es10016 = /\b10016\b/.test(erroresResult) || /\b10016\b/.test(obs);
-            if (es10016 && intentoAfip < MAX_INTENTOS_AFIP) {
-                console.warn(`⚠️ AFIP 10016 (número/fecha desincronizada). Reintento ${intentoAfip + 1}/${MAX_INTENTOS_AFIP}...`);
-                await new Promise(r => setTimeout(r, 400));
-                continue;
-            }
             throw new Error(`CAE no aprobado — ${detalle}`);
         }
-
-        // CAE aprobado: salimos del loop de reintentos y guardamos.
-        break;
-        } // fin for reintentos AFIP
-
+        
         // 12. Guardar comprobante en BD con CAE real
         const caeVencimientoDate = new Date(
             caeVencimiento.substring(0, 4),

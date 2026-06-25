@@ -14,15 +14,24 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.19.1';
+export const VERSION_ACTUAL = '2.19.2';
 
 export const CHANGELOG = [
   {
+    version: '2.19.2',
+    fecha: '2026-06-25',
+    titulo: 'URGENTE: arreglo de facturación',
+    cambios: [
+      { t: 'Se revirtió un cambio de la versión anterior que, al guardar, hacía que algunas facturas aprobadas por AFIP se guardaran como "error" y se perdiera el CAE. La facturación vuelve a funcionar normalmente.' },
+      { t: 'Se recuperaron los CAE de las facturas que ARCA había aprobado pero habían quedado guardadas como error.' },
+    ],
+  },
+  {
     version: '2.19.1',
     fecha: '2026-06-25',
-    titulo: 'Facturación: reintento ante error 10016 de AFIP',
+    titulo: 'Facturación: reintento ante error 10016 de AFIP (revertido en 2.19.2)',
     cambios: [
-      { t: 'Si AFIP rechaza un comprobante con el error 10016 (el número/fecha no coincide con el próximo a autorizar, algo que pasa cuando se emiten dos facturas casi al mismo tiempo), ahora el sistema vuelve a consultar el último número autorizado y reintenta automáticamente, en vez de trabarse.' },
+      { t: 'Reintento ante error 10016 de AFIP. NOTA: esta versión tenía un bug que rompía el guardado del CAE; se revirtió en la 2.19.2.' },
     ],
   },
   {
