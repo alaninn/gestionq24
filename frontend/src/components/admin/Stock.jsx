@@ -141,6 +141,9 @@ function Stock() {
   const [abiertas, setAbiertas] = useState({});
   const [visibles, setVisibles] = useState({});
 
+  // Modal Agregar stock (recepción de mercadería: suma existencias al stock actual)
+  const [mostrarAgregarStock, setMostrarAgregarStock] = useState(false);
+
   // Modal Ajustar (flujo principal del inventario: tocar Ajustar y escribir la cantidad)
   const [mostrarAjustar, setMostrarAjustar] = useState(false);
   const [productoAjustar, setProductoAjustar] = useState(null);
@@ -555,6 +558,13 @@ function Stock() {
           <p className="text-xs sm:text-sm text-gray-500">Organizá las secciones igual que tus estanterías y contá más rápido</p>
         </div>
         <div className="flex gap-2">
+          {!organizar && (
+            <button onClick={() => setMostrarAgregarStock(true)}
+              title="Sumar existencias al stock (recepción de mercadería / compra)"
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+              📥 Agregar stock
+            </button>
+          )}
           {organizar && (
             <button onClick={crearSeccion}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
@@ -853,6 +863,131 @@ function Stock() {
           </div>
         </div>
       )}
+
+      {mostrarAgregarStock && (
+        <ModalAgregarStock
+          productos={productos}
+          categorias={categorias}
+          onClose={() => setMostrarAgregarStock(false)}
+          onGuardado={(cant) => { setMostrarAgregarStock(false); avisoOk(`✅ Stock sumado a ${cant} producto(s)`); cargarTodo(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: AGREGAR STOCK (recepción de mercadería)
+// Busca por nombre o categoría y suma una cantidad al stock actual de cada
+// producto (no lo reemplaza). Permite cargar varios a la vez.
+// =============================================
+function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
+  const [buscar, setBuscar] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [cantidades, setCantidades] = useState({}); // { [id]: '5' }
+  const [guardando, setGuardando] = useState(false);
+
+  const lista = productos.filter(p => {
+    if (categoriaFiltro && String(p.categoria_id) !== String(categoriaFiltro)) return false;
+    if (buscar.trim()) {
+      const t = buscar.trim().toLowerCase();
+      const txt = `${p.nombre || ''} ${p.codigo || ''}`.toLowerCase();
+      if (!txt.includes(t)) return false;
+    }
+    return true;
+  });
+
+  const setCant = (id, v) => setCantidades(prev => ({ ...prev, [id]: v }));
+
+  const items = Object.entries(cantidades)
+    .map(([id, v]) => ({ id: Number(id), cantidad: parseInt(v, 10) }))
+    .filter(it => it.cantidad && !isNaN(it.cantidad) && it.cantidad !== 0);
+
+  const guardar = async () => {
+    if (items.length === 0) return;
+    setGuardando(true);
+    try {
+      await api.post('/api/productos/stock-sumar', { items });
+      onGuardado(items.length);
+    } catch (e) {
+      alert(e.response?.data?.error || 'Error al sumar el stock');
+    } finally { setGuardando(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b bg-green-600 text-white flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold">📥 Agregar stock</h3>
+            <p className="text-green-100 text-xs">Suma existencias al stock actual (recepción / compra). No reemplaza el número.</p>
+          </div>
+          <button onClick={onClose} className="text-green-100 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        {/* Filtros */}
+        <div className="p-3 sm:p-4 border-b flex gap-2 flex-shrink-0">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+            <input value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
+              className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Buscar por nombre o código..." />
+          </div>
+          <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}
+            className={`border rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 max-w-[160px] ${categoriaFiltro ? 'border-green-500 bg-green-50 font-medium' : 'border-gray-300 bg-white'}`}>
+            <option value="">🏷️ Categorías</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+
+        {/* Lista de productos para sumar */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+          {lista.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-10">
+              {buscar || categoriaFiltro ? 'No se encontraron productos.' : 'Buscá un producto o elegí una categoría para empezar.'}
+            </p>
+          ) : (
+            lista.slice(0, 300).map(p => {
+              const actual = Number(p.stock) || 0;
+              const delta = parseInt(cantidades[p.id], 10);
+              const nuevo = actual + (isNaN(delta) ? 0 : delta);
+              const tieneCant = !isNaN(delta) && delta !== 0;
+              return (
+                <div key={p.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${tieneCant ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {p.categoria_nombre || 'Sin categoría'} · stock actual:{' '}
+                      <span className={actual < 0 ? 'text-red-600 font-semibold' : 'text-gray-600 font-semibold'}>{actual}{p.unidad ? ` ${p.unidad}` : ''}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-gray-400 text-sm">+</span>
+                    <input type="number" value={cantidades[p.id] ?? ''} onChange={(e) => setCant(p.id, e.target.value)}
+                      className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="0" />
+                    {tieneCant && (
+                      <span className="text-sm font-bold text-green-700 tabular-nums whitespace-nowrap">= {nuevo}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 sm:p-4 border-t flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
+          <span className="text-sm text-gray-500">{items.length} producto(s) con cantidad</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 text-sm hover:bg-gray-100">Cancelar</button>
+            <button onClick={guardar} disabled={guardando || items.length === 0}
+              className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+              {guardando ? 'Guardando…' : '📥 Sumar al stock'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

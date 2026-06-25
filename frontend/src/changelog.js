@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.16.0';
+export const VERSION_ACTUAL = '2.17.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.17.0',
+    fecha: '2026-06-25',
+    titulo: 'Stock: botón "Agregar stock" (recepción de mercadería)',
+    cambios: [
+      { t: 'Nuevo botón "📥 Agregar stock" en la pestaña Stock: buscás un producto (por nombre o por categoría) y le sumás una cantidad, que se SUMA al stock actual (no lo reemplaza). Sirve para cargar compras/reposición sin tener que borrar el número.' },
+      { t: 'Maneja bien los negativos: si el stock quedó en -1 (se vendió más de lo que figuraba) y agregás 10, el stock final queda en 9.' },
+      { t: 'El modal permite filtrar por categoría y cargar la cantidad de varios productos a la vez, viendo el resultado (= stock nuevo) antes de guardar.' },
+    ],
+  },
   {
     version: '2.16.0',
     fecha: '2026-06-25',

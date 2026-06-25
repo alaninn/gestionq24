@@ -626,6 +626,48 @@ router.put('/stock-reordenar', verificarPermiso('productos', 'editar'), async (r
     }
 });
 
+// =============================================
+// RUTA: POST /api/productos/stock-sumar
+// SUMA existencias al stock actual (recepción de mercadería / compra). A diferencia
+// de PUT /:id/stock (que reemplaza), acá se SUMA un delta, por eso maneja bien los
+// negativos: si el stock estaba en -1 y se suman 10, queda 9. Acepta uno o varios.
+// body: { items: [{ id, cantidad }] }
+// =============================================
+router.post('/stock-sumar', verificarPermiso('productos', 'editar'), async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const items = Array.isArray(req.body.items) ? req.body.items : [];
+        if (items.length === 0) return res.status(400).json({ error: 'No hay productos para actualizar' });
+
+        const actualizados = [];
+        for (const it of items) {
+            const id = parseInt(it.id, 10);
+            const delta = parseInt(it.cantidad, 10);
+            if (!id || isNaN(delta) || delta === 0) continue;
+
+            const p = await db.query('SELECT stock FROM productos WHERE id = $1 AND negocio_id = $2', [id, negocio_id]);
+            if (p.rows.length === 0) continue;
+
+            const anterior = parseInt(p.rows[0].stock || 0, 10);
+            const nuevo = anterior + delta; // puede quedar negativo si aún falta mercadería
+
+            await db.query('UPDATE productos SET stock = $1 WHERE id = $2 AND negocio_id = $3', [nuevo, id, negocio_id]);
+            await db.query(
+                'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1, $2, $3, $4)',
+                [negocio_id, id, anterior, nuevo]
+            );
+            actualizados.push({ id, stock_anterior: anterior, stock: nuevo });
+        }
+
+        if (actualizados.length === 0) return res.status(400).json({ error: 'No se actualizó ningún producto' });
+        res.json({ actualizados });
+    } catch (error) {
+        console.error('Error al sumar stock:', error);
+        res.status(500).json({ error: 'Error al sumar el stock' });
+    }
+});
+
 router.put('/:id', verificarPermiso('productos', 'editar'), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
