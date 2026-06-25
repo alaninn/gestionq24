@@ -303,11 +303,22 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        const { monto, metodo_pago, tipo_pago, descripcion, recibo_url, fecha } = req.body;
+        const { monto, metodo_pago, tipo_pago, descripcion, recibo_url, fecha, tipo_comprobante } = req.body;
 
         if (!monto || monto <= 0) {
             return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
         }
+
+        // De dónde sale la plata (igual que en Gastos): caja del turno / dinero del
+        // local / MP del local. Por defecto 'local'.
+        const origenDinero = ['caja', 'local', 'otro'].includes(req.body.origen_dinero)
+            ? req.body.origen_dinero : 'local';
+        // Dato fiscal: '' = Gasto X (sin comprobante); 'factura_a' = en blanco con
+        // Factura A → suma IVA crédito al Resumen Fiscal (IVA incluido en el monto).
+        const esFacturaA = tipo_comprobante === 'factura_a';
+        const ivaPct = esFacturaA ? 21 : 0;
+        const montoIva = esFacturaA ? Number((Number(monto) * 21 / 121).toFixed(2)) : 0;
+        const tipoDoc = esFacturaA ? 'factura' : 'sin_boleta';
 
         // Fecha del pago: si se eligió un día distinto a HOY, se respeta (a las
         // 12:00 para evitar saltos por zona horaria). Si es hoy o no vino, se usa
@@ -334,8 +345,8 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
         // (pago_deuda / cobro_deuda) para poder revertir saldos si se elimina.
         const gasto = await db.query(`
             INSERT INTO gastos
-            (monto, metodo_pago, tipo, descripcion, fecha, proveedor_id, negocio_id, recibo_url, tipo_pago_proveedor, usuario_id, origen_dinero)
-            VALUES ($1, $2, $3, $4, COALESCE($10, CURRENT_TIMESTAMP), $5, $6, $7, $8, $9, 'local')
+            (monto, metodo_pago, tipo, descripcion, fecha, proveedor_id, negocio_id, recibo_url, tipo_pago_proveedor, usuario_id, origen_dinero, tipo_comprobante, tipo_documento, iva_incluido, porcentaje_iva, monto_iva)
+            VALUES ($1, $2, $3, $4, COALESCE($10, CURRENT_TIMESTAMP), $5, $6, $7, $8, $9, $11, $12, $13, $14, $15, $16)
             RETURNING *
         `, [
             monto,
@@ -347,7 +358,13 @@ router.post('/:id/pago', verificarPermiso('proveedores', 'editar'), async (req, 
             recibo_url || null,
             tipo_pago || 'pago_deuda',
             req.usuario?.id || null,
-            fechaPago
+            fechaPago,
+            origenDinero,
+            esFacturaA ? 'factura_a' : null,
+            tipoDoc,
+            esFacturaA,
+            ivaPct,
+            montoIva
         ]);
 
         // Actualizar saldos del proveedor

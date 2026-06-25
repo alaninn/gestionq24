@@ -44,6 +44,8 @@ function Proveedores() {
     tipo_pago: 'pago_deuda',
     descripcion: '',
     recibo_url: '',
+    origen_dinero: 'local',   // caja del turno / dinero del local / MP del local
+    tipo_comprobante: '',     // '' = Gasto X · 'factura_a' = Factura A (IVA crédito)
   });
 
   const estadisticasMes = proveedorSeleccionado?.estadisticas_por_mes ?? [];
@@ -273,6 +275,9 @@ function Proveedores() {
         recibo_url: formPago.recibo_url || null,
         // Fecha elegida (puede ser otro día); el backend usa hoy si coincide.
         fecha: formPago.fecha || null,
+        // De dónde sale la plata y dato fiscal (como en Gastos)
+        origen_dinero: formPago.origen_dinero || 'local',
+        tipo_comprobante: formPago.tipo_comprobante || '',
       });
 
       setExito('Pago registrado');
@@ -1137,6 +1142,55 @@ function Proveedores() {
                       ))}
                     </div>
                   </div>
+
+                  {!esCobro && (
+                    <>
+                      {/* ¿De dónde sale la plata? (igual que en Gastos) */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">¿De dónde sale el dinero?</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'caja', label: '🧰 Caja del turno', desc: 'Plata del turno' },
+                            { id: 'local', label: '🏪 Dinero del local', desc: 'Baja el disponible' },
+                            { id: 'otro', label: '📱 MP del local', desc: 'Baja el disponible' },
+                          ].map(o => (
+                            <button key={o.id} type="button"
+                              onClick={() => setFormPago(p => ({ ...p, origen_dinero: o.id }))}
+                              className={`p-2 rounded-lg border-2 text-left transition-all ${
+                                (formPago.origen_dinero || 'local') === o.id ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'
+                              }`}>
+                              <p className="text-xs font-semibold text-gray-800 leading-tight">{o.label}</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{o.desc}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Dato fiscal: Gasto X o Factura A (suma IVA crédito) */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de boleta</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button"
+                            onClick={() => setFormPago(p => ({ ...p, tipo_comprobante: '' }))}
+                            className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${(formPago.tipo_comprobante || '') !== 'factura_a' ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                            <p className="text-sm font-bold text-gray-800">Gasto X</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
+                          </button>
+                          <button type="button"
+                            onClick={() => setFormPago(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
+                            className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${formPago.tipo_comprobante === 'factura_a' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                            <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">En blanco · suma IVA crédito</p>
+                          </button>
+                        </div>
+                        {formPago.tipo_comprobante === 'factura_a' && montoNum > 0 && (
+                          <p className="text-xs text-blue-700 mt-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                            El monto se toma con IVA incluido. IVA contenido: <b>${Math.round(montoNum * 21 / 121).toLocaleString('es-AR')}</b> — va al Resumen Fiscal como crédito.
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Fecha del pago</label>

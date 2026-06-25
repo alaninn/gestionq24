@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.15.0';
+export const VERSION_ACTUAL = '2.16.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.16.0',
+    fecha: '2026-06-25',
+    titulo: 'Pago a proveedor: origen y boleta + fix modal cierre de caja',
+    cambios: [
+      { t: 'Al registrar un pago a un proveedor ahora se puede elegir de dónde sale la plata (caja del turno / dinero del local / MP del local) y el tipo de boleta (Gasto X o Factura A con IVA crédito), igual que en Gastos.' },
+      { t: 'Se corrigió el modal de resultado del cierre de caja del POS, que se veía desfasado y con el contenido superpuesto.' },
+    ],
+  },
   {
     version: '2.15.0',
     fecha: '2026-06-23',

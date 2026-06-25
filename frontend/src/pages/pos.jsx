@@ -1454,9 +1454,9 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
     const ok = Math.abs(resultadoCierre.diferencia) < 1;
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-          <div className="flex flex-col h-full">
-            <div className={`p-6 text-white text-center ${ok ? 'bg-green-600' : 'bg-red-500'} rounded-t-3xl`}>
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className={`p-6 text-white text-center flex-shrink-0 ${ok ? 'bg-green-600' : 'bg-red-500'} rounded-t-3xl`}>
               <p className="text-5xl mb-3">{ok ? '✅' : '⚠️'}</p>
               <h3 className="text-2xl font-bold">{ok ? '¡Cierre perfecto!' : 'Hay diferencias'}</h3>
               <p className="text-white/80 mt-1 text-base">
@@ -1510,8 +1510,8 @@ function ModalCierreCaja({ turno, onCerrar, onCerrado }) {
               )}
             </div>
 
-            <div className="p-6 pt-0 bg-white border-t border-gray-200 sticky bottom-0">
-              <div className="flex flex-col gap-3 md:flex-row">
+            <div className="p-4 sm:p-6 bg-white border-t border-gray-200 flex-shrink-0">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
                 <button
                   onClick={imprimirCierre}
                   className="w-full md:w-auto py-3 px-4 border border-gray-300 rounded-2xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
