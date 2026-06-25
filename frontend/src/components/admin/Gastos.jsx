@@ -570,6 +570,9 @@ function Gastos() {
 
   // Edición de un gasto existente: abre el modal completo precargado.
   const [gastoEditando, setGastoEditando] = useState(null);
+  // Edición DIRECTA del gasto (monto, método, origen, fecha, dato fiscal) sin el
+  // flujo de proveedor/factura.
+  const [gastoEdicionDirecta, setGastoEdicionDirecta] = useState(null);
 
   const [compra, setCompra] = useState({
     proveedor_id: '',
@@ -998,6 +1001,15 @@ function Gastos() {
 
   // Listado visible: aplica el filtro por origen si está activo
   const gastosVisibles = filtroOrigen === 'todos' ? gastos : gastos.filter(g => origenDe(g) === filtroOrigen);
+
+  // Monto a mostrar en la lista. Un "registro de factura (sin pago)" tiene monto 0
+  // pero sí tiene un total de factura: mostramos ese total y avisamos que no se pagó.
+  const infoMonto = (g) => {
+    const sinPago = Number(g.monto) === 0 && Number(g.total_factura) > 0;
+    return { sinPago, valor: sinPago ? Number(g.total_factura) : Number(g.monto) };
+  };
+  // Solo se puede "ajustar" (flujo de proveedor/factura) en gastos de proveedor o compra
+  const esProveedorOCompra = (g) => g.tipo === 'pago_proveedor' || g.es_compra || g.tipo === 'compra';
 
   const totalVentasLibro = libroVentas.reduce((acc, v) => acc + parseFloat(v.total || 0), 0);
   const totalIvaVentasLibro = libroVentas.reduce((acc, v) => {
@@ -1638,7 +1650,12 @@ function Gastos() {
                       {' · '}{gasto.usuario_nombre || 'Admin'}
                     </p>
                   </div>
-                  <p className="font-bold text-red-600 tabular-nums flex-shrink-0">{formatearPeso(gasto.monto)}</p>
+                  {(() => { const { sinPago, valor } = infoMonto(gasto); return (
+                    <div className="text-right flex-shrink-0 leading-tight">
+                      <p className={`font-bold tabular-nums ${sinPago ? 'text-red-600' : 'text-blue-600'}`}>{formatearPeso(valor)}</p>
+                      {sinPago && <p className="text-[9px] font-bold text-red-500 -mt-0.5">NO SE PAGÓ</p>}
+                    </div>
+                  ); })()}
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
                   <div className="flex gap-1.5 flex-wrap">
@@ -1647,7 +1664,10 @@ function Gastos() {
                     {esEnBlanco(gasto) && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">🧾 Factura A</span>}
                   </div>
                   <div className="flex gap-1.5">
-                    <button onClick={() => abrirEditarGasto(gasto)} className="text-xs bg-blue-100 active:bg-blue-200 text-blue-700 px-2 py-1 rounded">✏️</button>
+                    <button onClick={() => setGastoEdicionDirecta(gasto)} title="Editar gasto" className="text-xs bg-blue-100 active:bg-blue-200 text-blue-700 px-2 py-1 rounded">✏️</button>
+                    {esProveedorOCompra(gasto) && (
+                      <button onClick={() => abrirEditarGasto(gasto)} title="Ajustar (pago/factura)" className="text-xs bg-amber-100 active:bg-amber-200 text-amber-700 px-2 py-1 rounded">⚙️</button>
+                    )}
                     <button onClick={() => eliminarGasto(gasto.id)} className="text-xs bg-red-100 active:bg-red-200 text-red-700 px-2 py-1 rounded">🗑️</button>
                   </div>
                 </div>
@@ -1727,16 +1747,30 @@ function Gastos() {
                   <td className="px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
                     {gasto.usuario_nombre || 'Admin'}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-red-600 tabular-nums whitespace-nowrap">
-                    {formatearPeso(gasto.monto)}
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                    {(() => { const { sinPago, valor } = infoMonto(gasto); return (
+                      <div className="leading-tight">
+                        <span className={`font-bold ${sinPago ? 'text-red-600' : 'text-blue-600'}`}>{formatearPeso(valor)}</span>
+                        {sinPago && <div className="text-[10px] font-bold text-red-500">NO SE PAGÓ</div>}
+                      </div>
+                    ); })()}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex justify-center gap-1.5">
                       <button
-                        onClick={() => abrirEditarGasto(gasto)}
+                        onClick={() => setGastoEdicionDirecta(gasto)}
+                        title="Editar los datos del gasto"
                         className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors">
                         Editar
                       </button>
+                      {esProveedorOCompra(gasto) && (
+                        <button
+                          onClick={() => abrirEditarGasto(gasto)}
+                          title="Ajustar pago / registrar factura"
+                          className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1 rounded text-sm transition-colors">
+                          Ajustar
+                        </button>
+                      )}
                       <button
                         onClick={() => eliminarGasto(gasto.id)}
                         className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm transition-colors">
@@ -1779,6 +1813,165 @@ function Gastos() {
           }}
         />
       )}
+
+      {/* Edición DIRECTA del gasto: cambia los datos del gasto en sí (monto, método,
+          origen, fecha, dato fiscal) sin el flujo de proveedor/factura. */}
+      {gastoEdicionDirecta && (
+        <ModalEditarGastoDirecto
+          gasto={gastoEdicionDirecta}
+          onCerrar={() => setGastoEdicionDirecta(null)}
+          onGuardado={() => {
+            setGastoEdicionDirecta(null);
+            cargarGastos();
+            setExito('Gasto actualizado');
+            setTimeout(() => setExito(''), 2500);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: EDITAR GASTO (directo) — edita los datos del gasto en sí mismo.
+// =============================================
+function ModalEditarGastoDirecto({ gasto, onCerrar, onGuardado }) {
+  const hoyArg = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+  const fechaInicial = gasto.fecha ? String(gasto.fecha).slice(0, 10) : hoyArg();
+  const [form, setForm] = useState({
+    monto: gasto.monto != null ? String(gasto.monto) : '',
+    descripcion: gasto.descripcion || '',
+    metodo_pago: gasto.metodo_pago || 'efectivo',
+    origen_dinero: ['caja', 'local', 'otro'].includes(gasto.origen_dinero) ? gasto.origen_dinero : 'caja',
+    tipo_comprobante: gasto.tipo_comprobante === 'factura_a' ? 'factura_a' : '',
+    fecha: fechaInicial,
+  });
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const fmt = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n || 0);
+  const montoNum = Number(form.monto) || 0;
+  const esFacturaA = form.tipo_comprobante === 'factura_a';
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!(montoNum > 0)) { setError('El monto debe ser mayor a 0'); return; }
+    setGuardando(true);
+    try {
+      // Mantenemos los campos propios del gasto (tipo, proveedor, etc.) y pisamos
+      // solo lo que se edita acá.
+      await api.put(`/api/gastos/${gasto.id}`, {
+        ...gasto,
+        descripcion: form.descripcion,
+        monto: montoNum,
+        metodo_pago: form.metodo_pago,
+        origen_dinero: form.origen_dinero,
+        fecha: form.fecha,
+        tipo_comprobante: esFacturaA ? 'factura_a' : null,
+        tipo_documento: esFacturaA ? 'factura' : 'sin_boleta',
+        iva_incluido: esFacturaA,
+        porcentaje_iva: esFacturaA ? 21 : 0,
+      });
+      onGuardado();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar el gasto');
+    } finally { setGuardando(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b sticky top-0 bg-white">
+          <h3 className="text-base sm:text-lg font-bold text-gray-800">✏️ Editar gasto</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <form onSubmit={guardar} className="p-4 sm:p-5 space-y-4">
+          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2.5 rounded-lg text-sm">❌ {error}</div>}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+              <input type="number" value={form.monto} onChange={(e) => setForm(p => ({ ...p, monto: e.target.value }))}
+                required autoFocus min="0"
+                className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2.5 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <input type="text" value={form.descripcion} onChange={(e) => setForm(p => ({ ...p, descripcion: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Detalle del gasto..." />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Método de pago</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[{ id: 'efectivo', label: '💵 Efectivo' }, { id: 'transferencia', label: '🏦 Transferencia' }, { id: 'mercadopago', label: '📱 Mercado Pago' }, { id: 'tarjeta', label: '💳 Tarjeta' }].map(m => (
+                <button key={m.id} type="button" onClick={() => setForm(p => ({ ...p, metodo_pago: m.id }))}
+                  className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors ${form.metodo_pago === m.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">¿De dónde sale el dinero?</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'caja', label: '🧰 Caja del turno', desc: 'Plata del turno' },
+                { id: 'local', label: '🏪 Dinero del local', desc: 'Baja el disponible' },
+                { id: 'otro', label: '📱 MP del local', desc: 'Baja el disponible' },
+              ].map(o => (
+                <button key={o.id} type="button" onClick={() => setForm(p => ({ ...p, origen_dinero: o.id }))}
+                  className={`p-2 rounded-lg border-2 text-left transition-all ${form.origen_dinero === o.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <p className="text-xs font-semibold text-gray-800 leading-tight">{o.label}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{o.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de boleta</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setForm(p => ({ ...p, tipo_comprobante: '' }))}
+                className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${!esFacturaA ? 'border-slate-700 bg-slate-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <p className="text-sm font-bold text-gray-800">Gasto X</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Sin comprobante fiscal</p>
+              </button>
+              <button type="button" onClick={() => setForm(p => ({ ...p, tipo_comprobante: 'factura_a' }))}
+                className={`p-2 sm:p-3 rounded-xl border-2 text-left transition-all ${esFacturaA ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <p className="text-sm font-bold text-gray-800">🧾 Factura A</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">En blanco · IVA crédito</p>
+              </button>
+            </div>
+            {esFacturaA && montoNum > 0 && (
+              <p className="text-xs text-blue-700 mt-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                IVA contenido: <b>{fmt(montoNum * 21 / 121)}</b> (va al Resumen Fiscal como crédito).
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+            <input type="date" value={form.fecha} onChange={(e) => setForm(p => ({ ...p, fecha: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onCerrar}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+            <button type="submit" disabled={guardando}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50">
+              {guardando ? 'Guardando…' : '💾 Guardar'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

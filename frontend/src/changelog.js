@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.18.0';
+export const VERSION_ACTUAL = '2.19.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.19.0',
+    fecha: '2026-06-25',
+    titulo: 'Gastos: montos más claros + editar el gasto directo',
+    cambios: [
+      { t: 'Los registros de factura sin pago ya no muestran "$0": ahora muestran el monto de la factura y abajo, en rojo, "NO SE PAGÓ".' },
+      { t: 'Los montos de los gastos pagados se muestran en azul; el rojo queda solo para los que no se pagaron.' },
+      { t: 'El botón "Editar" ahora abre un editor del gasto en sí (monto, método de pago, de dónde sale el dinero, tipo de boleta, fecha y descripción).' },
+      { t: 'En gastos de proveedor/compra se agregó el botón "Ajustar", que abre el modal de pago/factura de antes.' },
+    ],
+  },
   {
     version: '2.18.0',
     fecha: '2026-06-25',
