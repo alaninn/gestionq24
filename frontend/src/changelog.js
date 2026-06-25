@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.17.0';
+export const VERSION_ACTUAL = '2.18.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.18.0',
+    fecha: '2026-06-25',
+    titulo: 'Categorías más completas: unir, ver productos y renombrar',
+    cambios: [
+      { t: 'Nueva opción "🔗 Unir" para juntar categorías repetidas: elegís la que se borra y la que queda, y todos sus productos se mueven solos. El sistema además avisa cuando detecta nombres de categoría repetidos.' },
+      { t: 'Cada categoría ahora muestra cuántos productos tiene, y al tocarla se abre la lista de esos productos (con stock y precio).' },
+      { t: 'Se puede renombrar una categoría (✏️) sin tener que borrarla y crearla de nuevo.' },
+    ],
+  },
   {
     version: '2.17.0',
     fecha: '2026-06-25',

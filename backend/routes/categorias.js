@@ -6,10 +6,15 @@ router.get('/', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
-        const resultado = await db.query(
-            'SELECT * FROM categorias WHERE negocio_id = $1 ORDER BY nombre ASC',
-            [negocio_id]
-        );
+        // Incluye la cantidad de productos activos de cada categoría
+        const resultado = await db.query(`
+            SELECT c.*, COUNT(p.id) FILTER (WHERE p.activo = TRUE) AS total_productos
+            FROM categorias c
+            LEFT JOIN productos p ON p.categoria_id = c.id AND p.negocio_id = c.negocio_id
+            WHERE c.negocio_id = $1
+            GROUP BY c.id
+            ORDER BY c.nombre ASC
+        `, [negocio_id]);
         res.json(resultado.rows);
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener categorías' });
@@ -57,6 +62,57 @@ router.post('/default', async (req, res) => {
         res.status(201).json(nueva.rows[0]);
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener categoría por defecto' });
+    }
+});
+
+// Renombrar una categoría
+router.put('/:id', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const nombre = (req.body.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
+        const r = await db.query(
+            'UPDATE categorias SET nombre = $1 WHERE id = $2 AND negocio_id = $3 RETURNING *',
+            [nombre, req.params.id, negocio_id]
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Categoría no encontrada' });
+        res.json(r.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al renombrar la categoría' });
+    }
+});
+
+// Unir categorías: mueve todos los productos de 'origen' a 'destino' y borra 'origen'.
+// Sirve para juntar categorías repetidas (ej: "Cigarrillos" y "cigarrillos").
+router.post('/unir', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const origen_id = parseInt(req.body.origen_id, 10);
+        const destino_id = parseInt(req.body.destino_id, 10);
+        if (!origen_id || !destino_id) return res.status(400).json({ error: 'Elegí las dos categorías' });
+        if (origen_id === destino_id) return res.status(400).json({ error: 'Tienen que ser categorías distintas' });
+
+        // Ambas deben ser del negocio
+        const cats = await db.query(
+            'SELECT id FROM categorias WHERE id = ANY($1) AND negocio_id = $2',
+            [[origen_id, destino_id], negocio_id]
+        );
+        if (cats.rows.length !== 2) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+        // Mover los productos de origen a destino
+        const upd = await db.query(
+            'UPDATE productos SET categoria_id = $1 WHERE categoria_id = $2 AND negocio_id = $3',
+            [destino_id, origen_id, negocio_id]
+        );
+        // Borrar la categoría origen (ya quedó vacía)
+        await db.query('DELETE FROM categorias WHERE id = $1 AND negocio_id = $2', [origen_id, negocio_id]);
+
+        res.json({ mensaje: 'Categorías unidas', productos_movidos: upd.rowCount });
+    } catch (error) {
+        console.error('Error al unir categorías:', error);
+        res.status(500).json({ error: 'Error al unir las categorías' });
     }
 });
 
