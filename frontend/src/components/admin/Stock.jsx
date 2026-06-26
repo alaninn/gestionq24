@@ -890,7 +890,7 @@ function Stock() {
       {mostrarExportar && (
         <ModalExportarStock
           productos={productos}
-          categorias={categorias}
+          secciones={secciones}
           onClose={() => setMostrarExportar(false)}
           onExportado={(cant, formato) => { setMostrarExportar(false); avisoOk(`✅ ${cant} producto(s) exportados a ${formato}`); }}
         />
@@ -1017,28 +1017,48 @@ function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
 
 // =============================================
 // MODAL: EXPORTAR STOCK (Excel / PDF)
-// Permite tildar con checkboxes qué productos exportar. Solo exporta lo que
-// nos interesa del stock: NOMBRE del producto y CANTIDAD en existencia.
-// Se puede filtrar por nombre/código y por categoría, y seleccionar todos.
+// Muestra las SECCIONES del stock (góndolas, heladeras, depósito...) con sus
+// productos para tildar con checkbox qué exportar. Solo exporta lo del stock:
+// NOMBRE del producto y CANTIDAD en existencia.
 // =============================================
-function ModalExportarStock({ productos, categorias, onClose, onExportado }) {
+const SIN_UBIC_EXP = 'sin';
+
+function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
   const [buscar, setBuscar] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [seleccion, setSeleccion] = useState(() => new Set(productos.map(p => p.id))); // por defecto: todos
+  const [colapsadas, setColapsadas] = useState({}); // { [claveSeccion]: true } = colapsada
 
   useCerrarConAtras(true, onClose);
 
-  const lista = productos.filter(p => {
-    if (categoriaFiltro && String(p.categoria_id) !== String(categoriaFiltro)) return false;
-    if (buscar.trim()) {
-      const t = buscar.trim().toLowerCase();
-      if (!`${p.nombre || ''} ${p.codigo || ''}`.toLowerCase().includes(t)) return false;
-    }
-    return true;
-  });
+  const coincide = (p) => {
+    if (!buscar.trim()) return true;
+    const t = buscar.trim().toLowerCase();
+    return `${p.nombre || ''} ${p.codigo || ''}`.toLowerCase().includes(t);
+  };
 
-  const idsLista = lista.map(p => p.id);
-  const todosVisiblesTildados = idsLista.length > 0 && idsLista.every(id => seleccion.has(id));
+  // Agrupa los productos (filtrados por búsqueda) en el orden de las secciones,
+  // con "Sin ubicación" al final. Solo muestra secciones con productos visibles.
+  const gruposOrdenados = useMemo(() => {
+    const visibles = productos.filter(coincide);
+    const porSeccion = new Map();
+    for (const p of visibles) {
+      const clave = p.stock_categoria_id ?? SIN_UBIC_EXP;
+      if (!porSeccion.has(clave)) porSeccion.set(clave, []);
+      porSeccion.get(clave).push(p);
+    }
+    for (const lista of porSeccion.values()) {
+      lista.sort((a, b) => (a.stock_orden || 0) - (b.stock_orden || 0) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    }
+    const grupos = [];
+    for (const sec of secciones) {
+      if (porSeccion.has(sec.id)) grupos.push({ clave: sec.id, nombre: sec.nombre, lista: porSeccion.get(sec.id) });
+    }
+    if (porSeccion.has(SIN_UBIC_EXP)) grupos.push({ clave: SIN_UBIC_EXP, nombre: '📦 Sin ubicación', lista: porSeccion.get(SIN_UBIC_EXP) });
+    return grupos;
+  }, [productos, secciones, buscar]);
+
+  const idsVisibles = useMemo(() => gruposOrdenados.flatMap(g => g.lista.map(p => p.id)), [gruposOrdenados]);
+  const todosVisiblesTildados = idsVisibles.length > 0 && idsVisibles.every(id => seleccion.has(id));
 
   const toggle = (id) => setSeleccion(prev => {
     const s = new Set(prev);
@@ -1046,36 +1066,43 @@ function ModalExportarStock({ productos, categorias, onClose, onExportado }) {
     return s;
   });
 
-  const tildarVisibles = () => setSeleccion(prev => {
+  const setVarios = (ids, agregar) => setSeleccion(prev => {
     const s = new Set(prev);
-    idsLista.forEach(id => s.add(id));
-    return s;
-  });
-  const destildarVisibles = () => setSeleccion(prev => {
-    const s = new Set(prev);
-    idsLista.forEach(id => s.delete(id));
+    ids.forEach(id => agregar ? s.add(id) : s.delete(id));
     return s;
   });
 
-  // Productos elegidos (en cualquier filtro), ordenados por nombre
-  const elegidos = productos
-    .filter(p => seleccion.has(p.id))
-    .slice()
-    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+  const elegidos = productos.filter(p => seleccion.has(p.id));
 
   const sufijo = () => new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
 
-  // Solo dos columnas: nombre del producto y cantidad en existencia
-  const datos = () => {
-    const columnas = ['Producto', 'Cantidad'];
-    const filas = elegidos.map(p => [p.nombre || '', Number(p.stock ?? 0)]);
-    return { columnas, filas };
+  // Filas en el orden de las secciones; antes de cada sección, una fila título.
+  const construirFilas = () => {
+    const filas = [];
+    for (const sec of secciones) {
+      const lista = sec ? elegidos.filter(p => p.stock_categoria_id === sec.id) : [];
+      if (lista.length === 0) continue;
+      lista.sort((a, b) => (a.stock_orden || 0) - (b.stock_orden || 0) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+      filas.push({ seccion: sec.nombre });
+      lista.forEach(p => filas.push({ nombre: p.nombre || '', cant: Number(p.stock ?? 0) }));
+    }
+    const sinUbic = elegidos.filter(p => p.stock_categoria_id == null)
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    if (sinUbic.length > 0) {
+      filas.push({ seccion: 'Sin ubicación' });
+      sinUbic.forEach(p => filas.push({ nombre: p.nombre || '', cant: Number(p.stock ?? 0) }));
+    }
+    return filas;
   };
 
   const exportarExcel = () => {
     if (elegidos.length === 0) return;
-    const { columnas, filas } = datos();
-    const ws = XLSX.utils.aoa_to_sheet([columnas, ...filas]);
+    const aoa = [['Producto', 'Cantidad']];
+    for (const f of construirFilas()) {
+      if (f.seccion) aoa.push([`— ${f.seccion} —`, '']);
+      else aoa.push([f.nombre, f.cant]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Stock');
@@ -1086,15 +1113,19 @@ function ModalExportarStock({ productos, categorias, onClose, onExportado }) {
 
   const exportarPDF = () => {
     if (elegidos.length === 0) return;
-    const { columnas, filas } = datos();
+    const body = [];
+    for (const f of construirFilas()) {
+      if (f.seccion) body.push([{ content: f.seccion, colSpan: 2, styles: { fillColor: [229, 231, 235], fontStyle: 'bold', textColor: [55, 65, 81] } }]);
+      else body.push([f.nombre, f.cant]);
+    }
     const doc = new jsPDF();
     doc.setFontSize(16);
-    doc.text('Stock - existencias', 14, 15);
+    doc.text('Stock - existencias por sección', 14, 15);
     doc.setFontSize(10);
     doc.text(`Generado: ${new Date().toLocaleString('es-AR')}  ·  ${elegidos.length} productos`, 14, 22);
     autoTable(doc, {
-      head: [columnas],
-      body: filas,
+      head: [['Producto', 'Cantidad']],
+      body,
       startY: 28,
       styles: { fontSize: 9 },
       headStyles: { fillColor: [22, 163, 74] },
@@ -1110,57 +1141,80 @@ function ModalExportarStock({ productos, categorias, onClose, onExportado }) {
         <div className="flex items-center justify-between p-4 sm:p-5 border-b bg-gray-700 text-white flex-shrink-0">
           <div>
             <h3 className="text-lg font-bold">📤 Exportar stock</h3>
-            <p className="text-gray-200 text-xs">Elegí los productos. Se exporta nombre y cantidad en existencia.</p>
+            <p className="text-gray-200 text-xs">Tildá los productos por sección. Se exporta nombre y cantidad en existencia.</p>
           </div>
           <button onClick={onClose} className="text-gray-200 hover:text-white text-2xl leading-none">×</button>
         </div>
 
-        {/* Filtros */}
-        <div className="p-3 sm:p-4 border-b flex gap-2 flex-shrink-0">
-          <div className="relative flex-1">
+        {/* Buscador */}
+        <div className="p-3 sm:p-4 border-b flex-shrink-0">
+          <div className="relative">
             <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
             <input value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
               className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
               placeholder="Buscar por nombre o código..." />
           </div>
-          <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}
-            className={`border rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 max-w-[160px] ${categoriaFiltro ? 'border-gray-500 bg-gray-50 font-medium' : 'border-gray-300 bg-white'}`}>
-            <option value="">🏷️ Categorías</option>
-            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
         </div>
 
-        {/* Acciones de selección */}
+        {/* Acción global */}
         <div className="px-3 sm:px-4 py-2 border-b flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
           <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
             <input type="checkbox" checked={todosVisiblesTildados}
-              onChange={(e) => e.target.checked ? tildarVisibles() : destildarVisibles()}
+              onChange={(e) => setVarios(idsVisibles, e.target.checked)}
               className="w-4 h-4 accent-gray-700" />
-            {buscar || categoriaFiltro ? 'Seleccionar los visibles' : 'Seleccionar todos'} ({lista.length})
+            Seleccionar todo {buscar && 'lo visible'} ({idsVisibles.length})
           </label>
           <span className="text-xs text-gray-500 font-semibold">{seleccion.size} elegido(s)</span>
         </div>
 
-        {/* Lista con checkboxes */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {lista.length === 0 ? (
+        {/* Secciones con sus productos */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {gruposOrdenados.length === 0 ? (
             <p className="text-center text-gray-400 text-sm py-10">No se encontraron productos.</p>
           ) : (
-            lista.slice(0, 1000).map(p => {
-              const tildado = seleccion.has(p.id);
+            gruposOrdenados.map(g => {
+              const ids = g.lista.map(p => p.id);
+              const todos = ids.every(id => seleccion.has(id));
+              const algunos = !todos && ids.some(id => seleccion.has(id));
+              const colapsada = !!colapsadas[g.clave];
+              const elegidosSec = ids.filter(id => seleccion.has(id)).length;
               return (
-                <label key={p.id}
-                  className={`flex items-center gap-3 rounded-xl border px-3 py-2 cursor-pointer ${tildado ? 'border-gray-400 bg-gray-50' : 'border-gray-200 bg-white'}`}>
-                  <input type="checkbox" checked={tildado} onChange={() => toggle(p.id)}
-                    className="w-4 h-4 accent-gray-700 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
-                    <p className="text-[11px] text-gray-400 truncate">{p.categoria_nombre || 'Sin categoría'}</p>
+                <div key={g.clave} className="rounded-xl border border-gray-200 overflow-hidden">
+                  {/* Encabezado de sección */}
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 border-b border-gray-200">
+                    <input type="checkbox" checked={todos}
+                      ref={el => { if (el) el.indeterminate = algunos; }}
+                      onChange={(e) => setVarios(ids, e.target.checked)}
+                      className="w-4 h-4 accent-gray-700 flex-shrink-0" />
+                    <button onClick={() => setColapsadas(prev => ({ ...prev, [g.clave]: !colapsada }))}
+                      className="flex-1 flex items-center gap-2 text-left min-w-0">
+                      <span className={`text-gray-400 text-xs transition-transform ${colapsada ? '' : 'rotate-90'}`}>▶</span>
+                      <span className="font-semibold text-gray-800 text-sm truncate">{g.nombre}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">({g.lista.length})</span>
+                    </button>
+                    <span className="text-[11px] text-gray-500 flex-shrink-0">{elegidosSec} ✓</span>
                   </div>
-                  <span className="text-sm font-bold text-gray-700 flex-shrink-0">
-                    {p.stock ?? 0}{p.unidad ? ` ${p.unidad}` : ''}
-                  </span>
-                </label>
+
+                  {/* Productos de la sección */}
+                  {!colapsada && (
+                    <div className="p-1.5 space-y-1">
+                      {g.lista.map(p => {
+                        const tildado = seleccion.has(p.id);
+                        return (
+                          <label key={p.id}
+                            className={`flex items-center gap-3 rounded-lg border px-3 py-1.5 cursor-pointer ${tildado ? 'border-gray-300 bg-gray-50' : 'border-transparent hover:bg-gray-50'}`}>
+                            <input type="checkbox" checked={tildado} onChange={() => toggle(p.id)}
+                              className="w-4 h-4 accent-gray-700 flex-shrink-0" />
+                            <span className="flex-1 min-w-0 text-sm text-gray-800 truncate">{p.nombre}</span>
+                            <span className="text-sm font-bold text-gray-700 flex-shrink-0">
+                              {p.stock ?? 0}{p.unidad ? ` ${p.unidad}` : ''}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })
           )}
