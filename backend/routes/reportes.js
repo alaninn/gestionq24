@@ -503,8 +503,12 @@ router.get('/dashboard', async (req, res) => {
             gastos.cantidad += parseInt(g.cantidad) || 0;
         }
 
+        const cfgFactDash = await db.query('SELECT facturacion_electronica_activa FROM configuracion WHERE negocio_id = $1', [negocio_id]);
+        const facturacionActivaDash = cfgFactDash.rows[0]?.facturacion_electronica_activa === true;
+
         res.json({
             stats: stats.rows[0],
+            facturacion_activa: facturacionActivaDash,
             ventasPorDia: ventasPorDia.rows,
             ventasPorMetodo: ventasPorMetodo.rows,
             topProductos: topProductos.rows,
@@ -571,6 +575,11 @@ router.get('/centro-control', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { desde, hasta } = rangoSeguro(req);
+
+        // Si el módulo de facturación electrónica está DESACTIVADO, no se descuenta
+        // IVA en ningún cálculo: se muestra la facturación total sin descuentos.
+        const cfgFact = await db.query('SELECT facturacion_electronica_activa FROM configuracion WHERE negocio_id = $1', [negocio_id]);
+        const facturacionActiva = cfgFact.rows[0]?.facturacion_electronica_activa === true;
 
         // Ventas del período con su costo (costo al momento de venta; fallback al costo actual)
         const ventas = await db.query(`
@@ -662,13 +671,14 @@ router.get('/centro-control', async (req, res) => {
         const normViVenta = acc.virtual.venta - cig.virtual.venta;
         const normViCosto = acc.virtual.costo - cig.virtual.costo;
 
-        // IVA contenido (21%) de lo facturado virtual (sin cigarrillos)
-        const ivaVirtual = normViVenta - normViVenta / 1.21;
+        // IVA contenido (21%) de lo facturado virtual (sin cigarrillos).
+        // Si la facturación electrónica está desactivada, NO se descuenta IVA.
+        const ivaVirtual = facturacionActiva ? (normViVenta - normViVenta / 1.21) : 0;
         const gananciaEfectivo = normEfVenta - normEfCosto;
         const gananciaVirtual = (normViVenta - normViCosto) - ivaVirtual;
 
         // Cigarrillos: panel aparte. Foco en el COSTO (cuánto reponer).
-        const cigIvaVirtual = cig.virtual.venta - cig.virtual.venta / 1.21;
+        const cigIvaVirtual = facturacionActiva ? (cig.virtual.venta - cig.virtual.venta / 1.21) : 0;
         const cigGananciaEfectivo = cig.efectivo.venta - cig.efectivo.costo;
         const cigGananciaVirtual = (cig.virtual.venta - cig.virtual.costo) - cigIvaVirtual;
         const cigarrillos = {
@@ -731,6 +741,7 @@ router.get('/centro-control', async (req, res) => {
 
         res.json({
             desde, hasta, diasPeriodo,
+            facturacion_activa: facturacionActiva,
             totalVendido,
             totalVendido_sin_cigarrillos: totalVendido - totalCig,
             porMetodo,

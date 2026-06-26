@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.23.1';
+export const VERSION_ACTUAL = '2.24.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.24.0',
+    fecha: '2026-06-26',
+    titulo: 'Facturación: activar/desactivar el módulo y el IVA en los informes',
+    cambios: [
+      { t: 'El módulo de Facturación Electrónica ahora es exclusivo del plan Premium: en el plan Estándar la pestaña queda oculta. Viene desactivado por defecto y solo el Premium puede activarlo.' },
+      { t: 'Con la facturación DESACTIVADA, el Dashboard, el Centro de Control y los Reportes dejan de descontar IVA: muestran la facturación total sin descuentos de IVA. Al activarla, vuelven a discriminar el IVA 21% en las ganancias.' },
+    ],
+  },
   {
     version: '2.23.1',
     fecha: '2026-06-26',

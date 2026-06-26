@@ -454,7 +454,7 @@ const calcularFechas = () => {
                     <div className="rounded-xl p-3 bg-emerald-50 border border-emerald-100">
                       <p className="text-[11px] text-emerald-700 font-semibold">Ganancia neta real</p>
                       <p className="text-xl font-bold text-emerald-700 tabular-nums">{fmt(resumenFin.ganancia_neta)}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">venta − costo − IVA − gastos de caja</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">venta − costo{resumenFin.facturacion_activa ? ' − IVA' : ''} − gastos de caja</p>
                     </div>
                     <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
                       <p className="text-[11px] text-gray-500 font-semibold">💵 Ganancia efectivo</p>
@@ -464,10 +464,12 @@ const calcularFechas = () => {
                       <p className="text-[11px] text-gray-500 font-semibold">🧾 Ganancia virtual</p>
                       <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.virtual?.ganancia)}</p>
                     </div>
-                    <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
-                      <p className="text-[11px] text-gray-500 font-semibold">IVA facturado (21%)</p>
-                      <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.iva_virtual)}</p>
-                    </div>
+                    {resumenFin.facturacion_activa && (
+                      <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
+                        <p className="text-[11px] text-gray-500 font-semibold">IVA facturado (21%)</p>
+                        <p className="text-lg font-bold text-gray-800 tabular-nums">{fmt(resumenFin.iva_virtual)}</p>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
                     <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">

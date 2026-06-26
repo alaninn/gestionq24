@@ -56,7 +56,7 @@ function Configuracion() {
   const [mostrarPin, setMostrarPin] = useState(false);
   const [mostrarReinicioDatos, setMostrarReinicioDatos] = useState(false);
   const { cambiarColor } = useTema();
-  const { usuario } = useAuth();
+  const { usuario, esPremium } = useAuth();
 
   useEffect(() => {
     cargarConfig();
@@ -112,11 +112,12 @@ function Configuracion() {
     );
   }
 
+  // La facturación electrónica es un módulo Premium: el plan estándar no lo ve.
   const pestanas = [
     { id: 'negocio', label: '🏪 Negocio' },
     { id: 'configuraciones', label: '⚙️ Configuraciones' },
     { id: 'sistema', label: '🖥️ Sistema' },
-    { id: 'facturacion', label: '🧾 Facturación' },
+    ...(esPremium() ? [{ id: 'facturacion', label: '🧾 Facturación' }] : []),
   ];
 
   return (

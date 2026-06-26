@@ -207,6 +207,7 @@ if (error) return (
   if (!datos) return null;
 
   const { stats, ventasPorDia, ventasPorMetodo, topProductos, comparacion, dia } = datos;
+  const facturacionActiva = datos?.facturacion_activa === true;
   const det = dia?.detalle || {};
   const gastosDia = dia?.gastos || { caja: 0, local: 0, otro: 0, total: 0, cantidad: 0 };
   const esHoy = !fechaDia;
@@ -368,7 +369,8 @@ if (error) return (
             </div>
 
             {/* Facturación electrónica + Gastos del día */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className={`grid grid-cols-1 ${facturacionActiva ? 'lg:grid-cols-2' : ''} gap-3`}>
+              {facturacionActiva && (
               <div onClick={() => abrirDetalle({ tipo: 'facturadas', label: 'Facturación electrónica', icono: '🧾' })}
                 title="Click para ver el detalle de las ventas facturadas"
                 className="bg-amber-400/10 border border-amber-400/25 rounded-2xl p-4 flex items-center justify-between hover:bg-amber-400/[0.18] hover:border-amber-400/40 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
@@ -383,6 +385,7 @@ if (error) return (
                   <p className="text-lg font-bold text-amber-300 tabular-nums">{fmt(det.facturado_electronico)}</p>
                 </div>
               </div>
+              )}
               <div className="bg-red-400/10 border border-red-400/25 rounded-2xl p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-red-300 text-xs font-semibold uppercase tracking-wide">💸 Gastos del día</p>
@@ -478,7 +481,7 @@ if (error) return (
             {gananciaMes !== null ? fmt(gananciaMes) : fmt(parseFloat(stats.facturado_mes) - parseFloat(stats.gastos_mes))}
           </p>
           <p className="text-blue-100 text-sm mt-2">
-            {gananciaMes !== null ? 'venta − costo − IVA − gastos de caja · ver detalle →' : 'Ventas − Gastos (aprox.) · ver Centro de Control →'}
+            {gananciaMes !== null ? `venta − costo${facturacionActiva ? ' − IVA' : ''} − gastos de caja · ver detalle →` : 'Ventas − Gastos (aprox.) · ver Centro de Control →'}
           </p>
         </div>
 

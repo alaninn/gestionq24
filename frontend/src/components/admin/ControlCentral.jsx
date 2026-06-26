@@ -97,7 +97,7 @@ export default function ControlCentral() {
           <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
             🎯 Centro de Control
           </h2>
-          <p className="text-gray-500 text-sm">Ganancia real del negocio, descontando costos, IVA y gastos.</p>
+          <p className="text-gray-500 text-sm">Ganancia real del negocio, descontando costos y gastos.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setMostrarGastos(true)}
@@ -189,7 +189,7 @@ export default function ControlCentral() {
               <p className="text-emerald-200 text-sm font-medium uppercase tracking-wider">Ganancia neta real del período</p>
               <p className={`text-4xl sm:text-5xl font-bold mt-2 ${d.ganancia_neta < 0 ? 'text-red-300' : 'text-white'}`}>{fmt(d.ganancia_neta)}</p>
               <p className="text-emerald-100/70 text-xs mt-2">
-                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · menos costo, IVA y gastos de la caja del turno (lo pagado con dinero/MP del local no cuenta)
+                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · menos costo{d.facturacion_activa ? ', IVA' : ''} y gastos de la caja del turno (lo pagado con dinero/MP del local no cuenta)
               </p>
               {/* Estimación: descuenta los gastos fijos prorrateados (especulación) */}
               <div className="mt-3 inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5">
@@ -224,13 +224,17 @@ export default function ControlCentral() {
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-              <h3 className="font-bold text-gray-800 mb-1">🧾 Ganancia virtual (facturado)</h3>
-              <p className="text-xs text-gray-400 mb-3">Venta − costo − IVA 21% (transferencia, MP, tarjeta) · sin cigarrillos</p>
+              <h3 className="font-bold text-gray-800 mb-1">🧾 Ganancia virtual {d.facturacion_activa ? '(facturado)' : '(transf./MP/tarjeta)'}</h3>
+              <p className="text-xs text-gray-400 mb-3">
+                {d.facturacion_activa
+                  ? 'Venta − costo − IVA 21% (transferencia, MP, tarjeta) · sin cigarrillos'
+                  : 'Venta − costo (transferencia, MP, tarjeta) · sin cigarrillos'}
+              </p>
               <p className="text-3xl font-bold text-violet-600">{fmt(d.virtual?.ganancia)}</p>
               <div className="mt-3 text-sm text-gray-500 space-y-1">
                 <Linea label="Venta virtual" valor={fmt(d.virtual?.venta)} />
                 <Linea label="Costo productos" valor={'− ' + fmt(d.virtual?.costo)} />
-                <Linea label="IVA (21%)" valor={'− ' + fmt(d.virtual?.iva)} />
+                {d.facturacion_activa && <Linea label="IVA (21%)" valor={'− ' + fmt(d.virtual?.iva)} />}
               </div>
             </div>
           </div>
@@ -268,7 +272,9 @@ export default function ControlCentral() {
 
           {/* Gastos */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <CardChica titulo="🧾 IVA facturado" valor={fmt(d.iva_virtual)} color="from-rose-500 to-pink-600" />
+            {d.facturacion_activa && (
+              <CardChica titulo="🧾 IVA facturado" valor={fmt(d.iva_virtual)} color="from-rose-500 to-pink-600" />
+            )}
             <CardChica titulo="💸 Gastos de caja (turno)" valor={fmt(d.gastos_variables)} color="from-orange-500 to-red-600"
               sub="pagados con la caja del turno (restan de la ganancia)" />
             <CardChica titulo="🏠 Gastos fijos (mes)" valor={fmt(d.fijos_mensual)} color="from-slate-500 to-gray-700"
