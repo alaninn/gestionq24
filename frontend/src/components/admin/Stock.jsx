@@ -1020,21 +1020,20 @@ function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
 // Muestra las SECCIONES del stock (góndolas, heladeras, depósito...) con sus
 // productos para tildar con checkbox qué exportar. Solo exporta lo del stock:
 // NOMBRE del producto y CANTIDAD en existencia.
+// Pensado para celular: pantalla completa, secciones COLAPSADAS por defecto,
+// botones grandes y resumen de lo seleccionado.
 // =============================================
 const SIN_UBIC_EXP = 'sin';
 
 function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
   const [buscar, setBuscar] = useState('');
   const [seleccion, setSeleccion] = useState(() => new Set(productos.map(p => p.id))); // por defecto: todos
-  const [colapsadas, setColapsadas] = useState({}); // { [claveSeccion]: true } = colapsada
+  const [expandidas, setExpandidas] = useState(() => new Set()); // arranca TODO colapsado
 
   useCerrarConAtras(true, onClose);
 
-  const coincide = (p) => {
-    if (!buscar.trim()) return true;
-    const t = buscar.trim().toLowerCase();
-    return `${p.nombre || ''} ${p.codigo || ''}`.toLowerCase().includes(t);
-  };
+  const textoBuscar = buscar.trim().toLowerCase();
+  const coincide = (p) => !textoBuscar || `${p.nombre || ''} ${p.codigo || ''}`.toLowerCase().includes(textoBuscar);
 
   // Agrupa los productos (filtrados por búsqueda) en el orden de las secciones,
   // con "Sin ubicación" al final. Solo muestra secciones con productos visibles.
@@ -1055,17 +1054,31 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
     }
     if (porSeccion.has(SIN_UBIC_EXP)) grupos.push({ clave: SIN_UBIC_EXP, nombre: '📦 Sin ubicación', lista: porSeccion.get(SIN_UBIC_EXP) });
     return grupos;
-  }, [productos, secciones, buscar]);
+  }, [productos, secciones, textoBuscar]);
 
   const idsVisibles = useMemo(() => gruposOrdenados.flatMap(g => g.lista.map(p => p.id)), [gruposOrdenados]);
   const todosVisiblesTildados = idsVisibles.length > 0 && idsVisibles.every(id => seleccion.has(id));
+  const algunosVisiblesTildados = !todosVisiblesTildados && idsVisibles.some(id => seleccion.has(id));
+
+  // Buscando: se expande todo para ver los resultados sin tocar nada.
+  const estaExpandida = (clave) => !!textoBuscar || expandidas.has(clave);
+  const todasExpandidas = gruposOrdenados.length > 0 && gruposOrdenados.every(g => expandidas.has(g.clave));
+
+  const toggleExpandir = (clave) => setExpandidas(prev => {
+    const s = new Set(prev);
+    s.has(clave) ? s.delete(clave) : s.add(clave);
+    return s;
+  });
+  const expandirOColapsarTodo = () => {
+    if (todasExpandidas) setExpandidas(new Set());
+    else setExpandidas(new Set(gruposOrdenados.map(g => g.clave)));
+  };
 
   const toggle = (id) => setSeleccion(prev => {
     const s = new Set(prev);
     s.has(id) ? s.delete(id) : s.add(id);
     return s;
   });
-
   const setVarios = (ids, agregar) => setSeleccion(prev => {
     const s = new Set(prev);
     ids.forEach(id => agregar ? s.add(id) : s.delete(id));
@@ -1073,6 +1086,7 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
   });
 
   const elegidos = productos.filter(p => seleccion.has(p.id));
+  const totalUnidades = elegidos.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
 
   const sufijo = () => new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
 
@@ -1080,9 +1094,9 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
   const construirFilas = () => {
     const filas = [];
     for (const sec of secciones) {
-      const lista = sec ? elegidos.filter(p => p.stock_categoria_id === sec.id) : [];
+      const lista = elegidos.filter(p => p.stock_categoria_id === sec.id)
+        .sort((a, b) => (a.stock_orden || 0) - (b.stock_orden || 0) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
       if (lista.length === 0) continue;
-      lista.sort((a, b) => (a.stock_orden || 0) - (b.stock_orden || 0) || String(a.nombre).localeCompare(String(b.nombre), 'es'));
       filas.push({ seccion: sec.nombre });
       lista.forEach(p => filas.push({ nombre: p.nombre || '', cant: Number(p.stock ?? 0) }));
     }
@@ -1102,6 +1116,8 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
       if (f.seccion) aoa.push([`— ${f.seccion} —`, '']);
       else aoa.push([f.nombre, f.cant]);
     }
+    aoa.push(['', '']);
+    aoa.push(['TOTAL UNIDADES', totalUnidades]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
@@ -1122,13 +1138,15 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
     doc.setFontSize(16);
     doc.text('Stock - existencias por sección', 14, 15);
     doc.setFontSize(10);
-    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}  ·  ${elegidos.length} productos`, 14, 22);
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}  ·  ${elegidos.length} productos · ${totalUnidades} unidades`, 14, 22);
     autoTable(doc, {
       head: [['Producto', 'Cantidad']],
       body,
+      foot: [[{ content: 'TOTAL UNIDADES', styles: { fontStyle: 'bold' } }, { content: String(totalUnidades), styles: { halign: 'right', fontStyle: 'bold' } }]],
       startY: 28,
       styles: { fontSize: 9 },
       headStyles: { fillColor: [22, 163, 74] },
+      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39] },
       columnStyles: { 1: { halign: 'right', cellWidth: 30 } },
     });
     doc.save(`stock_${sufijo()}.pdf`);
@@ -1136,35 +1154,48 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between p-4 sm:p-5 border-b bg-gray-700 text-white flex-shrink-0">
-          <div>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-white w-full sm:max-w-2xl h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden">
+
+        {/* Encabezado */}
+        <div className="flex items-center justify-between p-4 border-b bg-gray-700 text-white flex-shrink-0">
+          <div className="min-w-0">
             <h3 className="text-lg font-bold">📤 Exportar stock</h3>
-            <p className="text-gray-200 text-xs">Tildá los productos por sección. Se exporta nombre y cantidad en existencia.</p>
+            <p className="text-gray-200 text-xs truncate">Tildá qué productos exportar. Sale nombre y cantidad por sección.</p>
           </div>
-          <button onClick={onClose} className="text-gray-200 hover:text-white text-2xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Cerrar"
+            className="text-gray-200 hover:text-white text-3xl leading-none w-10 h-10 flex items-center justify-center flex-shrink-0">×</button>
         </div>
 
         {/* Buscador */}
-        <div className="p-3 sm:p-4 border-b flex-shrink-0">
+        <div className="p-3 border-b flex-shrink-0">
           <div className="relative">
-            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
-            <input value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
-              className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-              placeholder="Buscar por nombre o código..." />
+            <span className="absolute left-3 top-3 text-gray-400 text-sm">🔍</span>
+            <input value={buscar} onChange={(e) => setBuscar(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl pl-9 pr-9 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+              placeholder="Buscar producto..." />
+            {buscar && (
+              <button onClick={() => setBuscar('')} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">✕</button>
+            )}
           </div>
         </div>
 
-        {/* Acción global */}
-        <div className="px-3 sm:px-4 py-2 border-b flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+        {/* Barra de acciones: seleccionar todo + expandir/colapsar */}
+        <div className="px-3 py-2 border-b flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none py-1">
             <input type="checkbox" checked={todosVisiblesTildados}
+              ref={el => { if (el) el.indeterminate = algunosVisiblesTildados; }}
               onChange={(e) => setVarios(idsVisibles, e.target.checked)}
-              className="w-4 h-4 accent-gray-700" />
-            Seleccionar todo {buscar && 'lo visible'} ({idsVisibles.length})
+              className="w-5 h-5 accent-gray-700" />
+            <span className="font-medium">Todo {buscar && 'lo visible'}</span>
+            <span className="text-gray-400">({idsVisibles.length})</span>
           </label>
-          <span className="text-xs text-gray-500 font-semibold">{seleccion.size} elegido(s)</span>
+          {!textoBuscar && gruposOrdenados.length > 0 && (
+            <button onClick={expandirOColapsarTodo}
+              className="text-xs font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-100">
+              {todasExpandidas ? '▲ Colapsar todo' : '▼ Expandir todo'}
+            </button>
+          )}
         </div>
 
         {/* Secciones con sus productos */}
@@ -1176,37 +1207,40 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
               const ids = g.lista.map(p => p.id);
               const todos = ids.every(id => seleccion.has(id));
               const algunos = !todos && ids.some(id => seleccion.has(id));
-              const colapsada = !!colapsadas[g.clave];
+              const abierta = estaExpandida(g.clave);
               const elegidosSec = ids.filter(id => seleccion.has(id)).length;
               return (
                 <div key={g.clave} className="rounded-xl border border-gray-200 overflow-hidden">
-                  {/* Encabezado de sección */}
-                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 border-b border-gray-200">
-                    <input type="checkbox" checked={todos}
-                      ref={el => { if (el) el.indeterminate = algunos; }}
-                      onChange={(e) => setVarios(ids, e.target.checked)}
-                      className="w-4 h-4 accent-gray-700 flex-shrink-0" />
-                    <button onClick={() => setColapsadas(prev => ({ ...prev, [g.clave]: !colapsada }))}
-                      className="flex-1 flex items-center gap-2 text-left min-w-0">
-                      <span className={`text-gray-400 text-xs transition-transform ${colapsada ? '' : 'rotate-90'}`}>▶</span>
-                      <span className="font-semibold text-gray-800 text-sm truncate">{g.nombre}</span>
-                      <span className="text-xs text-gray-400 flex-shrink-0">({g.lista.length})</span>
+                  {/* Encabezado de sección (toda la barra abre/cierra; el check aparte) */}
+                  <div className="flex items-center bg-gray-100 border-b border-gray-200">
+                    <label className="flex items-center pl-3 pr-1 py-3 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={todos}
+                        ref={el => { if (el) el.indeterminate = algunos; }}
+                        onChange={(e) => setVarios(ids, e.target.checked)}
+                        className="w-5 h-5 accent-gray-700 flex-shrink-0" />
+                    </label>
+                    <button onClick={() => toggleExpandir(g.clave)}
+                      className="flex-1 flex items-center gap-2 text-left min-w-0 py-3 pr-3">
+                      <span className={`text-gray-400 text-xs transition-transform ${abierta ? 'rotate-90' : ''}`}>▶</span>
+                      <span className="font-semibold text-gray-800 text-sm truncate flex-1">{g.nombre}</span>
+                      <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${elegidosSec > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+                        {elegidosSec}/{g.lista.length}
+                      </span>
                     </button>
-                    <span className="text-[11px] text-gray-500 flex-shrink-0">{elegidosSec} ✓</span>
                   </div>
 
                   {/* Productos de la sección */}
-                  {!colapsada && (
-                    <div className="p-1.5 space-y-1">
+                  {abierta && (
+                    <div className="p-1.5 space-y-0.5">
                       {g.lista.map(p => {
                         const tildado = seleccion.has(p.id);
                         return (
                           <label key={p.id}
-                            className={`flex items-center gap-3 rounded-lg border px-3 py-1.5 cursor-pointer ${tildado ? 'border-gray-300 bg-gray-50' : 'border-transparent hover:bg-gray-50'}`}>
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer ${tildado ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
                             <input type="checkbox" checked={tildado} onChange={() => toggle(p.id)}
-                              className="w-4 h-4 accent-gray-700 flex-shrink-0" />
-                            <span className="flex-1 min-w-0 text-sm text-gray-800 truncate">{p.nombre}</span>
-                            <span className="text-sm font-bold text-gray-700 flex-shrink-0">
+                              className="w-5 h-5 accent-gray-700 flex-shrink-0" />
+                            <span className="flex-1 min-w-0 text-sm text-gray-800 break-words">{p.nombre}</span>
+                            <span className="text-sm font-bold text-gray-700 flex-shrink-0 tabular-nums">
                               {p.stock ?? 0}{p.unidad ? ` ${p.unidad}` : ''}
                             </span>
                           </label>
@@ -1220,16 +1254,27 @@ function ModalExportarStock({ productos, secciones, onClose, onExportado }) {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-3 sm:p-4 border-t flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 text-sm hover:bg-gray-100">Cancelar</button>
-          <div className="flex gap-2">
+        {/* Footer: resumen + acciones */}
+        <div className="border-t flex-shrink-0 bg-gray-50">
+          <div className="px-4 pt-2.5 pb-1 flex items-center justify-between text-sm">
+            <span className="text-gray-600">
+              <strong className="text-gray-800">{elegidos.length}</strong> producto(s)
+            </span>
+            <span className="text-gray-600">
+              <strong className="text-gray-800 tabular-nums">{totalUnidades}</strong> unidades
+            </span>
+          </div>
+          <div className="p-3 flex gap-2">
+            <button onClick={onClose}
+              className="px-4 py-3 border border-gray-300 rounded-xl text-gray-700 text-sm font-medium hover:bg-gray-100 flex-shrink-0">
+              Cancelar
+            </button>
             <button onClick={exportarExcel} disabled={elegidos.length === 0}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
               📊 Excel
             </button>
             <button onClick={exportarPDF} disabled={elegidos.length === 0}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
               📄 PDF
             </button>
           </div>
