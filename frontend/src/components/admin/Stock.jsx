@@ -477,87 +477,6 @@ function Stock() {
     }
   };
 
-  // ---- EXPORTAR INVENTARIO (Excel / PDF) ----
-  // Exporta la lista que se está viendo: respeta el filtro de categoría, el de
-  // stock bajo y, si hay texto en el buscador, esos resultados.
-  const nombreSeccion = (p) => {
-    if (p.stock_categoria_id == null) return 'Sin ubicación';
-    return secciones.find(s => s.id === p.stock_categoria_id)?.nombre || 'Sin ubicación';
-  };
-
-  const datosExport = () => {
-    const lista = (resultadosBusqueda ?? productosFiltrados)
-      .slice()
-      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
-    const columnas = ['Producto', 'Código', 'Categoría', 'Sección', 'Stock', 'Mínimo', 'Unidad', 'P. Costo', 'P. Venta', 'Estado'];
-    const filas = lista.map(p => {
-      const bajo = Number(p.stock) <= Number(p.stock_minimo ?? 0);
-      return [
-        p.nombre || '',
-        p.codigo || '',
-        p.categoria_nombre || 'Sin categoría',
-        nombreSeccion(p),
-        Number(p.stock ?? 0),
-        Number(p.stock_minimo ?? 0),
-        p.unidad || 'Uni',
-        Number(p.precio_costo ?? 0),
-        Number(p.precio_venta ?? 0),
-        bajo ? 'BAJO' : 'OK',
-      ];
-    });
-    return { columnas, filas, cantidad: lista.length };
-  };
-
-  const sufijoArchivo = () => {
-    const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
-    const cat = categoriaFiltro ? '_' + (categorias.find(c => String(c.id) === String(categoriaFiltro))?.nombre || 'cat').replace(/\s+/g, '-') : '';
-    return `${fecha}${cat}${soloBajos ? '_stock-bajo' : ''}`;
-  };
-
-  const exportarExcel = () => {
-    const { columnas, filas, cantidad } = datosExport();
-    if (cantidad === 0) { avisoError('No hay productos para exportar'); setMostrarExportar(false); return; }
-    const ws = XLSX.utils.aoa_to_sheet([columnas, ...filas]);
-    ws['!cols'] = [{ wch: 35 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 8 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    saveAs(new Blob([buf]), `inventario_${sufijoArchivo()}.xlsx`);
-    setMostrarExportar(false);
-    avisoOk(`✅ ${cantidad} producto(s) exportados a Excel`);
-  };
-
-  const exportarPDF = () => {
-    const { columnas, filas, cantidad } = datosExport();
-    if (cantidad === 0) { avisoError('No hay productos para exportar'); setMostrarExportar(false); return; }
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Inventario de stock', 14, 15);
-    doc.setFontSize(10);
-    const filtros = [
-      categoriaFiltro ? `Categoría: ${categorias.find(c => String(c.id) === String(categoriaFiltro))?.nombre || ''}` : null,
-      soloBajos ? 'Solo stock bajo' : null,
-    ].filter(Boolean).join(' · ');
-    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}${filtros ? '  —  ' + filtros : ''}  ·  ${cantidad} productos`, 14, 22);
-    autoTable(doc, {
-      head: [columnas],
-      body: filas,
-      startY: 28,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [22, 163, 74] },
-      // Resalta en rojo las filas con stock bajo (última columna = Estado)
-      didParseCell: (data) => {
-        if (data.section === 'body' && data.row.raw[9] === 'BAJO') {
-          data.cell.styles.textColor = [220, 38, 38];
-          data.cell.styles.fontStyle = 'bold';
-        }
-      },
-    });
-    doc.save(`inventario_${sufijoArchivo()}.pdf`);
-    setMostrarExportar(false);
-    avisoOk(`✅ ${cantidad} producto(s) exportados a PDF`);
-  };
-
   const propsFila = {
     organizar, secciones,
     onMover: moverProducto,
@@ -654,33 +573,11 @@ function Stock() {
             </button>
           )}
           {!organizar && (
-            <div className="relative">
-              <button onClick={() => setMostrarExportar(v => !v)}
-                title="Exportar el inventario a Excel o PDF"
-                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
-                📤 Exportar
-              </button>
-              {mostrarExportar && (
-                <>
-                  {/* Velo para cerrar al tocar afuera */}
-                  <div className="fixed inset-0 z-30" onClick={() => setMostrarExportar(false)} />
-                  <div className="absolute right-0 mt-1 z-40 w-52 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
-                    <p className="px-3 py-2 text-[11px] text-gray-400 border-b">
-                      Exporta lo que estás viendo
-                      {(categoriaFiltro || soloBajos) && ' (con filtros)'}
-                    </p>
-                    <button onClick={exportarExcel}
-                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-green-50 flex items-center gap-2">
-                      <span>📊</span> Excel (.xlsx)
-                    </button>
-                    <button onClick={exportarPDF}
-                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-red-50 flex items-center gap-2 border-t border-gray-100">
-                      <span>📄</span> PDF (.pdf)
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            <button onClick={() => setMostrarExportar(true)}
+              title="Exportar el inventario (nombre y cantidad) a Excel o PDF"
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+              📤 Exportar
+            </button>
           )}
           {organizar && (
             <button onClick={crearSeccion}
@@ -989,6 +886,15 @@ function Stock() {
           onGuardado={(cant) => { setMostrarAgregarStock(false); avisoOk(`✅ Stock sumado a ${cant} producto(s)`); cargarTodo(); }}
         />
       )}
+
+      {mostrarExportar && (
+        <ModalExportarStock
+          productos={productos}
+          categorias={categorias}
+          onClose={() => setMostrarExportar(false)}
+          onExportado={(cant, formato) => { setMostrarExportar(false); avisoOk(`✅ ${cant} producto(s) exportados a ${formato}`); }}
+        />
+      )}
     </div>
   );
 }
@@ -1101,6 +1007,176 @@ function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
             <button onClick={guardar} disabled={guardando || items.length === 0}
               className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">
               {guardando ? 'Guardando…' : '📥 Sumar al stock'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: EXPORTAR STOCK (Excel / PDF)
+// Permite tildar con checkboxes qué productos exportar. Solo exporta lo que
+// nos interesa del stock: NOMBRE del producto y CANTIDAD en existencia.
+// Se puede filtrar por nombre/código y por categoría, y seleccionar todos.
+// =============================================
+function ModalExportarStock({ productos, categorias, onClose, onExportado }) {
+  const [buscar, setBuscar] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [seleccion, setSeleccion] = useState(() => new Set(productos.map(p => p.id))); // por defecto: todos
+
+  useCerrarConAtras(true, onClose);
+
+  const lista = productos.filter(p => {
+    if (categoriaFiltro && String(p.categoria_id) !== String(categoriaFiltro)) return false;
+    if (buscar.trim()) {
+      const t = buscar.trim().toLowerCase();
+      if (!`${p.nombre || ''} ${p.codigo || ''}`.toLowerCase().includes(t)) return false;
+    }
+    return true;
+  });
+
+  const idsLista = lista.map(p => p.id);
+  const todosVisiblesTildados = idsLista.length > 0 && idsLista.every(id => seleccion.has(id));
+
+  const toggle = (id) => setSeleccion(prev => {
+    const s = new Set(prev);
+    s.has(id) ? s.delete(id) : s.add(id);
+    return s;
+  });
+
+  const tildarVisibles = () => setSeleccion(prev => {
+    const s = new Set(prev);
+    idsLista.forEach(id => s.add(id));
+    return s;
+  });
+  const destildarVisibles = () => setSeleccion(prev => {
+    const s = new Set(prev);
+    idsLista.forEach(id => s.delete(id));
+    return s;
+  });
+
+  // Productos elegidos (en cualquier filtro), ordenados por nombre
+  const elegidos = productos
+    .filter(p => seleccion.has(p.id))
+    .slice()
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+
+  const sufijo = () => new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+
+  // Solo dos columnas: nombre del producto y cantidad en existencia
+  const datos = () => {
+    const columnas = ['Producto', 'Cantidad'];
+    const filas = elegidos.map(p => [p.nombre || '', Number(p.stock ?? 0)]);
+    return { columnas, filas };
+  };
+
+  const exportarExcel = () => {
+    if (elegidos.length === 0) return;
+    const { columnas, filas } = datos();
+    const ws = XLSX.utils.aoa_to_sheet([columnas, ...filas]);
+    ws['!cols'] = [{ wch: 40 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf]), `stock_${sufijo()}.xlsx`);
+    onExportado(elegidos.length, 'Excel');
+  };
+
+  const exportarPDF = () => {
+    if (elegidos.length === 0) return;
+    const { columnas, filas } = datos();
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Stock - existencias', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}  ·  ${elegidos.length} productos`, 14, 22);
+    autoTable(doc, {
+      head: [columnas],
+      body: filas,
+      startY: 28,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [22, 163, 74] },
+      columnStyles: { 1: { halign: 'right', cellWidth: 30 } },
+    });
+    doc.save(`stock_${sufijo()}.pdf`);
+    onExportado(elegidos.length, 'PDF');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b bg-gray-700 text-white flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold">📤 Exportar stock</h3>
+            <p className="text-gray-200 text-xs">Elegí los productos. Se exporta nombre y cantidad en existencia.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-200 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        {/* Filtros */}
+        <div className="p-3 sm:p-4 border-b flex gap-2 flex-shrink-0">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+            <input value={buscar} onChange={(e) => setBuscar(e.target.value)} autoFocus
+              className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+              placeholder="Buscar por nombre o código..." />
+          </div>
+          <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}
+            className={`border rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 max-w-[160px] ${categoriaFiltro ? 'border-gray-500 bg-gray-50 font-medium' : 'border-gray-300 bg-white'}`}>
+            <option value="">🏷️ Categorías</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+
+        {/* Acciones de selección */}
+        <div className="px-3 sm:px-4 py-2 border-b flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+            <input type="checkbox" checked={todosVisiblesTildados}
+              onChange={(e) => e.target.checked ? tildarVisibles() : destildarVisibles()}
+              className="w-4 h-4 accent-gray-700" />
+            {buscar || categoriaFiltro ? 'Seleccionar los visibles' : 'Seleccionar todos'} ({lista.length})
+          </label>
+          <span className="text-xs text-gray-500 font-semibold">{seleccion.size} elegido(s)</span>
+        </div>
+
+        {/* Lista con checkboxes */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {lista.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-10">No se encontraron productos.</p>
+          ) : (
+            lista.slice(0, 1000).map(p => {
+              const tildado = seleccion.has(p.id);
+              return (
+                <label key={p.id}
+                  className={`flex items-center gap-3 rounded-xl border px-3 py-2 cursor-pointer ${tildado ? 'border-gray-400 bg-gray-50' : 'border-gray-200 bg-white'}`}>
+                  <input type="checkbox" checked={tildado} onChange={() => toggle(p.id)}
+                    className="w-4 h-4 accent-gray-700 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{p.categoria_nombre || 'Sin categoría'}</p>
+                  </div>
+                  <span className="text-sm font-bold text-gray-700 flex-shrink-0">
+                    {p.stock ?? 0}{p.unidad ? ` ${p.unidad}` : ''}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 sm:p-4 border-t flex items-center justify-between gap-2 flex-shrink-0 bg-gray-50">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 text-sm hover:bg-gray-100">Cancelar</button>
+          <div className="flex gap-2">
+            <button onClick={exportarExcel} disabled={elegidos.length === 0}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              📊 Excel
+            </button>
+            <button onClick={exportarPDF} disabled={elegidos.length === 0}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              📄 PDF
             </button>
           </div>
         </div>

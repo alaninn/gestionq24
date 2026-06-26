@@ -22,8 +22,8 @@ export const CHANGELOG = [
     fecha: '2026-06-26',
     titulo: 'Stock: exportar a Excel y PDF',
     cambios: [
-      { t: 'Nuevo botón "📤 Exportar" en la pantalla de Stock: descargá el inventario en Excel (.xlsx) o PDF. Incluye producto, código, categoría, sección, stock, mínimo, unidad, precios y estado (BAJO/OK).' },
-      { t: 'La exportación respeta los filtros que tengas activos (categoría, solo stock bajo y la búsqueda). En el PDF, los productos con stock bajo se resaltan en rojo.' },
+      { t: 'Nuevo botón "📤 Exportar" en la pantalla de Stock: abre un modal donde tildás con checkbox qué productos querés exportar (con buscador y filtro por categoría, y "seleccionar todos").' },
+      { t: 'El archivo exportado (Excel .xlsx o PDF) lleva solo lo del stock: nombre del producto y cantidad en existencia.' },
     ],
   },
   {
