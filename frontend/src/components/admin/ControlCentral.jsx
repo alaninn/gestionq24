@@ -189,7 +189,7 @@ export default function ControlCentral() {
               <p className="text-emerald-200 text-sm font-medium uppercase tracking-wider">Ganancia neta real del período</p>
               <p className={`text-4xl sm:text-5xl font-bold mt-2 ${d.ganancia_neta < 0 ? 'text-red-300' : 'text-white'}`}>{fmt(d.ganancia_neta)}</p>
               <p className="text-emerald-100/70 text-xs mt-2">
-                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · menos costo{d.facturacion_activa ? ', IVA' : ''} y gastos de la caja del turno (lo pagado con dinero/MP del local no cuenta)
+                {d.diasPeriodo} día(s) · Vendido {fmt(d.totalVendido_sin_cigarrillos ?? d.totalVendido)} (sin cigarrillos) · menos costo{d.facturacion_activa ? ', IVA' : ''} y gastos de la caja del turno (no incluye lo pagado con dinero/MP del local)
               </p>
               {/* Estimación: descuenta los gastos fijos prorrateados (especulación) */}
               <div className="mt-3 inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5">
@@ -245,10 +245,10 @@ export default function ControlCentral() {
               <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
                 <h3 className="font-bold text-gray-800">🚬 Cigarrillos (aparte)</h3>
                 <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                  No entran en la ganancia de arriba; su plata sí está en el disponible
+                  No se incluyen en la ganancia de arriba; ese dinero sí forma parte del disponible
                 </span>
               </div>
-              <p className="text-xs text-gray-400 mb-3">Sirve para saber cuánto reponer (sin descuento; el virtual lleva +10%).</p>
+              <p className="text-xs text-gray-400 mb-3">Referencia de cuánto hay que reponer.</p>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="rounded-xl p-4 bg-amber-50 border border-amber-200">
                   <p className="text-amber-700 text-xs font-semibold">📦 Costo a reponer</p>
@@ -259,7 +259,7 @@ export default function ControlCentral() {
                   <p className="text-xl font-bold text-gray-800 mt-0.5">{fmt(d.cigarrillos.venta_efectivo)}</p>
                 </div>
                 <div className="rounded-xl p-4 bg-gray-50 border border-gray-200">
-                  <p className="text-gray-500 text-xs font-semibold">📲 Venta virtual (+10%)</p>
+                  <p className="text-gray-500 text-xs font-semibold">📲 Venta virtual</p>
                   <p className="text-xl font-bold text-gray-800 mt-0.5">{fmt(d.cigarrillos.venta_virtual)}</p>
                 </div>
                 <div className="rounded-xl p-4 bg-emerald-50 border border-emerald-200">
@@ -489,7 +489,7 @@ function ModalSaldoInicial({ onClose, onGuardado }) {
         <div className="p-5 space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
             Contá la plata real que tenés ahora y cargala acá. El disponible se <b>reinicia</b> con
-            estos montos y empieza a acumular <b>desde este momento</b> (lo de antes no se cuenta).
+            estos montos y empieza a acumular <b>desde este momento</b>.
             {ultimoReset && (
               <p className="text-blue-500 mt-1">Último reset: {new Date(ultimoReset).toLocaleString('es-AR')}</p>
             )}

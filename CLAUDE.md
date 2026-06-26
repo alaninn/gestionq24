@@ -133,3 +133,19 @@ ssh -o StrictHostKeyChecking=no -p 5041 root@66.97.35.172 \
   sistema.
 - `backend/.env` NO se versiona (tiene secretos); `actualizar.sh` lo respalda y
   restaura en cada actualización.
+
+---
+
+## ✍️ Estilo de textos y comentarios (IMPORTANTE)
+
+- **Textos de la interfaz (los que ve el usuario)**: siempre redactados para el
+  usuario, dándole información útil. NUNCA dejar notas dirigidas al desarrollador
+  dentro de la UI. Ejemplos de lo que NO va: "(lo de antes no se cuenta)", un
+  "+10%" hardcodeado como recordatorio, "ojo que…", etc. Quedan poco profesionales.
+- **Comentarios internos del código** (los que el usuario no ve): SIN emojis. Son
+  descripciones técnicas; van en texto plano. Los emojis que sí sirven en la
+  interfaz para el usuario (botones, títulos, tarjetas) se mantienen normalmente.
+- **Changelog** (`frontend/src/changelog.js`): cada entrada se redacta como una
+  mejora o cambio para el usuario, no como nota técnica dirigida al dev (nada de
+  "revertido", "bug", "NOTA:", nombres de funciones, etc.). Esto aplica de acá en
+  adelante; el historial viejo no se reescribe.

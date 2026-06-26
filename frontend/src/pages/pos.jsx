@@ -2187,6 +2187,8 @@ function POS() {
   const [descuentoActivo, setDescuentoActivo] = useState(false);
   const [recargoActivo, setRecargoActivo] = useState(false);
   const [redondeoVenta, setRedondeoVenta] = useState(0);
+  // En modo "editable", el % de descuento lo escribe el cajero (con tope = descuento_maximo)
+  const [descuentoPctManual, setDescuentoPctManual] = useState('');
 
   // Estados para facturación electrónica (se resetean por venta)
   const [facturacionElectronica, setFacturacionElectronica] = useState(false);
@@ -2292,6 +2294,7 @@ function POS() {
   useEffect(() => {
     setDescuentoActivo(false);
     setRecargoActivo(false);
+    setDescuentoPctManual('');
     setRedondeoVenta(0);
   }, [pestanaActiva]);
 
@@ -2598,6 +2601,7 @@ useEffect(() => {
   const resetearAjustes = () => {
     setDescuentoActivo(false);
     setRecargoActivo(false);
+    setDescuentoPctManual('');
     setRedondeoVenta(0);
   };
 
@@ -2612,7 +2616,14 @@ useEffect(() => {
   const pctRecargo = parseFloat(config?.recargo_general) || 0;
   const multiploRedondeo = parseInt(config?.redondeo_precios) || 0;
 
-  const montoDescuento = descuentoActivo ? Math.round(totalBruto * pctDescuento / 100) : 0;
+  // Modo del descuento manual: "editable" deja que el cajero tipee el % (con tope =
+  // descuento_maximo); "fijo" aplica directo ese %.
+  const descEditable = config?.descuento_modo === 'editable';
+  const pctDescManual = Math.min(Math.max(parseFloat(descuentoPctManual) || 0, 0), pctDescuento);
+  const pctDescAplicado = descEditable ? pctDescManual : pctDescuento;
+  const descAplicado = descEditable ? pctDescManual > 0 : descuentoActivo;
+
+  const montoDescuento = descAplicado ? Math.round(totalBruto * pctDescAplicado / 100) : 0;
   const montoRecargo = recargoActivo ? Math.round(totalBruto * pctRecargo / 100) : 0;
   const totalSinRedondeo = totalBruto - montoDescuento + montoRecargo;
   const total = totalSinRedondeo + redondeoVenta;
@@ -3430,12 +3441,27 @@ const imprimirTicketDesdeModal = () => {
                 return (
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
                     {pctDescuento > 0 && (
-                      <button onClick={() => { setDescuentoActivo(v => !v); setRedondeoVenta(0); }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                        style={descuentoActivo ? { background: '#22c55e', border: '1px solid #22c55e', color: '#fff' } : estiloInactivo}>
-                        − Desc {pctDescuento}%
-                        {descuentoActivo && <span className="opacity-90">({fmt(montoDescuento)})</span>}
-                      </button>
+                      descEditable ? (
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold" style={estiloInactivo}>
+                          <span>− Desc</span>
+                          <input
+                            type="number" inputMode="decimal" min="0" max={pctDescuento} step="0.5"
+                            value={descuentoPctManual}
+                            onChange={(e) => { setDescuentoPctManual(e.target.value); setRedondeoVenta(0); }}
+                            placeholder="0"
+                            className="w-12 text-center rounded-md px-1 py-0.5 outline-none"
+                            style={{ background: oscuro ? 'rgba(255,255,255,0.12)' : '#f1f5f9', color: 'inherit', border: '1px solid transparent' }} />
+                          <span>% (máx {pctDescuento}%)</span>
+                          {montoDescuento > 0 && <span className="opacity-90 text-green-500">({fmt(montoDescuento)})</span>}
+                        </div>
+                      ) : (
+                        <button onClick={() => { setDescuentoActivo(v => !v); setRedondeoVenta(0); }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                          style={descuentoActivo ? { background: '#22c55e', border: '1px solid #22c55e', color: '#fff' } : estiloInactivo}>
+                          − Desc {pctDescuento}%
+                          {descuentoActivo && <span className="opacity-90">({fmt(montoDescuento)})</span>}
+                        </button>
+                      )
                     )}
                     {pctRecargo > 0 && (
                       <button onClick={() => { setRecargoActivo(v => !v); setRedondeoVenta(0); }}

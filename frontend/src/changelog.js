@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.24.0';
+export const VERSION_ACTUAL = '2.24.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.24.1',
+    fecha: '2026-06-26',
+    titulo: 'Descuento manual editable en el Punto de Venta',
+    cambios: [
+      { t: 'Cuando en Configuración tenés el descuento en modo "Editable", ahora en el Punto de Venta aparece un campo para escribir el porcentaje de descuento que quieras en cada venta, hasta el máximo configurado. En modo "Fijo" sigue funcionando con el botón directo como antes.' },
+      { t: 'Se mejoraron algunos textos del Centro de Control para que sean más claros.' },
+    ],
+  },
   {
     version: '2.24.0',
     fecha: '2026-06-26',
