@@ -90,6 +90,34 @@ rutas `GET /errores/reporte` (descargar) y `POST /errores/subir-git` (subir).
 
 ---
 
+## 🔌 Conexión al VPS (producción) y despliegue
+
+Los datos para conectarse están en el archivo **`.vps-credenciales`** (raíz del
+proyecto, **ignorado por git** — tiene la contraseña). Resumen:
+
+- **Host**: `66.97.35.172` (`vps-5839248-x.dattaweb.com`) · **Puerto**: `5041` · **Usuario**: `root`
+- **Contraseña**: en `.vps-credenciales` (variable `VPS_PASS`).
+- **Ruta del proyecto en el VPS**: `/root/gestionq24`
+
+### Cómo me conecto / despliego (Windows + Git Bash)
+
+SSH no acepta la contraseña por stdin; se usa el truco de `SSH_ASKPASS`:
+
+```bash
+export VPS_PASS="$(grep '^VPS_PASS=' .vps-credenciales | cut -d= -f2-)"
+printf '#!/bin/sh\necho "$VPS_PASS"\n' > /tmp/askpass.sh && chmod +x /tmp/askpass.sh
+export SSH_ASKPASS=/tmp/askpass.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0
+
+ssh -o StrictHostKeyChecking=no -p 5041 root@66.97.35.172 \
+  "bash /root/gestionq24/actualizar.sh" < /dev/null
+```
+
+> Tras `git push` a `master`, desplegar SIEMPRE con `actualizar.sh`. Verificar en la
+> salida que pm2 quedó `online` y, si se tocó facturación, que el out.log muestre
+> "Comprobante emitido con CAE real".
+
+---
+
 ## 🛠️ Cómo trabajar en este repo (resumen)
 
 - Stack: React 18 + Vite (frontend) · Node + Express + PostgreSQL (backend).
