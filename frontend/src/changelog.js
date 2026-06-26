@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.23.0';
+export const VERSION_ACTUAL = '2.23.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.23.1',
+    fecha: '2026-06-26',
+    titulo: 'Fix: anular/editar ventas desde el panel de superadmin',
+    super: true,
+    cambios: [
+      { t: 'Se corrigió un error ("negocio_id requerido") al anular, editar o reimprimir una venta cuando el superadmin está operando dentro de otro negocio desde Reportes.', super: true },
+    ],
+  },
   {
     version: '2.23.0',
     fecha: '2026-06-26',

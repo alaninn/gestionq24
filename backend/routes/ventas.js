@@ -266,20 +266,19 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
     try {
         const { id } = req.params;
         const { items, metodo_pago, descuento, recargo, total, cliente_id, es_fiado } = req.body;
-        
+
+        // Prioriza req.negocio_id para que el superadmin opere sobre el negocio que está viendo.
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
         // Validar que el turno esté abierto
-        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, req.usuario.negocio_id]);
+        const venta = await db.query('SELECT turno_id FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocio_id]);
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
-        
-        // Validar que el turno esté abierto
-        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, req.usuario.negocio_id]);
+
+        const turno = await db.query('SELECT estado FROM turnos WHERE id = $1 AND negocio_id = $2', [venta.rows[0].turno_id, negocio_id]);
         if (turno.rows.length === 0 || turno.rows[0].estado !== 'abierto') {
             return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
         }
-        
-        // Actualizar venta
-        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
-        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
        await db.query('BEGIN');
         try {
@@ -334,7 +333,8 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
         const { id } = req.params;
         
         // Convertir negocio_id a entero válido (maneja formato con punto como separador de miles)
-        const negocioId = parseInt(String(req.usuario.negocio_id).replace(/\./g, '').replace(',', '.'));
+        // Prioriza req.negocio_id para que el superadmin pueda operar sobre el negocio que está viendo.
+        const negocioId = parseInt(String(req.negocio_id || req.usuario?.negocio_id).replace(/\./g, '').replace(',', '.'));
         if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
         
         // Validar que el turno esté abierto y la venta pertenezca al turno actual
@@ -395,9 +395,11 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
 router.get('/:id/ticket', async (req, res) => {
     try {
         const { id } = req.params;
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const venta = await db.query(
             'SELECT v.*, c.nombre AS cliente_nombre FROM ventas v LEFT JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1 AND v.negocio_id = $2',
-            [id, req.usuario.negocio_id]
+            [id, negocio_id]
         );
         if (venta.rows.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
 
