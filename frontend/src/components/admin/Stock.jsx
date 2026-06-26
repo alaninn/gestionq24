@@ -12,6 +12,10 @@ import useCerrarConAtras from '../../hooks/useCerrarConAtras';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const SIN_UBICACION = 'sin';
 
@@ -143,6 +147,9 @@ function Stock() {
 
   // Modal Agregar stock (recepción de mercadería: suma existencias al stock actual)
   const [mostrarAgregarStock, setMostrarAgregarStock] = useState(false);
+
+  // Menú de exportación (Excel / PDF) del inventario filtrado
+  const [mostrarExportar, setMostrarExportar] = useState(false);
 
   // Modal Ajustar (flujo principal del inventario: tocar Ajustar y escribir la cantidad)
   const [mostrarAjustar, setMostrarAjustar] = useState(false);
@@ -470,6 +477,87 @@ function Stock() {
     }
   };
 
+  // ---- EXPORTAR INVENTARIO (Excel / PDF) ----
+  // Exporta la lista que se está viendo: respeta el filtro de categoría, el de
+  // stock bajo y, si hay texto en el buscador, esos resultados.
+  const nombreSeccion = (p) => {
+    if (p.stock_categoria_id == null) return 'Sin ubicación';
+    return secciones.find(s => s.id === p.stock_categoria_id)?.nombre || 'Sin ubicación';
+  };
+
+  const datosExport = () => {
+    const lista = (resultadosBusqueda ?? productosFiltrados)
+      .slice()
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    const columnas = ['Producto', 'Código', 'Categoría', 'Sección', 'Stock', 'Mínimo', 'Unidad', 'P. Costo', 'P. Venta', 'Estado'];
+    const filas = lista.map(p => {
+      const bajo = Number(p.stock) <= Number(p.stock_minimo ?? 0);
+      return [
+        p.nombre || '',
+        p.codigo || '',
+        p.categoria_nombre || 'Sin categoría',
+        nombreSeccion(p),
+        Number(p.stock ?? 0),
+        Number(p.stock_minimo ?? 0),
+        p.unidad || 'Uni',
+        Number(p.precio_costo ?? 0),
+        Number(p.precio_venta ?? 0),
+        bajo ? 'BAJO' : 'OK',
+      ];
+    });
+    return { columnas, filas, cantidad: lista.length };
+  };
+
+  const sufijoArchivo = () => {
+    const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+    const cat = categoriaFiltro ? '_' + (categorias.find(c => String(c.id) === String(categoriaFiltro))?.nombre || 'cat').replace(/\s+/g, '-') : '';
+    return `${fecha}${cat}${soloBajos ? '_stock-bajo' : ''}`;
+  };
+
+  const exportarExcel = () => {
+    const { columnas, filas, cantidad } = datosExport();
+    if (cantidad === 0) { avisoError('No hay productos para exportar'); setMostrarExportar(false); return; }
+    const ws = XLSX.utils.aoa_to_sheet([columnas, ...filas]);
+    ws['!cols'] = [{ wch: 35 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf]), `inventario_${sufijoArchivo()}.xlsx`);
+    setMostrarExportar(false);
+    avisoOk(`✅ ${cantidad} producto(s) exportados a Excel`);
+  };
+
+  const exportarPDF = () => {
+    const { columnas, filas, cantidad } = datosExport();
+    if (cantidad === 0) { avisoError('No hay productos para exportar'); setMostrarExportar(false); return; }
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Inventario de stock', 14, 15);
+    doc.setFontSize(10);
+    const filtros = [
+      categoriaFiltro ? `Categoría: ${categorias.find(c => String(c.id) === String(categoriaFiltro))?.nombre || ''}` : null,
+      soloBajos ? 'Solo stock bajo' : null,
+    ].filter(Boolean).join(' · ');
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}${filtros ? '  —  ' + filtros : ''}  ·  ${cantidad} productos`, 14, 22);
+    autoTable(doc, {
+      head: [columnas],
+      body: filas,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [22, 163, 74] },
+      // Resalta en rojo las filas con stock bajo (última columna = Estado)
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.row.raw[9] === 'BAJO') {
+          data.cell.styles.textColor = [220, 38, 38];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+    doc.save(`inventario_${sufijoArchivo()}.pdf`);
+    setMostrarExportar(false);
+    avisoOk(`✅ ${cantidad} producto(s) exportados a PDF`);
+  };
+
   const propsFila = {
     organizar, secciones,
     onMover: moverProducto,
@@ -564,6 +652,35 @@ function Stock() {
               className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
               📥 Agregar stock
             </button>
+          )}
+          {!organizar && (
+            <div className="relative">
+              <button onClick={() => setMostrarExportar(v => !v)}
+                title="Exportar el inventario a Excel o PDF"
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+                📤 Exportar
+              </button>
+              {mostrarExportar && (
+                <>
+                  {/* Velo para cerrar al tocar afuera */}
+                  <div className="fixed inset-0 z-30" onClick={() => setMostrarExportar(false)} />
+                  <div className="absolute right-0 mt-1 z-40 w-52 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+                    <p className="px-3 py-2 text-[11px] text-gray-400 border-b">
+                      Exporta lo que estás viendo
+                      {(categoriaFiltro || soloBajos) && ' (con filtros)'}
+                    </p>
+                    <button onClick={exportarExcel}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-green-50 flex items-center gap-2">
+                      <span>📊</span> Excel (.xlsx)
+                    </button>
+                    <button onClick={exportarPDF}
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-red-50 flex items-center gap-2 border-t border-gray-100">
+                      <span>📄</span> PDF (.pdf)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {organizar && (
             <button onClick={crearSeccion}

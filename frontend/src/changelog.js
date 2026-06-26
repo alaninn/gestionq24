@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.19.2';
+export const VERSION_ACTUAL = '2.20.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.20.0',
+    fecha: '2026-06-26',
+    titulo: 'Stock: exportar a Excel y PDF',
+    cambios: [
+      { t: 'Nuevo botón "📤 Exportar" en la pantalla de Stock: descargá el inventario en Excel (.xlsx) o PDF. Incluye producto, código, categoría, sección, stock, mínimo, unidad, precios y estado (BAJO/OK).' },
+      { t: 'La exportación respeta los filtros que tengas activos (categoría, solo stock bajo y la búsqueda). En el PDF, los productos con stock bajo se resaltan en rojo.' },
+    ],
+  },
   {
     version: '2.19.2',
     fecha: '2026-06-25',
