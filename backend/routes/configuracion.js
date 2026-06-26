@@ -120,4 +120,105 @@ router.put('/', soloAdmin, async (req, res) => {
     }
 });
 
+// =============================================
+// POST /reiniciar-datos
+// Borra de forma selectiva los datos del negocio (estadísticas, gastos/compras,
+// caja, fiados, comprobantes AFIP y/o productos), dejando todo en cero, sin tocar
+// el catálogo salvo que se pida explícitamente. Es IRREVERSIBLE. Solo admin.
+// Requiere body.confirmacion === 'ELIMINAR'. Todo en una transacción y scoping
+// por negocio_id. Respeta las dependencias de claves foráneas.
+// =============================================
+router.post('/reiniciar-datos', soloAdmin, async (req, res) => {
+    const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+    if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+    const { confirmacion, borrar } = req.body || {};
+    if (confirmacion !== 'ELIMINAR') {
+        return res.status(400).json({ error: 'Tenés que escribir ELIMINAR para confirmar.' });
+    }
+    const sel = borrar || {};
+    // Resolver dependencias por FKs: borrar productos o caja obliga a borrar ventas
+    const borrarVentas = !!sel.ventas || !!sel.productos || !!sel.caja;
+    const borrarGastos = !!sel.gastos;
+    const borrarCaja = !!sel.caja;
+    const borrarFiados = !!sel.fiados;
+    const borrarComprobantes = !!sel.comprobantes;
+    const borrarProductos = !!sel.productos;
+
+    if (!borrarVentas && !borrarGastos && !borrarCaja && !borrarFiados && !borrarComprobantes && !borrarProductos) {
+        return res.status(400).json({ error: 'No seleccionaste nada para borrar.' });
+    }
+
+    const borrado = {};
+    try {
+        await db.query('BEGIN');
+
+        // Si se borran comprobantes pero NO las ventas, hay que soltar la FK de ventas
+        if (borrarComprobantes && !borrarVentas) {
+            await db.query(
+                'UPDATE ventas SET comprobante_electronico_id = NULL WHERE negocio_id = $1',
+                [negocio_id]
+            );
+        }
+
+        // 1) Ventas y estadísticas
+        if (borrarVentas) {
+            const vi = await db.query('DELETE FROM venta_items WHERE negocio_id = $1', [negocio_id]);
+            const ve = await db.query('DELETE FROM ventas WHERE negocio_id = $1', [negocio_id]);
+            const hs = await db.query('DELETE FROM historial_stock WHERE negocio_id = $1', [negocio_id]);
+            borrado.venta_items = vi.rowCount;
+            borrado.ventas = ve.rowCount;
+            borrado.historial_stock = hs.rowCount;
+        }
+
+        // 2) Gastos y compras (+ saldos de proveedores a 0)
+        if (borrarGastos) {
+            const ga = await db.query('DELETE FROM gastos WHERE negocio_id = $1', [negocio_id]);
+            await db.query('UPDATE proveedores SET saldo_deuda = 0, saldo_a_favor = 0 WHERE negocio_id = $1', [negocio_id]);
+            borrado.gastos = ga.rowCount;
+        }
+
+        // 3) Caja, turnos y retiros
+        if (borrarCaja) {
+            const tu = await db.query('DELETE FROM turno_usuarios WHERE negocio_id = $1', [negocio_id]);
+            const tu2 = await db.query('DELETE FROM turnos WHERE negocio_id = $1', [negocio_id]);
+            const re = await db.query('DELETE FROM retiros WHERE negocio_id = $1', [negocio_id]);
+            borrado.turno_usuarios = tu.rowCount;
+            borrado.turnos = tu2.rowCount;
+            borrado.retiros = re.rowCount;
+        }
+
+        // 4) Fiados / cuentas corrientes (+ saldo de clientes a 0)
+        if (borrarFiados) {
+            const pd = await db.query('DELETE FROM pagos_deuda WHERE negocio_id = $1', [negocio_id]);
+            await db.query('UPDATE clientes SET saldo_deuda = 0 WHERE negocio_id = $1', [negocio_id]);
+            borrado.pagos_deuda = pd.rowCount;
+        }
+
+        // 5) Comprobantes electrónicos AFIP
+        if (borrarComprobantes) {
+            const ce = await db.query('DELETE FROM comprobantes_electronicos WHERE negocio_id = $1', [negocio_id]);
+            borrado.comprobantes_electronicos = ce.rowCount;
+        }
+
+        // 6) Borrado total de productos (deja categorías y secciones de stock)
+        if (borrarProductos) {
+            await db.query('DELETE FROM producto_codigos WHERE negocio_id = $1', [negocio_id]);
+            // producto_combo puede no existir todavía (Feature 2). Borrado defensivo.
+            try {
+                await db.query('DELETE FROM producto_combo WHERE negocio_id = $1', [negocio_id]);
+            } catch (e) { /* tabla aún no creada */ }
+            const pr = await db.query('DELETE FROM productos WHERE negocio_id = $1', [negocio_id]);
+            borrado.productos = pr.rowCount;
+        }
+
+        await db.query('COMMIT');
+        res.json({ ok: true, borrado });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('Error al reiniciar datos:', error);
+        res.status(500).json({ error: 'Error al reiniciar los datos: ' + (error.message || '') });
+    }
+});
+
 module.exports = router;

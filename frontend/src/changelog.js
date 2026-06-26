@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.20.0';
+export const VERSION_ACTUAL = '2.21.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.21.0',
+    fecha: '2026-06-26',
+    titulo: 'Configuración: reiniciar datos del negocio',
+    cambios: [
+      { t: 'En Configuración → Zona de Peligro, nuevo botón "Reiniciar datos del negocio": un modal donde elegís con checkbox qué borrar (ventas y estadísticas, gastos y compras, caja/turnos/retiros, fiados). No toca productos, categorías ni secciones.' },
+      { t: 'Opciones sensibles aparte (en rojo): borrar las facturas AFIP y/o el borrado total de productos. Hay que escribir "ELIMINAR" para confirmar. Es irreversible y solo lo puede hacer el administrador.' },
+    ],
+  },
   {
     version: '2.20.0',
     fecha: '2026-06-26',

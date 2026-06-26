@@ -54,6 +54,7 @@ function Configuracion() {
   const [error, setError] = useState('');
   const [pestanaActiva, setPestanaActiva] = useState('negocio');
   const [mostrarPin, setMostrarPin] = useState(false);
+  const [mostrarReinicioDatos, setMostrarReinicioDatos] = useState(false);
   const { cambiarColor } = useTema();
   const { usuario } = useAuth();
 
@@ -938,6 +939,24 @@ function Configuracion() {
                     Reiniciar ajustes
                   </button>
                 </div>
+
+                {(usuario?.rol === 'admin' || usuario?.rol === 'superadmin') && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-3">
+                    <p className="text-sm text-red-700 font-medium">🗑️ Reiniciar datos del negocio</p>
+                    <p className="text-xs text-red-500 mt-1 mb-3">
+                      Deja en cero las estadísticas, ventas, gastos, compras, caja y fiados (podés
+                      elegir qué borrar). Opcionalmente también productos y facturas AFIP.
+                      <strong> Es irreversible.</strong> No toca categorías ni secciones.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarReinicioDatos(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                    >
+                      Reiniciar datos…
+                    </button>
+                  </div>
+                )}
               </div>
 
 
@@ -990,6 +1009,141 @@ function Configuracion() {
        </div>
       </div>
 
+      {mostrarReinicioDatos && (
+        <ModalReinicioDatos onClose={() => setMostrarReinicioDatos(false)} />
+      )}
+
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: REINICIAR DATOS DEL NEGOCIO
+// Borrado selectivo e irreversible. Checkboxes por categoría, dependencias
+// auto-tildadas, opciones sensibles en rojo, y hay que escribir ELIMINAR.
+// =============================================
+const CATEGORIAS_REINICIO = [
+  { clave: 'ventas', titulo: 'Ventas y estadísticas', detalle: 'Todas las ventas, sus ítems y el historial de movimientos de stock. No cambia el stock actual.' },
+  { clave: 'gastos', titulo: 'Gastos y compras', detalle: 'Todos los gastos y compras. Pone en cero los saldos de proveedores.' },
+  { clave: 'caja', titulo: 'Caja, turnos y retiros', detalle: 'Cierres de caja / turnos y retiros de dinero.' },
+  { clave: 'fiados', titulo: 'Fiados / cuentas corrientes', detalle: 'Pagos de deuda y pone en cero el saldo de cada cliente fiado.' },
+];
+const CATEGORIAS_SENSIBLES = [
+  { clave: 'comprobantes', titulo: 'Comprobantes AFIP (facturas con CAE)', detalle: 'Borra las facturas electrónicas emitidas. Son registros fiscales.' },
+  { clave: 'productos', titulo: 'Borrado TOTAL de productos', detalle: 'Borra todos los productos y sus códigos. Deja categorías y secciones. Obliga a borrar también las ventas.' },
+];
+
+function ModalReinicioDatos({ onClose }) {
+  const [sel, setSel] = useState({});
+  const [confirmacion, setConfirmacion] = useState('');
+  const [procesando, setProcesando] = useState(false);
+  const [error, setError] = useState('');
+  const [resultado, setResultado] = useState(null);
+
+  // Dependencias por claves foráneas: productos o caja obligan a borrar ventas.
+  const efectivo = {
+    ...sel,
+    ventas: !!sel.ventas || !!sel.productos || !!sel.caja,
+  };
+  const algoElegido = Object.values(efectivo).some(Boolean);
+  const habilitado = algoElegido && confirmacion.trim().toUpperCase() === 'ELIMINAR' && !procesando;
+
+  const toggle = (clave) => setSel(prev => ({ ...prev, [clave]: !prev[clave] }));
+
+  const ejecutar = async () => {
+    setError('');
+    setProcesando(true);
+    try {
+      const res = await api.post('/api/configuracion/reiniciar-datos', {
+        confirmacion: 'ELIMINAR',
+        borrar: efectivo,
+      });
+      setResultado(res.data.borrado || {});
+    } catch (e) {
+      setError(e.response?.data?.error || 'Error al reiniciar los datos');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const Item = ({ cat, sensible }) => {
+    const forzado = cat.clave === 'ventas' && (sel.productos || sel.caja);
+    const tildado = !!efectivo[cat.clave];
+    return (
+      <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${
+        tildado ? (sensible ? 'border-red-400 bg-red-50' : 'border-gray-400 bg-gray-50') : 'border-gray-200 bg-white'
+      } ${forzado ? 'opacity-90' : ''}`}>
+        <input type="checkbox" checked={tildado} disabled={forzado}
+          onChange={() => toggle(cat.clave)}
+          className={`w-5 h-5 mt-0.5 flex-shrink-0 ${sensible ? 'accent-red-600' : 'accent-gray-700'}`} />
+        <div className="min-w-0">
+          <p className={`text-sm font-semibold ${sensible ? 'text-red-700' : 'text-gray-800'}`}>{cat.titulo}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{cat.detalle}</p>
+          {forzado && <p className="text-[11px] text-amber-600 mt-1">Se borra obligatoriamente junto con productos/caja.</p>}
+        </div>
+      </label>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-white w-full sm:max-w-lg h-[100dvh] sm:h-auto sm:max-h-[92vh] sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b bg-red-600 text-white flex-shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold">🗑️ Reiniciar datos del negocio</h3>
+            <p className="text-red-100 text-xs">Acción irreversible. Elegí qué borrar.</p>
+          </div>
+          <button onClick={onClose} className="text-red-100 hover:text-white text-3xl leading-none w-10 h-10 flex items-center justify-center flex-shrink-0">×</button>
+        </div>
+
+        {resultado ? (
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            <p className="text-green-700 font-semibold">✅ Datos reiniciados correctamente.</p>
+            <div className="bg-gray-50 border rounded-xl p-3 text-sm text-gray-700 space-y-1">
+              {Object.keys(resultado).length === 0 ? (
+                <p className="text-gray-400">Nada que borrar.</p>
+              ) : Object.entries(resultado).map(([k, v]) => (
+                <div key={k} className="flex justify-between"><span className="text-gray-500">{k}</span><strong>{v}</strong></div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">Conviene recargar la página para ver todo en cero.</p>
+            <button onClick={() => window.location.reload()}
+              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold">
+              Recargar
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <p className="text-xs text-gray-500 mb-1">Estadísticas e historiales</p>
+              {CATEGORIAS_REINICIO.map(cat => <Item key={cat.clave} cat={cat} />)}
+              <p className="text-xs text-red-500 font-semibold mt-3 mb-1">⚠️ Opciones sensibles</p>
+              {CATEGORIAS_SENSIBLES.map(cat => <Item key={cat.clave} cat={cat} sensible />)}
+
+              {error && <div className="bg-red-100 border border-red-300 text-red-700 px-3 py-2 rounded-xl text-sm mt-2">❌ {error}</div>}
+            </div>
+
+            <div className="border-t p-4 space-y-3 flex-shrink-0 bg-gray-50">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Para confirmar, escribí <strong>ELIMINAR</strong>:</label>
+                <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={onClose}
+                  className="px-4 py-3 border border-gray-300 rounded-xl text-gray-700 text-sm font-medium hover:bg-gray-100">
+                  Cancelar
+                </button>
+                <button onClick={ejecutar} disabled={!habilitado}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+                  {procesando ? 'Borrando…' : 'Borrar lo seleccionado'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
