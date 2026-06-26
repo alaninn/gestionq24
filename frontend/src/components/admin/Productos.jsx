@@ -134,6 +134,7 @@ const [categorias, setCategorias] = useState([]);
     precio_costo: '', margen_ganancia: '', alicuota_iva: '21',
     precio_venta: '', precio_mayorista: '', margen_mayorista: '',
     stock: '0', stock_minimo: '0', unidad: 'Uni',
+    es_combinado: false, componentes: [],
   });
 
   useEffect(() => { cargarProductos(); cargarCategorias(); cargarContadorRevisar(); }, []);
@@ -290,7 +291,7 @@ const cargarCategorias = async () => {
   };
 
   const abrirFormularioNuevo = () => {
-    setFormulario({ codigo: '', nombre: '', categoria_id: '', precio_costo: '', margen_ganancia: '', alicuota_iva: '21', precio_venta: '', precio_mayorista: '', margen_mayorista: '', stock: '0', stock_minimo: '0', unidad: 'Uni' });
+    setFormulario({ codigo: '', nombre: '', categoria_id: '', precio_costo: '', margen_ganancia: '', alicuota_iva: '21', precio_venta: '', precio_mayorista: '', margen_mayorista: '', stock: '0', stock_minimo: '0', unidad: 'Uni', es_combinado: false, componentes: [] });
     setProductoEditando(null);
     setError('');
     setMostrarFormulario(true);
@@ -307,6 +308,7 @@ const cargarCategorias = async () => {
       alicuota_iva: producto.alicuota_iva || '21', precio_venta: producto.precio_venta,
       precio_mayorista: producto.precio_mayorista || '', margen_mayorista: '',
       stock: producto.stock, stock_minimo: producto.stock_minimo, unidad: producto.unidad,
+      es_combinado: !!producto.es_combinado, componentes: [],
     });
     setProductoEditando(producto.id);
     setError('');
@@ -319,6 +321,18 @@ const cargarCategorias = async () => {
       .then(res => setCodigos(res.data))
       .catch(() => {})
       .finally(() => setCargandoCodigos(false));
+    // Si es combinado, traer sus componentes para poder editarlos
+    if (producto.es_combinado) {
+      api.get(`/api/productos/${producto.id}`)
+        .then(res => {
+          const comps = (res.data.componentes || []).map(c => ({
+            producto_id: c.producto_id, cantidad: c.cantidad,
+            nombre: c.nombre, precio_costo: c.precio_costo,
+          }));
+          setFormulario(prev => ({ ...prev, componentes: comps }));
+        })
+        .catch(() => {});
+    }
   };
 
   // Abre el formulario de "nuevo producto" precargado con los datos de otro.
@@ -338,6 +352,7 @@ const cargarCategorias = async () => {
       stock: '0',
       stock_minimo: producto.stock_minimo,
       unidad: producto.unidad || 'Uni',
+      es_combinado: false, componentes: [],
     });
     setProductoEditando(null);
     setError('');
@@ -351,6 +366,10 @@ const cargarCategorias = async () => {
   const guardarProducto = async (e) => {
     e.preventDefault();
     setError('');
+    if (formulario.es_combinado && formulario.componentes.length === 0) {
+      setError('Un producto combinado necesita al menos un componente.');
+      return;
+    }
     try {
       const datos = {
         codigo: formulario.codigo, nombre: formulario.nombre, categoria_id: formulario.categoria_id,
@@ -358,6 +377,10 @@ const cargarCategorias = async () => {
         precio_mayorista: formulario.precio_mayorista || null, stock: formulario.stock,
         stock_minimo: formulario.stock_minimo, unidad: formulario.unidad,
         alicuota_iva: formulario.alicuota_iva, margen_ganancia: formulario.margen_ganancia || 0,
+        es_combinado: formulario.es_combinado,
+        componentes: formulario.es_combinado
+          ? formulario.componentes.map(c => ({ producto_id: c.producto_id, cantidad: c.cantidad }))
+          : [],
       };
       if (productoEditando) {
         await api.put(`/api/productos/${productoEditando}`, datos);
@@ -866,6 +889,7 @@ const exportarExcel = async () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800 leading-snug">
                       {producto.requiere_revision && <span title="Cargado rápido — completá sus datos">⚠️ </span>}
+                      {producto.es_combinado && <span title="Producto combinado">🧩 </span>}
                       {producto.nombre}
                     </p>
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -938,6 +962,9 @@ const exportarExcel = async () => {
                     <td className="px-4 py-2 font-medium text-gray-800">
                       {producto.requiere_revision && (
                         <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mr-1.5 align-middle" title="Cargado rápido desde el POS — completá sus datos">⚠️ por revisar</span>
+                      )}
+                      {producto.es_combinado && (
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full mr-1.5 align-middle" title="Producto combinado">🧩 combo</span>
                       )}
                       {producto.nombre}
                     </td>
@@ -1026,6 +1053,29 @@ const exportarExcel = async () => {
             <form onSubmit={guardarProducto} className="p-6 space-y-6">
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">❌ {error}</div>}
 
+              {/* Tipo de producto: normal o combinado */}
+              <div className="flex gap-2">
+                <button type="button"
+                  onClick={() => setFormulario(prev => ({ ...prev, es_combinado: false }))}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${!formulario.es_combinado ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  📦 Producto normal
+                </button>
+                <button type="button"
+                  onClick={() => setFormulario(prev => ({ ...prev, es_combinado: true }))}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${formulario.es_combinado ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  🧩 Producto combinado
+                </button>
+              </div>
+
+              {/* Componentes del combo */}
+              {formulario.es_combinado && (
+                <SelectorCombo
+                  componentes={formulario.componentes}
+                  excludeId={productoEditando}
+                  onChange={(comps) => setFormulario(prev => ({ ...prev, componentes: comps }))}
+                />
+              )}
+
               {/* Info básica */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">📋 Información Básica</h4>
@@ -1112,11 +1162,21 @@ const exportarExcel = async () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Precio Costo</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-gray-500">$</span>
-                        <input type="number" name="precio_costo" value={formulario.precio_costo} onChange={manejarCambio}
-                          min="0" step="0.01" className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="0.00" />
-                      </div>
+                      {formulario.es_combinado ? (
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-500">$</span>
+                          <input type="number" readOnly
+                            value={formulario.componentes.reduce((s, c) => s + (Number(c.precio_costo) || 0) * (Number(c.cantidad) || 0), 0).toFixed(2)}
+                            className="w-full border border-gray-200 bg-gray-100 rounded-lg pl-7 pr-3 py-2 text-gray-600" />
+                          <p className="text-xs text-indigo-500 mt-1">Suma del costo de los componentes</p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-500">$</span>
+                          <input type="number" name="precio_costo" value={formulario.precio_costo} onChange={manejarCambio}
+                            min="0" step="0.01" className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="0.00" />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Margen de Ganancia %</label>
@@ -1155,18 +1215,25 @@ const exportarExcel = async () => {
               {/* Stock */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">📦 Stock</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad actual</label>
-                    <input type="number" name="stock" value={formulario.stock} onChange={manejarCambio}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                {formulario.es_combinado ? (
+                  <p className="text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                    El stock del combinado se calcula solo: es lo que alcanza del componente más escaso.
+                    Al venderlo se descuenta el stock de cada componente.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad actual</label>
+                      <input type="number" name="stock" value={formulario.stock} onChange={manejarCambio}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo (alerta)</label>
+                      <input type="number" name="stock_minimo" value={formulario.stock_minimo} onChange={manejarCambio}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo (alerta)</label>
-                    <input type="number" name="stock_minimo" value={formulario.stock_minimo} onChange={manejarCambio}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Códigos alternativos */}
@@ -1371,6 +1438,108 @@ const exportarExcel = async () => {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// =============================================
+// SELECTOR DE COMPONENTES DE UN PRODUCTO COMBINADO
+// Buscador de productos (excluye combos y el propio producto en edición) +
+// lista de componentes elegidos con su cantidad y costo. Muestra el costo total.
+// =============================================
+function SelectorCombo({ componentes, excludeId, onChange }) {
+  const [buscar, setBuscar] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+
+  useEffect(() => {
+    const q = buscar.trim();
+    if (!q) { setResultados([]); return; }
+    let activo = true;
+    setBuscando(true);
+    const t = setTimeout(() => {
+      api.get(`/api/productos?buscar=${encodeURIComponent(q)}&rapida=1`)
+        .then(res => {
+          if (!activo) return;
+          const lista = Array.isArray(res.data) ? res.data : (res.data.productos || []);
+          setResultados(lista.filter(p => !p.es_combinado && p.id !== excludeId));
+        })
+        .catch(() => activo && setResultados([]))
+        .finally(() => activo && setBuscando(false));
+    }, 250);
+    return () => { activo = false; clearTimeout(t); };
+  }, [buscar, excludeId]);
+
+  const yaAgregado = (id) => componentes.some(c => c.producto_id === id);
+
+  const agregar = (p) => {
+    if (yaAgregado(p.id)) return;
+    onChange([...componentes, { producto_id: p.id, nombre: p.nombre, precio_costo: p.precio_costo, cantidad: 1 }]);
+    setBuscar('');
+    setResultados([]);
+  };
+  const quitar = (id) => onChange(componentes.filter(c => c.producto_id !== id));
+  const setCant = (id, v) => onChange(componentes.map(c => c.producto_id === id ? { ...c, cantidad: v } : c));
+
+  const costoTotal = componentes.reduce((s, c) => s + (Number(c.precio_costo) || 0) * (Number(c.cantidad) || 0), 0);
+  const fmt = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n || 0);
+
+  return (
+    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+      <h4 className="text-sm font-semibold text-indigo-700 uppercase tracking-wide">🧩 Productos del combo</h4>
+
+      {/* Buscador */}
+      <div className="relative">
+        <input value={buscar} onChange={(e) => setBuscar(e.target.value)}
+          placeholder="Buscar producto para agregar…"
+          className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        {buscar && (
+          <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+            {buscando ? (
+              <p className="text-sm text-gray-400 px-3 py-2">Buscando…</p>
+            ) : resultados.length === 0 ? (
+              <p className="text-sm text-gray-400 px-3 py-2">Sin resultados</p>
+            ) : resultados.slice(0, 30).map(p => (
+              <button key={p.id} type="button" onClick={() => agregar(p)} disabled={yaAgregado(p.id)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed">
+                <span className="truncate">{p.nombre}</span>
+                <span className="text-xs text-gray-500 flex-shrink-0 ml-2">costo {fmt(p.precio_costo)} · stock {p.stock ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Componentes elegidos */}
+      {componentes.length === 0 ? (
+        <p className="text-sm text-gray-500">Agregá los productos que se venden juntos en este combo.</p>
+      ) : (
+        <div className="space-y-2">
+          {componentes.map(c => (
+            <div key={c.producto_id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{c.nombre}</p>
+                <p className="text-[11px] text-gray-400">costo unitario {fmt(c.precio_costo)}</p>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-gray-400 text-sm">×</span>
+                <input type="number" min="0.001" step="0.001" value={c.cantidad}
+                  onChange={(e) => setCant(c.producto_id, e.target.value)}
+                  className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <span className="text-sm font-semibold text-gray-700 w-20 text-right flex-shrink-0">
+                {fmt((Number(c.precio_costo) || 0) * (Number(c.cantidad) || 0))}
+              </span>
+              <button type="button" onClick={() => quitar(c.producto_id)}
+                className="text-red-400 hover:text-red-600 text-lg flex-shrink-0">✕</button>
+            </div>
+          ))}
+          <div className="flex justify-between items-center pt-1 border-t border-indigo-200">
+            <span className="text-sm font-semibold text-indigo-700">Costo total del combo</span>
+            <span className="text-base font-bold text-indigo-700">{fmt(costoTotal)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

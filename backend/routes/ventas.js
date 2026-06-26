@@ -3,6 +3,44 @@ const { verificarPermiso } = require('../middleware/auth');
 const router = express.Router();
 const db = require('../config/database');
 
+// ---- STOCK COMBO-AWARE ----
+// Ajusta el stock por un item vendido. Si el producto es COMBINADO, no tiene
+// stock propio: descuenta/repone el stock de cada componente según su cantidad
+// en el combo. Si es normal, ajusta el producto directo.
+// signo: -1 al vender, +1 al restaurar (anular/editar).
+async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo) {
+    const combo = await db.query(
+        'SELECT producto_id, cantidad FROM producto_combo WHERE combo_id = $1 AND negocio_id = $2',
+        [producto_id, negocio_id]
+    );
+    if (combo.rows.length > 0) {
+        for (const comp of combo.rows) {
+            const delta = signo * (parseFloat(comp.cantidad) || 0) * (parseFloat(cantidadVenta) || 0);
+            await db.query(
+                'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
+                [delta, comp.producto_id, negocio_id]
+            );
+        }
+    } else {
+        const delta = signo * (parseFloat(cantidadVenta) || 0);
+        await db.query(
+            'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
+            [delta, producto_id, negocio_id]
+        );
+    }
+}
+
+// Disponible real de un combo = lo que alcanza del componente más escaso.
+async function disponibleCombo(negocio_id, combo_id) {
+    const r = await db.query(`
+        SELECT MIN(FLOOR(comp.stock / NULLIF(cc.cantidad, 0))) AS disp
+        FROM producto_combo cc
+        JOIN productos comp ON comp.id = cc.producto_id
+        WHERE cc.combo_id = $1 AND cc.negocio_id = $2
+    `, [combo_id, negocio_id]);
+    return r.rows[0]?.disp == null ? 0 : parseFloat(r.rows[0].disp);
+}
+
 router.get('/', verificarPermiso('ventas', 'ver'), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
@@ -125,7 +163,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
 
             // Obtener información del producto
             const productoResult = await db.query(
-                'SELECT nombre, precio_venta, precio_costo, stock, unidad FROM productos WHERE id = $1 AND negocio_id = $2',
+                'SELECT nombre, precio_venta, precio_costo, stock, unidad, es_combinado FROM productos WHERE id = $1 AND negocio_id = $2',
                 [item.producto_id, negocio_id]
             );
 
@@ -134,6 +172,10 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             }
 
             const producto = productoResult.rows[0];
+            // Para combos, el stock disponible se calcula desde los componentes
+            if (producto.es_combinado) {
+                producto.stock = await disponibleCombo(negocio_id, item.producto_id);
+            }
             const cantidad = parseFloat(item.cantidad);
             const precioUnitario = parseFloat(item.precio_unitario);
             const subtotal = parseFloat(item.subtotal);
@@ -199,11 +241,8 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
                 VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric)
             `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id, parseFloat(item.costo_unitario) || 0]);
 
-            // Actualizar stock solo para productos con inventario
-            await db.query(
-                'UPDATE productos SET stock = stock - $1::numeric WHERE id = $2 AND negocio_id = $3',
-                [parseFloat(item.cantidad), item.producto_id, negocio_id]
-            );
+            // Actualizar stock (combo-aware: si es combinado descuenta los componentes)
+            await ajustarStock(negocio_id, item.producto_id, parseFloat(item.cantidad), -1);
         }
 
         if (es_fiado && cliente_id) {
@@ -258,10 +297,7 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
                 [id]
             );
             for (const item of itemsAnteriores.rows) {
-                await db.query(
-                    'UPDATE productos SET stock = stock + $1 WHERE id = $2 AND negocio_id = $3',
-                    [item.cantidad, item.producto_id, negocio_id]
-                );
+                await ajustarStock(negocio_id, item.producto_id, item.cantidad, +1);
             }
 
             // Borrar items anteriores
@@ -275,10 +311,7 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
                 `, [id, item.producto_id || null, item.nombre_producto, item.cantidad, item.precio_unitario, item.subtotal, negocio_id]);
 
                 if (item.producto_id) {
-                    await db.query(
-                        'UPDATE productos SET stock = stock - $1 WHERE id = $2 AND negocio_id = $3',
-                        [item.cantidad, item.producto_id, negocio_id]
-                    );
+                    await ajustarStock(negocio_id, item.producto_id, item.cantidad, -1);
                 }
             }
         }
@@ -327,10 +360,7 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
         for (const item of itemsVenta.rows) {
             // Convertir cantidad a número válido (maneja formato con punto como separador de miles)
             const cantidadItem = parseFloat(String(item.cantidad).replace(/\./g, '').replace(',', '.')) || 0;
-            await db.query(
-                'UPDATE productos SET stock = stock + $1 WHERE id = $2 AND negocio_id = $3',
-                [cantidadItem, item.producto_id, negocioId]
-            );
+            await ajustarStock(negocioId, item.producto_id, cantidadItem, +1);
         }
 
         // Restaurar saldo de deuda si era venta fiada

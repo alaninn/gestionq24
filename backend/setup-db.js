@@ -490,6 +490,25 @@ CREATE TABLE IF NOT EXISTS historial_stock (
 
 CREATE INDEX IF NOT EXISTS idx_historial_stock_producto ON historial_stock(producto_id);
 
+-- =============================================
+-- PRODUCTO COMBINADO (combos / packs)
+-- es_combinado marca el producto como combo. producto_combo guarda sus
+-- componentes (que SI tienen stock real). Al vender el combo se descuenta
+-- el stock de cada componente.
+-- =============================================
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS es_combinado BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS producto_combo (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL,
+    combo_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    cantidad NUMERIC(10,3) NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_producto_combo_combo ON producto_combo(combo_id);
+CREATE INDEX IF NOT EXISTS idx_producto_combo_negocio ON producto_combo(negocio_id);
+
 `;
 
 async function setupDB() {

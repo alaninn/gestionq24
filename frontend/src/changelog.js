@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.21.0';
+export const VERSION_ACTUAL = '2.22.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.22.0',
+    fecha: '2026-06-26',
+    titulo: 'Productos: nuevo tipo "Producto combinado"',
+    cambios: [
+      { t: 'En Productos podés crear un "Producto combinado" (combo): elegís con un buscador los productos que se venden juntos y su cantidad. El costo se calcula solo (suma de los componentes) y le ponés margen, IVA y precio como cualquier producto.' },
+      { t: 'El stock del combo se calcula automáticamente (lo que alcance del componente más escaso). Al vender el combo, se descuenta el stock de cada producto que lo compone; al anular o editar la venta, se restaura.' },
+    ],
+  },
   {
     version: '2.21.0',
     fecha: '2026-06-26',

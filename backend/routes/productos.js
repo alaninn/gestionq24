@@ -4,6 +4,48 @@ const { validarLimitePlan, LIMITES_PLANES } = require('../middleware/planLimites
 const router = express.Router();
 const db = require('../config/database');
 
+// Para productos COMBINADOS el stock no es propio: es lo que alcanza del
+// componente más escaso = MIN(FLOOR(stock_componente / cantidad_en_combo)).
+// Se calcula al vuelo y sobrescribe el `stock` que viene de p.* (node-pg toma
+// la última columna con el mismo nombre).
+const SELECT_STOCK_COMBO = `CASE WHEN p.es_combinado THEN COALESCE((
+        SELECT MIN(FLOOR(comp.stock / NULLIF(cc.cantidad, 0)))
+        FROM producto_combo cc
+        JOIN productos comp ON comp.id = cc.producto_id
+        WHERE cc.combo_id = p.id
+    ), 0) ELSE p.stock END AS stock`;
+
+// Devuelve los componentes de un combo (para mostrar/editar).
+async function obtenerComponentesCombo(combo_id, negocio_id) {
+    const r = await db.query(`
+        SELECT cc.producto_id, cc.cantidad, p.nombre, p.precio_costo, p.stock, p.unidad
+        FROM producto_combo cc
+        JOIN productos p ON p.id = cc.producto_id
+        WHERE cc.combo_id = $1 AND cc.negocio_id = $2
+        ORDER BY p.nombre ASC
+    `, [combo_id, negocio_id]);
+    return r.rows;
+}
+
+// Calcula el costo del combo (suma costo de cada componente * cantidad) y valida
+// que existan y que ninguno sea a su vez un combinado. Usa el client de la tx.
+async function calcularCostoCombo(client, negocio_id, componentes) {
+    let costo = 0;
+    for (const c of componentes) {
+        const pid = parseInt(c.producto_id, 10);
+        const cant = parseFloat(c.cantidad) || 0;
+        if (!pid || cant <= 0) throw new Error('Componente inválido');
+        const r = await client.query(
+            'SELECT precio_costo, es_combinado FROM productos WHERE id = $1 AND negocio_id = $2',
+            [pid, negocio_id]
+        );
+        if (r.rows.length === 0) throw new Error('Un componente no existe');
+        if (r.rows[0].es_combinado) throw new Error('Un combinado no puede contener otro combinado');
+        costo += (parseFloat(r.rows[0].precio_costo) || 0) * cant;
+    }
+    return costo;
+}
+
 
 router.get('/', async (req, res) => {
     try {
@@ -67,7 +109,7 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         if (!pagina) {
             const limiteRapido = rapida === '1' ? 'LIMIT 60' : '';
             const resultado = await db.query(`
-                SELECT p.*, c.nombre AS categoria_nombre
+                SELECT p.*, c.nombre AS categoria_nombre, ${SELECT_STOCK_COMBO}
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria_id = c.id
                 ${whereClause}
@@ -88,7 +130,7 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const total = parseInt(totalRes.rows[0].count);
 
         const resultado = await db.query(`
-            SELECT p.*, c.nombre AS categoria_nombre
+            SELECT p.*, c.nombre AS categoria_nombre, ${SELECT_STOCK_COMBO}
             FROM productos p
             LEFT JOIN categorias c ON p.categoria_id = c.id
             ${whereClause}
@@ -215,7 +257,7 @@ router.get('/:id', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const resultado = await db.query(`
-            SELECT p.*, c.nombre AS categoria_nombre
+            SELECT p.*, c.nombre AS categoria_nombre, ${SELECT_STOCK_COMBO}
             FROM productos p
             LEFT JOIN categorias c ON p.categoria_id = c.id
             WHERE p.id = $1 AND p.negocio_id = $2
@@ -224,7 +266,11 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         if (resultado.rows.length === 0) {
             return res.status(404).json({ error: 'Producto no encontrado' });
         }
-        res.json(resultado.rows[0]);
+        const producto = resultado.rows[0];
+        if (producto.es_combinado) {
+            producto.componentes = await obtenerComponentesCombo(producto.id, negocio_id);
+        }
+        res.json(producto);
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener producto' });
     }
@@ -237,11 +283,15 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const {
             codigo, nombre, categoria_id, precio_costo,
             precio_venta, precio_mayorista, stock,
-            stock_minimo, unidad, alicuota_iva, margen_ganancia
+            stock_minimo, unidad, alicuota_iva, margen_ganancia,
+            es_combinado, componentes
         } = req.body;
 
         if (!nombre || !precio_venta) {
             return res.status(400).json({ error: 'Nombre y precio de venta son obligatorios' });
+        }
+        if (es_combinado && (!Array.isArray(componentes) || componentes.length === 0)) {
+            return res.status(400).json({ error: 'Un producto combinado necesita al menos un componente' });
         }
 
         // Verificar límite de productos según plan. El superadmin tiene poder
@@ -280,27 +330,55 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             }
         }
 
-        const resultado = await db.query(`
-            INSERT INTO productos (
-                codigo, nombre, categoria_id, precio_costo,
-                precio_venta, precio_mayorista, stock,
-                stock_minimo, unidad, alicuota_iva, margen_ganancia, negocio_id
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-            RETURNING *
-        `, [
-            codigoFinal, nombre, categoria_id || null,
-            precio_costo || 0, precio_venta,
-            precio_mayorista || null, stock || 0,
-            stock_minimo || 0, unidad || 'Uni',
-            alicuota_iva || 21, margen_ganancia || 0, negocio_id
-        ]);
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        res.status(201).json(resultado.rows[0]);
+            // El costo de un combo es la suma del costo de sus componentes; su
+            // stock no es propio (se calcula al vuelo), por eso va en 0.
+            let costoFinal = precio_costo || 0;
+            if (es_combinado) {
+                costoFinal = await calcularCostoCombo(client, negocio_id, componentes);
+            }
+
+            const resultado = await client.query(`
+                INSERT INTO productos (
+                    codigo, nombre, categoria_id, precio_costo,
+                    precio_venta, precio_mayorista, stock,
+                    stock_minimo, unidad, alicuota_iva, margen_ganancia, negocio_id, es_combinado
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                RETURNING *
+            `, [
+                codigoFinal, nombre, categoria_id || null,
+                costoFinal, precio_venta,
+                precio_mayorista || null, es_combinado ? 0 : (stock || 0),
+                stock_minimo || 0, unidad || 'Uni',
+                alicuota_iva || 21, margen_ganancia || 0, negocio_id, !!es_combinado
+            ]);
+
+            const nuevoId = resultado.rows[0].id;
+            if (es_combinado) {
+                for (const c of componentes) {
+                    await client.query(
+                        'INSERT INTO producto_combo (negocio_id, combo_id, producto_id, cantidad) VALUES ($1,$2,$3,$4)',
+                        [negocio_id, nuevoId, parseInt(c.producto_id, 10), parseFloat(c.cantidad) || 1]
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+            res.status(201).json(resultado.rows[0]);
+        } catch (txError) {
+            await client.query('ROLLBACK');
+            throw txError;
+        } finally {
+            client.release();
+        }
     } catch (error) {
         if (error.code === '23505') {
             return res.status(400).json({ error: 'Ya existe un producto con ese código' });
         }
-        res.status(500).json({ error: 'Error al crear producto' });
+        res.status(500).json({ error: error.message || 'Error al crear producto' });
     }
 });
 
@@ -676,8 +754,13 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const {
             codigo, nombre, categoria_id, precio_costo,
             precio_venta, precio_mayorista, stock,
-            stock_minimo, unidad, alicuota_iva, margen_ganancia
+            stock_minimo, unidad, alicuota_iva, margen_ganancia,
+            es_combinado, componentes
         } = req.body;
+
+        if (es_combinado && (!Array.isArray(componentes) || componentes.length === 0)) {
+            return res.status(400).json({ error: 'Un producto combinado necesita al menos un componente' });
+        }
 
         let codigoFinal = codigo;
         if (!codigo || codigo.trim() === '') {
@@ -695,31 +778,71 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             }
         }
 
-        const resultado = await db.query(`
-            UPDATE productos SET
-                codigo = $1, nombre = $2, categoria_id = $3,
-                precio_costo = $4, precio_venta = $5,
-                precio_mayorista = $6, stock = $7,
-                stock_minimo = $8, unidad = $9,
-                alicuota_iva = $10, margen_ganancia = $11,
-                -- Apenas el producto tiene precio, deja de necesitar revisión
-                requiere_revision = CASE WHEN $5::numeric > 0 THEN FALSE ELSE requiere_revision END,
-                updated_at = NOW()
-            WHERE id = $12 AND negocio_id = $13
-            RETURNING *
-        `, [
-            codigoFinal, nombre, categoria_id,
-            precio_costo, precio_venta, precio_mayorista,
-            stock, stock_minimo, unidad,
-            alicuota_iva, margen_ganancia || 0, id, negocio_id
-        ]);
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        if (resultado.rows.length === 0) {
-            return res.status(404).json({ error: 'Producto no encontrado' });
+            // No permitir convertir en combinado un producto que ya es componente
+            // de otro combo (evita anidar combos indirectamente).
+            if (es_combinado) {
+                const usado = await client.query('SELECT 1 FROM producto_combo WHERE producto_id = $1 AND negocio_id = $2 LIMIT 1', [id, negocio_id]);
+                if (usado.rows.length > 0) throw new Error('Este producto ya es componente de un combo: no puede ser combinado a la vez');
+            }
+
+            // El costo y el stock de un combo los maneja el sistema (costo = suma de
+            // componentes; stock = calculado). Para un producto normal, lo enviado.
+            let costoFinal = precio_costo;
+            let stockFinal = stock;
+            if (es_combinado) {
+                costoFinal = await calcularCostoCombo(client, negocio_id, componentes);
+                stockFinal = 0;
+            }
+
+            const resultado = await client.query(`
+                UPDATE productos SET
+                    codigo = $1, nombre = $2, categoria_id = $3,
+                    precio_costo = $4, precio_venta = $5,
+                    precio_mayorista = $6, stock = $7,
+                    stock_minimo = $8, unidad = $9,
+                    alicuota_iva = $10, margen_ganancia = $11,
+                    es_combinado = $14,
+                    requiere_revision = CASE WHEN $5::numeric > 0 THEN FALSE ELSE requiere_revision END,
+                    updated_at = NOW()
+                WHERE id = $12 AND negocio_id = $13
+                RETURNING *
+            `, [
+                codigoFinal, nombre, categoria_id,
+                costoFinal, precio_venta, precio_mayorista,
+                stockFinal, stock_minimo, unidad,
+                alicuota_iva, margen_ganancia || 0, id, negocio_id, !!es_combinado
+            ]);
+
+            if (resultado.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Producto no encontrado' });
+            }
+
+            // Reescribir los componentes del combo (o limpiarlos si dejó de serlo)
+            await client.query('DELETE FROM producto_combo WHERE combo_id = $1 AND negocio_id = $2', [id, negocio_id]);
+            if (es_combinado) {
+                for (const c of componentes) {
+                    await client.query(
+                        'INSERT INTO producto_combo (negocio_id, combo_id, producto_id, cantidad) VALUES ($1,$2,$3,$4)',
+                        [negocio_id, id, parseInt(c.producto_id, 10), parseFloat(c.cantidad) || 1]
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+            res.json(resultado.rows[0]);
+        } catch (txError) {
+            await client.query('ROLLBACK');
+            throw txError;
+        } finally {
+            client.release();
         }
-        res.json(resultado.rows[0]);
     } catch (error) {
-        res.status(500).json({ error: 'Error al editar producto' });
+        res.status(500).json({ error: error.message || 'Error al editar producto' });
     }
 });
 
