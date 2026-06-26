@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.22.0';
+export const VERSION_ACTUAL = '2.23.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.23.0',
+    fecha: '2026-06-26',
+    titulo: 'Reportes: volver a abrir el detalle de cada venta',
+    cambios: [
+      { t: 'En Reportes → Historial, volvés a poder hacer clic en cada venta del "Detalle de Ventas" para ver el modal con los artículos vendidos, totales y método de pago.' },
+      { t: 'Desde ese modal podés reimprimir el ticket, anular la venta (restaura el stock y el saldo si era fiada) y, en las ventas con factura electrónica, emitir una Nota de Crédito de AFIP.' },
+    ],
+  },
   {
     version: '2.22.0',
     fecha: '2026-06-26',

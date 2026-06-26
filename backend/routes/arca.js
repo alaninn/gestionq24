@@ -386,6 +386,25 @@ router.post('/emitir', verificarToken, async (req, res) => {
 });
 
 // =============================================
+// EMITIR NOTA DE CRÉDITO de una venta facturada
+// =============================================
+router.post('/nota-credito/:ventaId', verificarToken, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const venta_id = parseInt(req.params.ventaId, 10);
+        if (!venta_id) return res.status(400).json({ error: 'venta_id inválido' });
+
+        const resultado = await arcaService.emitirNotaCredito({ negocio_id, venta_id });
+        if (resultado.exito) res.json(resultado);
+        else res.status(400).json(resultado);
+    } catch (error) {
+        console.error('❌ Error emitiendo nota de crédito:', error);
+        res.status(500).json({ error: error.message || 'Error al emitir la nota de crédito' });
+    }
+});
+
+// =============================================
 // OBTENER HISTORIAL DE COMPROBANTES
 // =============================================
 router.get('/comprobantes', verificarToken, async (req, res) => {

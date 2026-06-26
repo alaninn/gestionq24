@@ -5,8 +5,9 @@ const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
 }).format(n || 0);
 
-function ModalDetalleVenta({ venta, onClose, onReimprimir, onEliminar }) {
+function ModalDetalleVenta({ venta, onClose, onReimprimir, onEliminar, onNotaCredito, procesando = false }) {
   const [actualizando, setActualizando] = useState(false);
+  const ocupado = actualizando || procesando;
 
   const handleReimprimir = async () => {
     if (onReimprimir) {
@@ -21,10 +22,21 @@ function ModalDetalleVenta({ venta, onClose, onReimprimir, onEliminar }) {
 
   const handleEliminar = async () => {
     if (onEliminar) {
-      if (!window.confirm(`¿Eliminar esta venta de ${fmt(venta.total)}?`)) return;
+      if (!window.confirm(`¿Anular/eliminar esta venta de ${fmt(venta.total)}?\n\nSe restaura el stock${venta.es_fiado ? ' y el saldo del cliente' : ''}.`)) return;
       setActualizando(true);
       try {
         await onEliminar(venta.id, venta.total);
+      } finally {
+        setActualizando(false);
+      }
+    }
+  };
+
+  const handleNotaCredito = async () => {
+    if (onNotaCredito) {
+      setActualizando(true);
+      try {
+        await onNotaCredito(venta);
       } finally {
         setActualizando(false);
       }
@@ -228,20 +240,29 @@ function ModalDetalleVenta({ venta, onClose, onReimprimir, onEliminar }) {
 
         {/* Acciones */}
         <div className="p-6 bg-gray-50 border-t">
-          <div className="flex flex-col sm:flex-row gap-3 justify-end">
-            <button onClick={handleReimprimir} disabled={actualizando}
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-end">
+            <button onClick={handleReimprimir} disabled={ocupado}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
               <span className="text-lg">🖨️</span>
               Reimprimir Ticket
             </button>
-            <button onClick={handleEliminar} disabled={actualizando}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-semibold hover:from-red-700 hover:to-red-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
-              <span className="text-lg">🗑️</span>
-              Eliminar Venta
-            </button>
+            {onNotaCredito && (
+              <button onClick={handleNotaCredito} disabled={ocupado}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+                <span className="text-lg">🧾</span>
+                Nota de Crédito
+              </button>
+            )}
+            {onEliminar && (
+              <button onClick={handleEliminar} disabled={ocupado}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-semibold hover:from-red-700 hover:to-red-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+                <span className="text-lg">🗑️</span>
+                Anular Venta
+              </button>
+            )}
           </div>
-          
-          {actualizando && (
+
+          {ocupado && (
             <div className="mt-3 text-center">
               <p className="text-sm text-gray-500">Procesando...</p>
             </div>

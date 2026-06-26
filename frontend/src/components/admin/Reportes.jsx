@@ -10,6 +10,9 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { hoyArgentina, fechaArgentina } from '../../utils/fecha';
+import ModalDetalleVenta from './DetalleVenta';
+import { imprimirTicket } from '../ticket';
+import ComprobanteElectronico from '../ComprobanteElectronico';
 
 // ---- FUNCIÓN PARA FORMATEAR PESOS ----
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
@@ -35,6 +38,12 @@ function Reportes() {
   const [historial, setHistorial] = useState(null);
   const [resumenFin, setResumenFin] = useState(null); // resumen financiero (Centro de Control)
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+
+  // Detalle de una venta (clic en una fila): ver items, reimprimir, anular, etc.
+  const [detalleVenta, setDetalleVenta] = useState(null);
+  const [comprobanteReimprimir, setComprobanteReimprimir] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [accionVenta, setAccionVenta] = useState(false); // procesando anular/NC
 
   // Filtros del historial
   const [filtroPeriodo, setFiltroPeriodo] = useState('hoy');
@@ -86,7 +95,65 @@ const calcularFechas = () => {
   // Cargamos categorías al iniciar para el reporte por categoría
   useEffect(() => {
     api.get('/api/categorias').then(res => setCategorias(res.data));
+    api.get('/api/configuracion').then(res => setConfig(res.data)).catch(() => {});
   }, []);
+
+  // ---- DETALLE DE VENTA (clic en una fila del historial) ----
+  const abrirDetalleVenta = async (ventaId) => {
+    try {
+      const res = await api.get(`/api/ventas/${ventaId}`);
+      setDetalleVenta(res.data);
+    } catch (err) {
+      alert('No se pudo cargar el detalle de la venta');
+    }
+  };
+
+  const reimprimirTicket = async (venta) => {
+    try {
+      setAccionVenta(true);
+      const res = await api.get(`/api/ventas/${venta.id}`);
+      // Si tiene comprobante electrónico, mostrar ese comprobante
+      if (res.data.comprobante_electronico_id) {
+        try {
+          const resComp = await api.get(`/api/arca/comprobantes?venta_id=${venta.id}`);
+          if (resComp.data?.length > 0) { setComprobanteReimprimir(resComp.data[0]); return; }
+        } catch { /* sigue al ticket común */ }
+      }
+      imprimirTicket({ venta: res.data, items: res.data.items || [], config });
+    } catch (err) {
+      alert(`Error al reimprimir: ${err.response?.data?.error || err.message || 'desconocido'}`);
+    } finally {
+      setAccionVenta(false);
+    }
+  };
+
+  const anularVenta = async (id, total) => {
+    try {
+      setAccionVenta(true);
+      await api.delete(`/api/ventas/${id}`);
+      setDetalleVenta(null);
+      cargarHistorial();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al anular la venta');
+    } finally {
+      setAccionVenta(false);
+    }
+  };
+
+  const notaCreditoVenta = async (venta) => {
+    if (!window.confirm('¿Emitir una Nota de Crédito electrónica que anule esta factura ante AFIP? Esta acción no se puede deshacer.')) return;
+    try {
+      setAccionVenta(true);
+      const res = await api.post(`/api/arca/nota-credito/${venta.id}`);
+      alert(`✅ Nota de Crédito emitida. CAE: ${res.data?.cae || '—'}`);
+      setDetalleVenta(null);
+      cargarHistorial();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al emitir la Nota de Crédito');
+    } finally {
+      setAccionVenta(false);
+    }
+  };
   
   // ---- CARGAR HISTORIAL ----
   useEffect(() => {
@@ -495,11 +562,13 @@ const calcularFechas = () => {
                           <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Método</th>
                           <th className="text-center px-4 py-3 text-gray-600 font-medium text-sm">Items</th>
                           <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Total</th>
+                          <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {historial.ventas.map(venta => (
-                          <tr key={venta.id} className="hover:bg-gray-50">
+                          <tr key={venta.id} onClick={() => abrirDetalleVenta(venta.id)}
+                            className="hover:bg-blue-50 cursor-pointer transition-colors">
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {fmtFechaHora(venta.fecha)}
                             </td>
@@ -507,6 +576,9 @@ const calcularFechas = () => {
                               <span className="text-sm capitalize bg-gray-100 px-2 py-0.5 rounded">
                                 {venta.metodo_pago}
                               </span>
+                              {venta.comprobante_electronico_id && (
+                                <span className="ml-1.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full" title="Factura electrónica">🧾</span>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-center text-sm text-gray-600">
                               {venta.cantidad_items}
@@ -514,6 +586,7 @@ const calcularFechas = () => {
                             <td className="px-4 py-3 text-right font-medium text-gray-800">
                               {fmt(venta.total)}
                             </td>
+                            <td className="px-4 py-3 text-right text-gray-300">›</td>
                           </tr>
                         ))}
                       </tbody>
@@ -998,6 +1071,27 @@ const calcularFechas = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Detalle de venta (ver items, reimprimir, anular, nota de crédito) */}
+      {detalleVenta && (
+        <ModalDetalleVenta
+          venta={detalleVenta}
+          procesando={accionVenta}
+          onClose={() => setDetalleVenta(null)}
+          onReimprimir={reimprimirTicket}
+          onEliminar={anularVenta}
+          onNotaCredito={detalleVenta.comprobante_electronico_id ? notaCreditoVenta : null}
+        />
+      )}
+
+      {/* Reimpresión de comprobante electrónico */}
+      {comprobanteReimprimir && (
+        <ComprobanteElectronico
+          comprobante={comprobanteReimprimir}
+          config={config}
+          onClose={() => setComprobanteReimprimir(null)}
+        />
       )}
 
     </div>

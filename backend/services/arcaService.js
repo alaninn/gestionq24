@@ -698,6 +698,230 @@ async function guardarCertificadoNegocio(negocio_id, certBuffer, cuit, punto_ven
     }
 }
 
+/**
+ * Emite una NOTA DE CRÉDITO electrónica (WSFEv1) que anula/acredita una factura
+ * ya emitida. Mapea el tipo (A→3, B→8, C→13), referencia el comprobante original
+ * con CbtesAsoc y usa los mismos importes. No toca el stock (eso es "anular").
+ * @param {Object} datos - { negocio_id, venta_id }
+ */
+async function emitirNotaCredito({ negocio_id, venta_id }) {
+    if (!venta_id) throw new Error('venta_id requerido');
+
+    // 1. Buscar la factura original de la venta
+    const origRes = await db.query(`
+        SELECT * FROM comprobantes_electronicos
+        WHERE venta_id = $1 AND negocio_id = $2 AND estado = 'emitido'
+          AND tipo_comprobante IN (1,2,3,6,7,8,11,12,13)
+        ORDER BY id DESC LIMIT 1
+    `, [venta_id, negocio_id]);
+    if (origRes.rows.length === 0) {
+        return { exito: false, error: 'La venta no tiene una factura electrónica emitida' };
+    }
+    const orig = origRes.rows[0];
+
+    // Mapear factura/ND → nota de crédito (A=3, B=8, C=13)
+    const mapNC = { 1: 3, 2: 3, 3: 3, 6: 8, 7: 8, 8: 8, 11: 13, 12: 13, 13: 13 };
+    const origTipo = parseInt(orig.tipo_comprobante);
+    const ncTipo = mapNC[origTipo];
+    if (!ncTipo) return { exito: false, error: 'Tipo de comprobante no soportado para nota de crédito' };
+
+    // Evitar duplicar la nota de crédito
+    const yaNC = await db.query(`
+        SELECT 1 FROM comprobantes_electronicos
+        WHERE venta_id = $1 AND negocio_id = $2 AND estado = 'emitido' AND tipo_comprobante IN (3,8,13) LIMIT 1
+    `, [venta_id, negocio_id]);
+    if (yaNC.rows.length > 0) return { exito: false, error: 'Esta venta ya tiene una nota de crédito emitida' };
+
+    const punto_venta = parseInt(orig.punto_venta);
+    const docTipo = parseInt(orig.tipo_documento) || 99;
+    const condIvaReceptor = parseInt(orig.condicion_iva_receptor) || (origTipo === 1 ? 1 : (docTipo === 80 ? 6 : 5));
+    const importeTotal = parseFloat(orig.importe_total);
+    const importeNeto = parseFloat(orig.importe_neto) || importeTotal;
+    const importeIva = parseFloat(orig.importe_iva) || 0;
+    const origNro = parseInt(orig.numero_comprobante);
+    const origFch = (orig.cbte_fecha && /^\d{8}$/.test(String(orig.cbte_fecha)))
+        ? String(orig.cbte_fecha)
+        : fechaArgYYYYMMDD();
+
+    let xmlEnviado = null, xmlRespuesta = null, numeroComprobante = 0;
+    try {
+        // Certificado + ticket WSAA (mismo flujo que emitirComprobante)
+        const certResult = await db.query('SELECT * FROM certificados_arca WHERE negocio_id = $1 AND activo = true LIMIT 1', [negocio_id]);
+        if (certResult.rows.length === 0) throw new Error('No hay certificado activo configurado');
+        const certificado = certResult.rows[0];
+        if (certificado.modo === 'delegado') {
+            const delegado = wsaaService.obtenerCertDelegado();
+            if (!delegado.disponible) throw new Error(delegado.error);
+            const verifDelegado = verificarCertificado(path.relative(path.join(__dirname, '../uploads'), delegado.certPath));
+            if (!verifDelegado.valido) throw new Error('El certificado del proveedor está vencido o no es válido. Contactá a soporte.');
+        } else {
+            const verificacion = verificarCertificado(certificado.cert_path);
+            if (!verificacion.valido) throw new Error('El certificado está vencido o no es válido');
+        }
+
+        console.log('🔐 Obteniendo ticket de acceso WSAA (nota de crédito)...');
+        const ticket = await wsaaService.obtenerTicketAcceso(negocio_id, 'wsfe');
+
+        const configResult = await db.query('SELECT cuit, entorno_arca FROM configuracion WHERE negocio_id = $1', [negocio_id]);
+        const cuitEmisor = configResult.rows[0]?.cuit?.replace(/[-\s]/g, '') || certificado.cuit?.replace(/[-\s]/g, '');
+        const entorno = configResult.rows[0]?.entorno_arca || 'homologacion';
+        const wsfeUrl = entorno === 'produccion'
+            ? 'https://servicios1.afip.gov.ar/wsfev1/service.asmx'
+            : 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx';
+
+        // Último número de NC autorizado para este PtoVta/Tipo
+        const xmlUltimo = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+    <soapenv:Header/><soapenv:Body>
+        <ar:FECompUltimoAutorizado>
+            <ar:Auth><ar:Token>${ticket.token}</ar:Token><ar:Sign>${ticket.sign}</ar:Sign><ar:Cuit>${cuitEmisor}</ar:Cuit></ar:Auth>
+            <ar:PtoVta>${punto_venta}</ar:PtoVta><ar:CbteTipo>${ncTipo}</ar:CbteTipo>
+        </ar:FECompUltimoAutorizado>
+    </soapenv:Body></soapenv:Envelope>`;
+        const respUltimo = await axios.post(wsfeUrl, xmlUltimo, {
+            headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado' },
+            timeout: 30000, httpsAgent
+        });
+        const parserU = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+        const resU = await parserU.parseStringPromise(respUltimo.data);
+        const envU = resU['soap:Envelope'] || resU['soapenv:Envelope'];
+        const bodyU = envU['soap:Body'] || envU['soapenv:Body'];
+        const ultResp = bodyU['FECompUltimoAutorizadoResponse']?.FECompUltimoAutorizadoResult || bodyU['ns1:FECompUltimoAutorizadoResponse']?.FECompUltimoAutorizadoResult;
+        const ultimoNro = parseInt(ultResp?.CbteNro || '0');
+        numeroComprobante = ultimoNro + 1;
+        console.log(`📋 Última NC AFIP: ${ultimoNro}, próxima: ${numeroComprobante}`);
+
+        // Fecha (AR) con piso de seguridad respecto del último autorizado
+        let fechaEmision = fechaArgYYYYMMDD();
+        if (ultimoNro > 0) {
+            try {
+                const ultimaFch = await consultarFechaComprobante({
+                    wsfeUrl, token: ticket.token, sign: ticket.sign, cuit: cuitEmisor,
+                    puntoVenta: punto_venta, tipoComprobante: ncTipo, cbteNro: ultimoNro,
+                });
+                if (ultimaFch && /^\d{8}$/.test(ultimaFch) && ultimaFch > fechaEmision) fechaEmision = ultimaFch;
+            } catch (e) { console.warn('⚠️ No se pudo consultar la fecha de la última NC:', e.message); }
+        }
+
+        xmlEnviado = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+    <soapenv:Header/><soapenv:Body>
+        <ar:FECAESolicitar>
+            <ar:Auth><ar:Token>${ticket.token}</ar:Token><ar:Sign>${ticket.sign}</ar:Sign><ar:Cuit>${cuitEmisor}</ar:Cuit></ar:Auth>
+            <ar:FeCAEReq>
+                <ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${punto_venta}</ar:PtoVta><ar:CbteTipo>${ncTipo}</ar:CbteTipo></ar:FeCabReq>
+                <ar:FeDetReq>
+                    <ar:FECAEDetRequest>
+                        <ar:Concepto>1</ar:Concepto>
+                        <ar:DocTipo>${docTipo}</ar:DocTipo>
+                        <ar:DocNro>${docTipo === 99 ? 0 : (String(orig.numero_documento || '').replace(/[-\s.]/g, '') || 0)}</ar:DocNro>
+                        <ar:CbteDesde>${numeroComprobante}</ar:CbteDesde>
+                        <ar:CbteHasta>${numeroComprobante}</ar:CbteHasta>
+                        <ar:CbteFch>${fechaEmision}</ar:CbteFch>
+                        <ar:ImpTotal>${importeTotal.toFixed(2)}</ar:ImpTotal>
+                        <ar:ImpTotConc>0.00</ar:ImpTotConc>
+                        <ar:ImpNeto>${importeNeto.toFixed(2)}</ar:ImpNeto>
+                        <ar:ImpOpEx>0.00</ar:ImpOpEx>
+                        <ar:ImpIVA>${importeIva.toFixed(2)}</ar:ImpIVA>
+                        <ar:ImpTrib>0.00</ar:ImpTrib>
+                        <ar:MonId>PES</ar:MonId>
+                        <ar:MonCotiz>1.000</ar:MonCotiz>
+                        <ar:CondicionIVAReceptorId>${condIvaReceptor}</ar:CondicionIVAReceptorId>
+                        <ar:CbtesAsoc>
+                            <ar:CbteAsoc>
+                                <ar:Tipo>${origTipo}</ar:Tipo>
+                                <ar:PtoVta>${punto_venta}</ar:PtoVta>
+                                <ar:Nro>${origNro}</ar:Nro>
+                                <ar:Cuit>${cuitEmisor}</ar:Cuit>
+                                <ar:CbteFch>${origFch}</ar:CbteFch>
+                            </ar:CbteAsoc>
+                        </ar:CbtesAsoc>
+                        ${importeIva > 0 ? `
+                        <ar:Iva>
+                            <ar:AlicIva><ar:Id>5</ar:Id><ar:BaseImp>${importeNeto.toFixed(2)}</ar:BaseImp><ar:Importe>${importeIva.toFixed(2)}</ar:Importe></ar:AlicIva>
+                        </ar:Iva>` : ''}
+                    </ar:FECAEDetRequest>
+                </ar:FeDetReq>
+            </ar:FeCAEReq>
+        </ar:FECAESolicitar>
+    </soapenv:Body></soapenv:Envelope>`;
+
+        console.log(`🧾 Enviando nota de crédito a WSFEv1 (${entorno})...`);
+        const response = await axios.post(wsfeUrl, xmlEnviado, {
+            headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': 'http://ar.gov.afip.dif.FEV1/FECAESolicitar' },
+            timeout: 60000, httpsAgent
+        });
+        xmlRespuesta = response.data;
+
+        const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+        const resultado = await parser.parseStringPromise(response.data);
+        const soapBody = resultado['soap:Envelope'] || resultado['soapenv:Envelope'];
+        const body = soapBody['soap:Body'] || soapBody['soapenv:Body'];
+        const feResult = body['FECAESolicitarResponse']?.FECAESolicitarResult || body['ns1:FECAESolicitarResponse']?.FECAESolicitarResult;
+        if (!feResult) throw new Error('Respuesta inválida del WSFEv1');
+        const feDetResp = feResult.FeDetResp?.FECAEDetResponse;
+        const extraerMsgs = (x) => { if (!x) return ''; const arr = Array.isArray(x) ? x : [x]; return arr.map(o => `${o?.Code ?? '?'}: ${o?.Msg ?? ''}`).join(' | '); };
+        const erroresResult = extraerMsgs(feResult.Errors?.Err);
+        if (!feDetResp) throw new Error(`Error WSFEv1: ${erroresResult || 'desconocido'}`);
+        const cae = feDetResp.CAE;
+        const caeVencimiento = feDetResp.CAEFchVto;
+        if (feDetResp.Resultado !== 'A') {
+            const obs = extraerMsgs(feDetResp.Observaciones?.Obs);
+            throw new Error(`NC no aprobada — Resultado=${feDetResp.Resultado || '?'}${obs ? ' · Obs: ' + obs : ''}${erroresResult ? ' · Errores: ' + erroresResult : ''}`);
+        }
+
+        const caeVtoDate = new Date(caeVencimiento.substring(0, 4), parseInt(caeVencimiento.substring(4, 6)) - 1, caeVencimiento.substring(6, 8));
+        const valoresInsert = [
+            venta_id, negocio_id, cae, caeVtoDate, numeroComprobante,
+            punto_venta, ncTipo, docTipo, orig.numero_documento || null,
+            orig.denominacion_comprador || 'Consumidor Final',
+            importeTotal, importeNeto, importeIva, xmlEnviado, xmlRespuesta, fechaEmision
+        ];
+        let compResult;
+        try {
+            compResult = await db.query(`
+                INSERT INTO comprobantes_electronicos (
+                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                    denominacion_comprador, importe_total, importe_neto, importe_iva,
+                    xml_enviado, xml_respuesta, cbte_fecha, estado, condicion_iva_receptor
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'emitido',$17) RETURNING *
+            `, [...valoresInsert, condIvaReceptor]);
+        } catch (insertError) {
+            console.error('⚠️ Insert NC con columnas nuevas falló, reintento sin ellas:', insertError.message);
+            compResult = await db.query(`
+                INSERT INTO comprobantes_electronicos (
+                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                    denominacion_comprador, importe_total, importe_neto, importe_iva,
+                    xml_enviado, xml_respuesta, estado
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'emitido') RETURNING *
+            `, valoresInsert.slice(0, 15));
+        }
+
+        console.log(`✅ Nota de crédito emitida con CAE real: ${cae} - Número ${numeroComprobante}`);
+        return { exito: true, cae, comprobante: compResult.rows[0], mensaje: 'Nota de crédito emitida correctamente' };
+    } catch (error) {
+        console.error('❌ Error emitiendo nota de crédito:', error.message);
+        try {
+            await db.query(`
+                INSERT INTO comprobantes_electronicos (
+                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                    denominacion_comprador, importe_total, importe_neto, importe_iva,
+                    xml_enviado, xml_respuesta, estado
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'error')
+            `, [
+                venta_id, negocio_id, null, null, numeroComprobante || 0,
+                punto_venta, ncTipo, docTipo, orig.numero_documento || null,
+                orig.denominacion_comprador || 'Consumidor Final',
+                importeTotal, importeNeto, importeIva, xmlEnviado, xmlRespuesta
+            ]);
+        } catch (dbError) { console.error('Error guardando NC con error:', dbError.message); }
+        return { exito: false, error: error.message };
+    }
+}
+
 module.exports = {
     generarCertificados,
     guardarCertificado,
@@ -705,6 +929,7 @@ module.exports = {
     obtenerTiposComprobante,
     obtenerTiposDocumento,
     emitirComprobante,
+    emitirNotaCredito,
     obtenerComprobantes,
     obtenerUltimoNumero,
     guardarCertificadoNegocio,
