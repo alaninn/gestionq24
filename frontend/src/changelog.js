@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.24.1';
+export const VERSION_ACTUAL = '2.25.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.25.0',
+    fecha: '2026-06-29',
+    titulo: 'Nuevo acceso en dos pasos por negocio',
+    cambios: [
+      { t: 'El ingreso ahora tiene dos pasos: primero se habilita el negocio en la computadora con el mail y la contraseña del negocio, y después cada persona entra con su nombre de usuario corto. La computadora queda fijada al negocio, así que cada cajero entra rápido con solo su usuario.' },
+      { t: 'Con esto, dos negocios distintos pueden tener los mismos nombres de usuario (por ejemplo "caja1") sin que se mezclen ni se pisen los accesos.' },
+      { t: 'Para cambiar de negocio en una computadora está el botón "Salir del negocio" en la pantalla de ingreso.' },
+      { t: 'Se corrigió que, al pasar de una ventana a otra, la segunda a veces se cerraba sola.' },
+    ],
+  },
   {
     version: '2.24.1',
     fecha: '2026-06-26',

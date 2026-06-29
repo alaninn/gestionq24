@@ -8,6 +8,19 @@ const router = express.Router();
 const db = require('../config/database');
 const jwt = require('jsonwebtoken');
 
+// Lee el token de dispositivo (header x-device-token). Ese token se emite en el
+// Paso 1 (acceso del negocio) y deja el equipo fijado a un negocio. Devuelve el
+// negocio_id si es válido, o null si no vino o no es válido.
+function negocioDelDispositivo(req) {
+    const t = req.headers['x-device-token'];
+    if (!t) return null;
+    try {
+        const dec = jwt.verify(t, process.env.JWT_SECRET);
+        if (dec && dec.tipo === 'dispositivo' && dec.negocio_id) return dec.negocio_id;
+    } catch (e) { /* token inválido o vencido → se ignora */ }
+    return null;
+}
+
 // Cache simple para rate limiting de login
 // ADVERTENCIA: loginAttempts vive en memoria. Si el servidor se reinicia,
 // todos los contadores se resetean. En producción reemplazar por Redis:
@@ -53,9 +66,20 @@ router.post('/login', async (req, res) => {
             }
         }
 
-      // Buscamos solo por username
+        // Si el equipo está fijado a un negocio (Paso 1), scopeamos el login a ese
+        // negocio: así dos negocios pueden tener el mismo "caja1" sin pisarse. Si no
+        // hay token de dispositivo, se mantiene el login global (compatibilidad).
+        const negocioFijado = negocioDelDispositivo(req);
+        const valores = [username, password];
+        let filtroNegocio = '';
+        if (negocioFijado) {
+            valores.push(negocioFijado);
+            // El superadmin entra siempre, aunque el equipo esté fijado a un negocio.
+            filtroNegocio = " AND (u.negocio_id = $3 OR u.rol = 'superadmin')";
+        }
+
         const resultado = await db.query(`
-            SELECT 
+            SELECT
                 u.*,
                 n.nombre AS negocio_nombre,
                 n.estado AS negocio_estado,
@@ -66,7 +90,8 @@ router.post('/login', async (req, res) => {
             WHERE u.username = $1
               AND u.activo = TRUE
               AND u.password_hash = crypt($2, u.password_hash)
-        `, [username, password]);
+              ${filtroNegocio}
+        `, valores);
 
         if (resultado.rows.length === 0) {
             // Registrar intento fallido
@@ -150,6 +175,91 @@ router.post('/login', async (req, res) => {
     } catch (error) {
         console.error('Error en login:', error);
         res.status(500).json({ error: 'Error al iniciar sesión' });
+    }
+});
+
+// -----------------------------------------------
+// RUTA: POST /api/auth/acceso-negocio  (Paso 1)
+// FUNCIÓN: El dueño/admin ingresa con su mail + contraseña para "fijar" el negocio
+//          en esta PC. Devuelve los datos del negocio y un token de dispositivo que
+//          el equipo guarda; con ese token, el Paso 2 (login de usuarios) queda
+//          scopeado a este negocio.
+// -----------------------------------------------
+router.post('/acceso-negocio', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const clientIP = req.ip || req.connection.remoteAddress;
+        const attemptKey = `negocio-${clientIP}-${(email || '').toLowerCase()}`;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Mail y contraseña son obligatorios' });
+        }
+
+        // Rate limiting (mismo esquema que el login)
+        const now = Date.now();
+        const attempts = loginAttempts.get(attemptKey);
+        if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
+            const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
+            return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
+        }
+
+        // El acceso del negocio lo hace el dueño/admin con su mail. Verificamos
+        // mail + contraseña (crypt, igual que el login) sobre un usuario admin activo.
+        const r = await db.query(`
+            SELECT u.negocio_id, u.rol,
+                   n.nombre AS negocio_nombre, n.estado AS negocio_estado,
+                   n.fecha_vencimiento, n.plan, n.color_primario
+            FROM usuarios u
+            JOIN negocios n ON u.negocio_id = n.id
+            WHERE LOWER(u.email) = LOWER($1)
+              AND u.activo = TRUE
+              AND u.rol = 'admin'
+              AND u.password_hash = crypt($2, u.password_hash)
+            LIMIT 1
+        `, [email, password]);
+
+        if (r.rows.length === 0) {
+            const a = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
+            a.count++; a.lastAttempt = now;
+            loginAttempts.set(attemptKey, a);
+            return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
+        }
+
+        const neg = r.rows[0];
+
+        // Estado del negocio (mismo criterio que el login)
+        if (!['estandar', 'premium'].includes(neg.plan)) {
+            return res.status(403).json({ error: 'El plan del negocio no es válido. Contactá al administrador.' });
+        }
+        if (neg.negocio_estado === 'bloqueado') {
+            return res.status(403).json({ error: 'El negocio está bloqueado. Contactá al administrador.' });
+        }
+        if (neg.negocio_estado === 'vencido' ||
+            (neg.fecha_vencimiento && new Date(neg.fecha_vencimiento) < new Date())) {
+            return res.status(403).json({ error: 'La suscripción del negocio venció. Contactá al administrador.' });
+        }
+
+        loginAttempts.delete(attemptKey);
+
+        // Token de dispositivo: deja el equipo fijado a este negocio (no es una sesión
+        // de usuario). Dura bastante para que la PC quede "fija".
+        const deviceToken = jwt.sign(
+            { tipo: 'dispositivo', negocio_id: neg.negocio_id },
+            process.env.JWT_SECRET,
+            { expiresIn: '180d' }
+        );
+
+        res.json({
+            deviceToken,
+            negocio: {
+                id: neg.negocio_id,
+                nombre: neg.negocio_nombre,
+                color_primario: neg.color_primario || '#f97316',
+            }
+        });
+    } catch (error) {
+        console.error('Error en acceso-negocio:', error);
+        res.status(500).json({ error: 'Error al acceder al negocio' });
     }
 });
 

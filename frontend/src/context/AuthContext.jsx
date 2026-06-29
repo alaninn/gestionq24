@@ -9,6 +9,14 @@ export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   const [planInfo, setPlanInfo] = useState(null);
   const [cargando, setCargando] = useState(true);
+  // Negocio "fijado" en esta PC (Paso 1: Acceso del negocio). Mientras exista,
+  // el login de usuarios queda atado a este negocio.
+  const [negocioFijado, setNegocioFijado] = useState(() => {
+    try {
+      const raw = localStorage.getItem('device_negocio');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
 
   useEffect(() => {
     verificarSesion();
@@ -63,11 +71,34 @@ const login = async (username, password) => {
     localStorage.removeItem('config_negocio');
     //localStorage.removeItem('color_primario');
 
+    // El header x-device-token (si el equipo está fijado a un negocio) lo agrega
+    // el interceptor de axios, así el backend scopea el login a ese negocio.
     const res = await api.post('/api/auth/login', { username, password });
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
    setUsuario(res.data.usuario);
     return res.data.usuario;
+  };
+
+  // Paso 1: el dueño/admin fija el negocio en esta PC con su mail + contraseña.
+  const accederNegocio = async (email, password) => {
+    const res = await api.post('/api/auth/acceso-negocio', { email, password });
+    localStorage.setItem('device_token', res.data.deviceToken);
+    localStorage.setItem('device_negocio', JSON.stringify(res.data.negocio));
+    setNegocioFijado(res.data.negocio);
+    return res.data.negocio;
+  };
+
+  // Salir del negocio: desvincula esta PC (vuelve al Paso 1). Borra también la sesión.
+  const salirNegocio = () => {
+    localStorage.removeItem('device_token');
+    localStorage.removeItem('device_negocio');
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    localStorage.removeItem('config_negocio');
+    setNegocioFijado(null);
+    setUsuario(null);
+    window.location.href = '/login';
   };
 
   // Refresca los datos del usuario desde la BD (útil para permisos actualizados)
@@ -117,16 +148,19 @@ const logout = () => {
   };
 
  return (
-     <AuthContext.Provider value={{ 
-      usuario, 
-      cargando, 
-      login, 
-      logout, 
-      tienePermiso, 
+     <AuthContext.Provider value={{
+      usuario,
+      cargando,
+      login,
+      logout,
+      tienePermiso,
       refrescarUsuario,
       planInfo,
       esPremium,
-      puedeUsarFuncion
+      puedeUsarFuncion,
+      negocioFijado,
+      accederNegocio,
+      salirNegocio
     }}>
        {children}
      </AuthContext.Provider>

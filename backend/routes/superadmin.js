@@ -740,14 +740,20 @@ router.get('/negocios/:id/admin', async (req, res) => {
 });
 
 // PUT /api/superadmin/negocios/:id/admin — editar admin principal del negocio
+// El mail del admin es la llave del "Acceso del negocio" (Paso 1 del login), así que
+// debe ser único entre negocios. Se sincroniza con el mail del negocio.
 router.put('/negocios/:id/admin', async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, username, password } = req.body;
+        const { nombre, username, password, email } = req.body;
 
         if (!nombre || !username) {
             return res.status(400).json({ error: 'Nombre y usuario son obligatorios' });
         }
+        if (!email || !email.trim()) {
+            return res.status(400).json({ error: 'El mail del negocio es obligatorio (es la llave de acceso)' });
+        }
+        const mail = email.trim();
 
         const admin = await db.query(`
             SELECT id FROM usuarios
@@ -770,23 +776,39 @@ router.put('/negocios/:id/admin', async (req, res) => {
             return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
         }
 
+        // El mail tiene que ser único entre negocios (es la llave del Paso 1).
+        const mailEnNegocio = await db.query(
+            'SELECT id FROM negocios WHERE LOWER(email) = LOWER($1) AND id != $2',
+            [mail, id]
+        );
+        const mailEnAdmin = await db.query(
+            "SELECT id FROM usuarios WHERE LOWER(email) = LOWER($1) AND rol = 'admin' AND id != $2 AND activo = TRUE",
+            [mail, adminId]
+        );
+        if (mailEnNegocio.rows.length > 0 || mailEnAdmin.rows.length > 0) {
+            return res.status(400).json({ error: 'Ese mail ya está en uso por otro negocio' });
+        }
+
         if (password) {
             await db.query(`
-                UPDATE usuarios SET nombre = $1, username = $2,
-                password_hash = crypt($3, gen_salt('bf'))
-                WHERE id = $4
-            `, [nombre, username, password, adminId]);
+                UPDATE usuarios SET nombre = $1, username = $2, email = $3,
+                password_hash = crypt($4, gen_salt('bf'))
+                WHERE id = $5
+            `, [nombre, username, mail, password, adminId]);
         } else {
             await db.query(`
-                UPDATE usuarios SET nombre = $1, username = $2
-                WHERE id = $3
-            `, [nombre, username, adminId]);
+                UPDATE usuarios SET nombre = $1, username = $2, email = $3
+                WHERE id = $4
+            `, [nombre, username, mail, adminId]);
         }
+
+        // Sincronizar el mail del negocio con el del admin
+        await db.query('UPDATE negocios SET email = $1 WHERE id = $2', [mail, id]);
 
         res.json({ mensaje: 'Administrador actualizado correctamente' });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ error: 'Ya existe un usuario con ese nombre de usuario' });
+            return res.status(400).json({ error: 'Ese mail o nombre de usuario ya está en uso' });
         }
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al actualizar administrador' });

@@ -31,7 +31,7 @@ function Superadmin() {
   const [mostrarModalMiCuenta, setMostrarModalMiCuenta] = useState(false);
   const [mostrarModalAdminNegocio, setMostrarModalAdminNegocio] = useState(null);
   const [formMiCuenta, setFormMiCuenta] = useState({ nombre: '', email: '', password: '', confirmarPassword: '' });
-  const [formAdminNegocio, setFormAdminNegocio] = useState({ nombre: '', username: '', password: '' });
+  const [formAdminNegocio, setFormAdminNegocio] = useState({ nombre: '', username: '', email: '', password: '' });
   const [guardandoCuenta, setGuardandoCuenta] = useState(false);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
@@ -328,6 +328,7 @@ function Superadmin() {
       setFormAdminNegocio({
         nombre: res.data.nombre || '',
         username: res.data.username || '',
+        email: res.data.email || '',
         password: '',
         usuario_id: res.data.id
       });
@@ -343,6 +344,7 @@ function Superadmin() {
       await api.put(`/api/superadmin/negocios/${mostrarModalAdminNegocio.id}/admin`, {
         nombre: formAdminNegocio.nombre,
         username: formAdminNegocio.username,
+        email: formAdminNegocio.email,
         ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {})
       });
       setExito('✅ Administrador actualizado correctamente');
@@ -1144,6 +1146,10 @@ function Superadmin() {
             <form onSubmit={guardarAdminNegocio} className="p-6 space-y-4">
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs text-indigo-700">
+                El <b>mail + contraseña</b> son el <b>Acceso del negocio</b> (Paso 1 del login). El <b>usuario + contraseña</b> es con lo que entra el admin después.
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Nombre Completo</label>
                 <input
@@ -1154,6 +1160,19 @@ function Superadmin() {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500"
                   placeholder="Admin Juan Pérez"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mail del negocio (acceso del negocio)</label>
+                <input
+                  type="email"
+                  value={formAdminNegocio.email}
+                  onChange={(e) => setFormAdminNegocio(p => ({ ...p, email: e.target.value }))}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="negocio@mail.com"
+                />
+                <p className="text-xs text-gray-500 mt-1">Es la llave del Paso 1. Debe ser único entre negocios.</p>
               </div>
 
               <div>

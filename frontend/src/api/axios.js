@@ -17,7 +17,14 @@ api.interceptors.request.use((config) => {
     if (accesoSuperadminNegocio) {
         config.headers['x-negocio-id'] = accesoSuperadminNegocio;
     }
-    
+
+    // Token de dispositivo: deja el equipo "fijado" a un negocio (Acceso del negocio).
+    // El backend lo usa para scopear el login de usuarios a ese negocio.
+    const deviceToken = localStorage.getItem('device_token');
+    if (deviceToken) {
+        config.headers['x-device-token'] = deviceToken;
+    }
+
     return config;
 });
 
