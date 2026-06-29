@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.25.0';
+export const VERSION_ACTUAL = '2.25.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.25.1',
+    fecha: '2026-06-29',
+    titulo: 'Producto combinado: precio de venta automático',
+    cambios: [
+      { t: 'Al crear o editar un producto combinado, el precio de venta final ahora se calcula solo a partir del costo de los componentes y el porcentaje de ganancia que cargás (igual que en un producto normal).' },
+    ],
+  },
   {
     version: '2.25.0',
     fecha: '2026-06-29',

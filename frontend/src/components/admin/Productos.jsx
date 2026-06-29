@@ -290,6 +290,28 @@ const cargarCategorias = async () => {
     });
   };
 
+  // En un producto COMBINADO el costo es la suma de los componentes. Mantenemos
+  // ese costo en el formulario y, si hay margen cargado, recalculamos el precio de
+  // venta final (mismo criterio que un producto normal). Así al poner el % de
+  // ganancia el precio de venta se completa solo.
+  useEffect(() => {
+    if (!formulario.es_combinado) return;
+    const costo = formulario.componentes.reduce(
+      (s, c) => s + (Number(c.precio_costo) || 0) * (Number(c.cantidad) || 0), 0
+    );
+    setFormulario(prev => {
+      const costoStr = costo > 0 ? String(costo) : '';
+      const margen = parseFloat(prev.margen_ganancia) || 0;
+      const iva = parseFloat(prev.alicuota_iva) || 0;
+      const ventaCalc = (costo > 0 && margen > 0)
+        ? Math.round(costo * (1 + margen / 100) * (1 + iva / 100)).toString()
+        : prev.precio_venta;
+      if (prev.precio_costo === costoStr && prev.precio_venta === ventaCalc) return prev;
+      return { ...prev, precio_costo: costoStr, precio_venta: ventaCalc };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formulario.es_combinado, formulario.componentes]);
+
   const abrirFormularioNuevo = () => {
     setFormulario({ codigo: '', nombre: '', categoria_id: '', precio_costo: '', margen_ganancia: '', alicuota_iva: '21', precio_venta: '', precio_mayorista: '', margen_mayorista: '', stock: '0', stock_minimo: '0', unidad: 'Uni', es_combinado: false, componentes: [] });
     setProductoEditando(null);
