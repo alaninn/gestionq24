@@ -44,6 +44,8 @@ export function AuthProvider({ children }) {
       }
 
       setUsuario(res.data);
+      // Mantener el caché del usuario fresco (se usa para restaurar la sesión offline)
+      localStorage.setItem('usuario', JSON.stringify(res.data));
 
       // Cargar informacion del plan si no es superadmin
       if (res.data.rol !== 'superadmin') {
@@ -56,10 +58,20 @@ export function AuthProvider({ children }) {
       }
 
     } catch (err) {
-      console.error('Error verificando sesión:', err);
+      // 401 = token vencido/ inválido → cerrar sesión.
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
         localStorage.removeItem('usuario');
+      } else if (!err.response) {
+        // Sin respuesta = error de RED (offline). No deslogueamos: restauramos la
+        // sesión desde el caché para que una recarga sin internet mantenga la caja
+        // abierta. Al volver internet, el próximo request revalida el token.
+        try {
+          const cache = localStorage.getItem('usuario');
+          if (cache) setUsuario(JSON.parse(cache));
+        } catch { /* caché inválido: queda como estaba */ }
+      } else {
+        console.error('Error verificando sesión:', err);
       }
     } finally {
       setCargando(false);
@@ -96,6 +108,7 @@ const login = async (username, password) => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     localStorage.removeItem('config_negocio');
+    localStorage.removeItem('pos_turno');
     setNegocioFijado(null);
     setUsuario(null);
     window.location.href = '/login';
@@ -121,6 +134,7 @@ const logout = () => {
     localStorage.removeItem('pos_pestanas');
     localStorage.removeItem('pos_pestana_activa');
     localStorage.removeItem('pos_contador_ventas');
+    localStorage.removeItem('pos_turno');
 
     setUsuario(null);
     window.location.href = '/login';

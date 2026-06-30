@@ -2245,6 +2245,9 @@ function POS() {
   const inputBuscarRef = useRef(null);
   const scannerBuffer = useRef('');
   const scannerTimer = useRef(null);
+  // Mientras se confirma/registra una venta, bloqueamos el auto-agregar del buscador
+  // y del escáner para que un resultado tardío no "reviva" el carrito recién vaciado.
+  const ventaEnCursoRef = useRef(false);
   const carritoActivo = pestanas.find(p => p.id === pestanaActiva)?.carrito || [];
 
   // Función para resetear estados de facturación electrónica
@@ -2274,6 +2277,13 @@ function POS() {
   };
 
   useEffect(() => { verificarTurno(); cargarConfig(); }, []);
+
+  // Cachear el turno en localStorage para sobrevivir recargas SIN internet (así la
+  // caja no se "cierra" sola al refrescar offline). Se limpia cuando no hay turno.
+  useEffect(() => {
+    if (turno) localStorage.setItem('pos_turno', JSON.stringify(turno));
+    else localStorage.removeItem('pos_turno');
+  }, [turno]);
   // Guardar pestañas con throttle — máximo una vez cada 2 segundos
   // para no trabar el POS con localStorage en cada keystroke
  // Guardar pestañas con throttle — máximo una vez cada 2 segundos
@@ -2311,12 +2321,15 @@ useEffect(() => {
     const terminoBuscado = buscar.trim();
 
     const timer = setTimeout(async () => {
+      // Solo auto-agregamos si el término sigue vigente Y no hay una venta en curso/
+      // recién confirmada (si no, un resultado tardío "revive" el carrito ya vaciado).
+      const puedeAutoAgregar = (n) => n === 1 && !ventaEnCursoRef.current;
       // Sin internet: buscar en el catálogo cacheado localmente
       if (!online) {
         const resultados = buscarEnCatalogo(terminoBuscado);
         if (terminoBuscado === buscar.trim()) {
           setProductos(resultados);
-          if (resultados.length === 1) agregarAlCarrito(resultados[0]);
+          if (puedeAutoAgregar(resultados.length)) agregarAlCarrito(resultados[0]);
         }
         return;
       }
@@ -2326,13 +2339,20 @@ useEffect(() => {
         if (terminoBuscado === buscar.trim()) {
           const resultados = res.data;
           setProductos(resultados);
-          if (resultados.length === 1) agregarAlCarrito(resultados[0]);
+          if (puedeAutoAgregar(resultados.length)) agregarAlCarrito(resultados[0]);
         }
       } catch { }
     }, 400);
 
     return () => clearTimeout(timer);
   }, [buscar]);
+
+  // Mantener el flag "venta en curso" mientras está abierto el modal de confirmar
+  // venta o el de "venta exitosa". Al cerrarse ambos (cancelar / seguir vendiendo),
+  // se libera el auto-agregar del buscador.
+  useEffect(() => {
+    ventaEnCursoRef.current = mostrarModalVenta || ventaExitosa;
+  }, [mostrarModalVenta, ventaExitosa]);
 
     
 
@@ -2362,7 +2382,7 @@ useEffect(() => {
         } else if (mostrarModalVenta && modalVentaRef.current) {
           modalVentaRef.current.confirmar();
         } else if (carritoActivo.length > 0) {
-          setMostrarModalVenta(true);
+          abrirConfirmarVenta();
         }
         return;
       }
@@ -2450,7 +2470,16 @@ useEffect(() => {
         setCajasAbiertas(resCajas.data);
         setCajasFijas(resFijas.data);
       }
-    } catch { } finally { setCargandoTurno(false); }
+    } catch (err) {
+      // Sin internet (error de red, sin response): restauramos el turno cacheado para
+      // que una recarga offline NO cierre la caja. Online con error real: se ignora.
+      if (!err?.response) {
+        try {
+          const cache = localStorage.getItem('pos_turno');
+          if (cache) setTurno(JSON.parse(cache));
+        } catch { /* caché inválido */ }
+      }
+    } finally { setCargandoTurno(false); }
   };
 
   const cargarConfig = async () => {
@@ -2572,17 +2601,21 @@ useEffect(() => {
    * @param {number} nuevaCantidad - Nueva cantidad del producto
    */
   const cambiarCantidad = (productoId, nuevaCantidad) => {
-    if (nuevaCantidad <= 0) {
-      // Eliminar producto si la cantidad es 0 o menor
-      actualizarCarritoPestana(carritoActivo.filter(item => item.producto_id !== productoId));
-      return;
-    }
-    
-    // Actualizar cantidad y subtotal del producto (recalculando precio mayorista si aplica)
-    actualizarCarritoPestana(carritoActivo.map(item => {
-      if (item.producto_id !== productoId) return item;
-      const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? 0, nuevaCantidad);
-      return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: nuevaCantidad * precio };
+    // Update FUNCIONAL: calculamos desde `prev` (no desde el snapshot del render) para
+    // no pisar estado nuevo con uno viejo si dos cambios ocurren casi a la vez.
+    setPestanas(prev => prev.map(p => {
+      if (p.id !== pestanaActiva) return p;
+      if (nuevaCantidad <= 0) {
+        return { ...p, carrito: p.carrito.filter(item => item.producto_id !== productoId) };
+      }
+      return {
+        ...p,
+        carrito: p.carrito.map(item => {
+          if (item.producto_id !== productoId) return item;
+          const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? 0, nuevaCantidad);
+          return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: nuevaCantidad * precio };
+        })
+      };
     }));
   };
 
@@ -2591,7 +2624,9 @@ useEffect(() => {
    * @param {string|number} productoId - ID del producto a eliminar
    */
   const eliminarDelCarrito = (productoId) => {
-    actualizarCarritoPestana(carritoActivo.filter(item => item.producto_id !== productoId));
+    setPestanas(prev => prev.map(p => p.id === pestanaActiva
+      ? { ...p, carrito: p.carrito.filter(item => item.producto_id !== productoId) }
+      : p));
   };
 
   /**
@@ -2608,6 +2643,18 @@ useEffect(() => {
   const limpiarCarrito = () => {
     actualizarCarritoPestana([]);
     resetearAjustes();
+  };
+
+  // Abre el modal de confirmar venta cortando cualquier búsqueda/escaneo pendiente,
+  // para que un resultado tardío no agregue productos al carrito durante/después de la venta.
+  const abrirConfirmarVenta = () => {
+    if (carritoActivo.length === 0) return;
+    ventaEnCursoRef.current = true;
+    setBuscar('');
+    setProductos([]);
+    if (scannerTimer.current) clearTimeout(scannerTimer.current);
+    scannerBuffer.current = '';
+    setMostrarModalVenta(true);
   };
 
   // ---- CÁLCULO DEL TOTAL CON AJUSTES (descuento / recargo / redondeo) ----
@@ -2713,6 +2760,17 @@ useEffect(() => {
     try {
       const resVenta = await api.post('/api/ventas', ventaPayload);
 
+      // Vaciar el carrito YA, apenas la venta quedó registrada, sin esperar a la
+      // facturación/ticket (que pueden tardar varios segundos). El modal de confirmar
+      // sigue abierto hasta el final, así el flag de "venta en curso" mantiene
+      // bloqueado el auto-agregar y el carrito no se "revive".
+      const nuevoNumero = contadorVentas + 1;
+      setContadorVentas(nuevoNumero);
+      setPestanas(prev => prev.map(p =>
+        p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p
+      ));
+      resetearAjustes();
+
       // Si es facturación electrónica, emitir comprobante
       if (facturacionElectronica && resVenta?.data?.id) {
         try {
@@ -2754,15 +2812,9 @@ useEffect(() => {
         } catch { setUltimaVenta(null); }
       }
 
-      const nuevoNumero = contadorVentas + 1;
-      setContadorVentas(nuevoNumero);
-      setPestanas(prev => prev.map(p =>
-        p.id === pestanaActiva ? { ...p, nombre: `Venta ${nuevoNumero}`, carrito: [] } : p
-      ));
       setMostrarModalVenta(false);
       setTotalUltimaVenta(totalFinal);
       setVentaExitosa(true);
-      resetearAjustes();
       resetearFacturacion(true); // mantener comprobante para mostrarlo
       cargarProductos();
       inputBuscarRef.current?.focus();
@@ -3501,7 +3553,7 @@ const imprimirTicketDesdeModal = () => {
               </div>
 
               {/* Botón confirmar */}
-              <button onClick={() => setMostrarModalVenta(true)} disabled={carritoActivo.length === 0}
+              <button onClick={abrirConfirmarVenta} disabled={carritoActivo.length === 0}
                 style={carritoActivo.length > 0 ? { backgroundColor: 'var(--color-primario)' } : {}}
                 className="w-full disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40 text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg disabled:shadow-none hover:opacity-90 active:scale-98">
                 {carritoActivo.length > 0 ? (<>✅ Confirmar Venta <span className="hidden lg:inline">[F8]</span></>) : 'Agregá productos para vender'}

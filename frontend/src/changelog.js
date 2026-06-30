@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.25.1';
+export const VERSION_ACTUAL = '2.26.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.26.0',
+    fecha: '2026-06-30',
+    titulo: 'Punto de Venta más estable (sin internet y al cobrar)',
+    cambios: [
+      { t: 'Si se corta internet, la caja ya no se cierra sola: aunque recargues la página, seguís logueado y con la caja abierta, y las ventas se siguen guardando para subirse cuando vuelve la conexión.' },
+      { t: 'Se corrigió un problema poco frecuente por el que, después de cobrar una venta, el carrito a veces quedaba con productos o los volvía a agregar al intentar borrarlo. Ahora el carrito se vacía al instante al confirmar la venta.' },
+    ],
+  },
   {
     version: '2.25.1',
     fecha: '2026-06-29',
