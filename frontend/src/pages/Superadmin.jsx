@@ -695,25 +695,6 @@ function Superadmin() {
               </div>
             )}
 
-            {/* Últimos cobros */}
-            {finanzas.ultimos_pagos.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Últimos cobros</p>
-                <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                  {finanzas.ultimos_pagos.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3 bg-black/20 rounded-lg px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-sm text-white truncate">{p.negocio}</p>
-                        <p className="text-[11px] text-slate-400 truncate">
-                          {new Date(p.fecha).toLocaleDateString('es-AR')} · {p.metodo_pago || 'manual'}{!p.pagado ? ' · pendiente' : ''}
-                        </p>
-                      </div>
-                      <span className={`text-sm font-bold flex-shrink-0 ${p.pagado ? 'text-emerald-400' : 'text-yellow-400'}`}>{fmt(p.monto)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
