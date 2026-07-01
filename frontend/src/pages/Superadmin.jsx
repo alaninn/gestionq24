@@ -371,14 +371,19 @@ function Superadmin() {
         ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {})
       });
       setExito('✅ Administrador actualizado correctamente');
-      // Reflejar el mail nuevo al instante en la lista y en el detalle (por si quedó
-      // capturado el objeto viejo), además de recargar todo del servidor.
+      // Reflejar el mail nuevo al instante en la lista, además de recargar del servidor.
       const idEditado = mostrarModalAdminNegocio.id;
       const mailNuevo = (formAdminNegocio.email || '').trim();
       setNegocios(prev => prev.map(n => n.id === idEditado ? { ...n, email: mailNuevo } : n));
-      setMostrarModalDetalleNegocio(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
-      setNegocioDetalleGuardado(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
       setMostrarModalAdminNegocio(null);
+      // Si veníamos del detalle del negocio, reabrirlo mostrando el mail actualizado
+      // (así el cambio se ve al instante). Si no, actualizar el detalle si estuviera abierto.
+      if (negocioDetalleGuardado && negocioDetalleGuardado.id === idEditado) {
+        setMostrarModalDetalleNegocio({ ...negocioDetalleGuardado, email: mailNuevo });
+        setNegocioDetalleGuardado(null);
+      } else {
+        setMostrarModalDetalleNegocio(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
+      }
       cargarDatos();
       setTimeout(() => setExito(''), 3000);
     } catch (err) {
