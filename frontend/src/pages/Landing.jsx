@@ -6,6 +6,10 @@ import BotonWhatsApp from '../components/shared/BotonWhatsApp';
 function Landing() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [scrollActivo, setScrollActivo] = useState(false);
+  // Precios de los planes (los edita el superadmin). Arrancan con un valor por
+  // defecto y se actualizan con lo configurado en el sistema.
+  const [precios, setPrecios] = useState({ estandar: 10000, premium: 30000 });
+  const fmtPrecio = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -13,6 +17,13 @@ function Landing() {
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/publico/precios')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setPrecios({ estandar: d.estandar ?? 10000, premium: d.premium ?? 30000 }); })
+      .catch(() => { /* si falla, quedan los valores por defecto */ });
   }, []);
 
   const scrollASeccion = (id) => {
@@ -123,7 +134,7 @@ function Landing() {
               <p className="text-gray-400 mb-6">Ideal para negocios pequeños</p>
               
               <div className="mb-8">
-                <span className="text-5xl font-bold">$ 10.000</span>
+                <span className="text-5xl font-bold">{fmtPrecio(precios.estandar)}</span>
                 <span className="text-gray-400"> / mes</span>
               </div>
 
@@ -137,7 +148,7 @@ function Landing() {
 
               <BotonWhatsApp
                 texto="Contratar Plan Estandar"
-                mensaje="Hola! Quiero contratar el PLAN ESTANDAR de $10.000 mensuales"
+                mensaje={`Hola! Quiero contratar el PLAN ESTANDAR de ${fmtPrecio(precios.estandar)} mensuales`}
                 className="w-full bg-gray-700 hover:bg-gray-600 py-4 rounded-xl font-bold text-center transition"
               />
             </div>
@@ -152,7 +163,7 @@ function Landing() {
               <p className="text-gray-400 mb-6">Para negocios que quieren crecer</p>
               
               <div className="mb-8">
-                <span className="text-5xl font-bold">$ 30.000</span>
+                <span className="text-5xl font-bold">{fmtPrecio(precios.premium)}</span>
                 <span className="text-gray-400"> / mes</span>
               </div>
 
@@ -166,7 +177,7 @@ function Landing() {
 
               <BotonWhatsApp
                 texto="Contratar Plan Premium"
-                mensaje="Hola! Quiero contratar el PLAN PREMIUM de $30.000 mensuales"
+                mensaje={`Hola! Quiero contratar el PLAN PREMIUM de ${fmtPrecio(precios.premium)} mensuales`}
                 className="w-full bg-green-500 hover:bg-green-600 py-4 rounded-xl font-bold text-center transition"
               />
             </div>

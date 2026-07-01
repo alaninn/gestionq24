@@ -210,6 +210,13 @@ VALUES
     ('premium', 3000, 99999, TRUE, TRUE)
 ON CONFLICT (plan) DO NOTHING;
 
+-- Precio mensual (se muestra en la landing) y modulos del menu admin habilitados
+-- por plan (JSONB con la lista de modulos, NULL = todos habilitados)
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS precio INTEGER DEFAULT 0;
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS modulos JSONB;
+UPDATE planes_config SET precio = 10000 WHERE plan = 'estandar' AND COALESCE(precio, 0) = 0;
+UPDATE planes_config SET precio = 30000 WHERE plan = 'premium' AND COALESCE(precio, 0) = 0;
+
 -- =============================================
 -- TABLA: errores_frontend
 -- Errores de pantalla reportados automáticamente por la app (ErrorBoundary)

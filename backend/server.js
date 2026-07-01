@@ -52,6 +52,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', cred
 
 // Rutas públicas
 app.use('/api/auth', rutasAuth);
+app.use('/api/publico', require('./routes/publico'));
 
 // Productos
 app.use('/api/productos', verificarToken, validarLimitePlan, rutasProductos);

@@ -1,5 +1,6 @@
   import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
+import { MODULOS_NUCLEO } from '../constants/modulos';
 
 const AuthContext = createContext(null);
 
@@ -161,6 +162,18 @@ const logout = () => {
     return planInfo.caracteristicas[funcion] === true;
   };
 
+  // ¿El plan del negocio habilita este módulo del menú admin?
+  // El superadmin ve todo. Los módulos núcleo (dashboard/config/usuarios) siempre.
+  // Si el plan no tiene lista de módulos configurada (null) = todos habilitados.
+  const moduloPermitidoPlan = (modulo) => {
+    if (!usuario) return false;
+    if (usuario.rol === 'superadmin') return true;
+    if (MODULOS_NUCLEO.includes(modulo)) return true;
+    const permitidos = planInfo?.caracteristicas?.modulos;
+    if (!Array.isArray(permitidos)) return true;
+    return permitidos.includes(modulo);
+  };
+
  return (
      <AuthContext.Provider value={{
       usuario,
@@ -172,6 +185,7 @@ const logout = () => {
       planInfo,
       esPremium,
       puedeUsarFuncion,
+      moduloPermitidoPlan,
       negocioFijado,
       accederNegocio,
       salirNegocio

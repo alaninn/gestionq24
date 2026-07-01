@@ -408,7 +408,10 @@ router.get('/plan-info', async (req, res) => {
             },
             caracteristicas: {
                 facturacion_electronica: limites.facturacion_electronica,
-                reportes_avanzados: limites.reportes_avanzados
+                reportes_avanzados: limites.reportes_avanzados,
+                // Módulos del menú admin habilitados para este plan.
+                // null = todos habilitados (sin restricción configurada).
+                modulos: Array.isArray(limites.modulos) ? limites.modulos : null
             }
         });
 

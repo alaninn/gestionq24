@@ -12,13 +12,17 @@ const LIMITES_DEFAULT = {
     max_productos: 500,
     max_usuarios: 3,
     facturacion_electronica: false,
-    reportes_avanzados: false
+    reportes_avanzados: false,
+    precio: 10000,
+    modulos: null   // null = todos los módulos habilitados
   },
   premium: {
     max_productos: 3000,
     max_usuarios: 99999,
     facturacion_electronica: true,
-    reportes_avanzados: true
+    reportes_avanzados: true,
+    precio: 30000,
+    modulos: null
   }
 };
 
@@ -39,7 +43,10 @@ async function obtenerConfigPlanes() {
           max_productos: row.max_productos,
           max_usuarios: row.max_usuarios,
           facturacion_electronica: row.facturacion_electronica,
-          reportes_avanzados: row.reportes_avanzados
+          reportes_avanzados: row.reportes_avanzados,
+          precio: row.precio ?? 0,
+          // row.modulos es JSONB (array) o null (= todos habilitados)
+          modulos: Array.isArray(row.modulos) ? row.modulos : null
         };
       }
       cachePlanes = config;

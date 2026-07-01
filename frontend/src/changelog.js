@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.26.0';
+export const VERSION_ACTUAL = '2.27.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.27.0',
+    fecha: '2026-07-01',
+    titulo: 'Superadmin: planes, precios y cobros',
+    cambios: [
+      { t: 'Configuración de Planes: ahora se elige qué módulos del menú de administración incluye cada plan, con botón "Agregar todos". Dashboard, Configuración y Usuarios quedan siempre disponibles.', super: true },
+      { t: 'Configuración de Planes: se puede fijar el precio mensual de cada plan, y ese precio se muestra automáticamente en la web/landing.', super: true },
+      { t: 'Nuevo panel de Cobros y ganancias: cobrado del mes, ingreso mensual estimado, cobrado histórico, alertas de vencimientos y últimos cobros.', super: true },
+      { t: 'El mail del negocio ahora se actualiza al instante en la lista al editar el administrador.', super: true },
+    ],
+  },
   {
     version: '2.26.0',
     fecha: '2026-06-30',

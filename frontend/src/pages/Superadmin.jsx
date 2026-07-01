@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import VersionChangelog from '../components/shared/VersionChangelog';
 import useCerrarConAtras from '../hooks/useCerrarConAtras';
+import { MODULOS_PLAN, CLAVES_MODULOS_PLAN } from '../constants/modulos';
 
 const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
@@ -55,6 +56,7 @@ function Superadmin() {
   const [descargandoErr, setDescargandoErr] = useState(false);
   const [planesConfig, setPlanesConfig] = useState([]);
   const [guardandoPlan, setGuardandoPlan] = useState(null);
+  const [finanzas, setFinanzas] = useState(null);
   const [logsContenido, setLogsContenido] = useState([]);
   const [logsActivo, setLogsActivo] = useState(false);
   const [logsCargando, setLogsCargando] = useState(false);
@@ -155,6 +157,23 @@ function Superadmin() {
     setPlanesConfig(prev => prev.map(p => p.plan === plan ? { ...p, [campo]: valor } : p));
   };
 
+  // Módulos del plan: null en la BD = todos habilitados. Para la UI lo mostramos
+  // como la lista completa marcada.
+  const modulosDelPlan = (p) => (Array.isArray(p.modulos) ? p.modulos : CLAVES_MODULOS_PLAN);
+
+  const toggleModuloPlan = (plan, key) => {
+    setPlanesConfig(prev => prev.map(p => {
+      if (p.plan !== plan) return p;
+      const actuales = Array.isArray(p.modulos) ? p.modulos : CLAVES_MODULOS_PLAN;
+      const nuevos = actuales.includes(key) ? actuales.filter(k => k !== key) : [...actuales, key];
+      return { ...p, modulos: nuevos };
+    }));
+  };
+
+  const agregarTodosModulos = (plan) => {
+    setPlanesConfig(prev => prev.map(p => p.plan === plan ? { ...p, modulos: [...CLAVES_MODULOS_PLAN] } : p));
+  };
+
   const guardarPlan = async (p) => {
     try {
       setGuardandoPlan(p.plan);
@@ -163,6 +182,8 @@ function Superadmin() {
         max_usuarios: p.max_usuarios,
         facturacion_electronica: p.facturacion_electronica,
         reportes_avanzados: p.reportes_avanzados,
+        precio: p.precio,
+        modulos: Array.isArray(p.modulos) ? p.modulos : null,
       });
       setExito(`Plan ${p.plan} actualizado ✅ Los cambios aplican de inmediato.`);
       setTimeout(() => setExito(''), 4000);
@@ -177,12 +198,14 @@ function Superadmin() {
   const cargarDatos = async () => {
     try {
       setCargando(true);
-      const [resStats, resNegocios] = await Promise.all([
+      const [resStats, resNegocios, resFin] = await Promise.all([
         api.get('/api/superadmin/stats'),
         api.get('/api/superadmin/negocios'),
+        api.get('/api/superadmin/finanzas').catch(() => ({ data: null })),
       ]);
       setStats(resStats.data);
       setNegocios(resNegocios.data);
+      setFinanzas(resFin.data);
     } catch (err) {
       console.error('Error cargando datos:', err);
       setStats(null);
@@ -348,6 +371,13 @@ function Superadmin() {
         ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {})
       });
       setExito('✅ Administrador actualizado correctamente');
+      // Reflejar el mail nuevo al instante en la lista y en el detalle (por si quedó
+      // capturado el objeto viejo), además de recargar todo del servidor.
+      const idEditado = mostrarModalAdminNegocio.id;
+      const mailNuevo = (formAdminNegocio.email || '').trim();
+      setNegocios(prev => prev.map(n => n.id === idEditado ? { ...n, email: mailNuevo } : n));
+      setMostrarModalDetalleNegocio(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
+      setNegocioDetalleGuardado(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
       setMostrarModalAdminNegocio(null);
       cargarDatos();
       setTimeout(() => setExito(''), 3000);
@@ -615,6 +645,75 @@ function Superadmin() {
               <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(stats.total_facturado_global)}</p>
               <p className="text-xs text-slate-400 mt-1">histórico de todos los negocios</p>
             </div>
+          </div>
+        )}
+
+        {/* Cobros y finanzas del negocio (superadmin) */}
+        {finanzas && (
+          <div className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700 rounded-2xl p-4 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">💰 Cobros y ganancias</h2>
+              <span className="text-xs text-slate-400">{finanzas.pagos_mes} cobro(s) este mes</span>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+                <p className="text-emerald-300 text-xs font-semibold uppercase tracking-wide">Cobrado este mes</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(finanzas.cobrado_mes)}</p>
+              </div>
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                <p className="text-green-300 text-xs font-semibold uppercase tracking-wide">Ingreso mensual estimado</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(finanzas.ingreso_estimado)}</p>
+                <p className="text-[11px] text-slate-400 mt-1">{finanzas.negocios.activos} negocios activos × precio de su plan</p>
+              </div>
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide">Cobrado (30 días)</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(finanzas.cobrado_30d)}</p>
+              </div>
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                <p className="text-purple-300 text-xs font-semibold uppercase tracking-wide">Cobrado histórico</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{fmt(finanzas.cobrado_total)}</p>
+              </div>
+            </div>
+
+            {/* Alertas de vencimientos */}
+            {(finanzas.negocios.por_vencer > 0 || finanzas.negocios.vencidos > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {finanzas.negocios.vencidos > 0 && (
+                  <span className="bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-semibold px-3 py-1.5 rounded-lg">
+                    🔴 {finanzas.negocios.vencidos} negocio(s) vencido(s) — cobrar/renovar
+                  </span>
+                )}
+                {finanzas.negocios.por_vencer > 0 && (
+                  <span className="bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-xs font-semibold px-3 py-1.5 rounded-lg">
+                    🟡 {finanzas.negocios.por_vencer} vence(n) en los próximos 7 días
+                  </span>
+                )}
+                <span className="bg-slate-500/15 border border-slate-500/30 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-lg">
+                  ⭐ {finanzas.negocios.premium} premium · 📦 {finanzas.negocios.estandar} estándar
+                </span>
+              </div>
+            )}
+
+            {/* Últimos cobros */}
+            {finanzas.ultimos_pagos.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Últimos cobros</p>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {finanzas.ultimos_pagos.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 bg-black/20 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">{p.negocio}</p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {new Date(p.fecha).toLocaleDateString('es-AR')} · {p.metodo_pago || 'manual'}{!p.pagado ? ' · pendiente' : ''}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-bold flex-shrink-0 ${p.pagado ? 'text-emerald-400' : 'text-yellow-400'}`}>{fmt(p.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1697,6 +1796,15 @@ function Superadmin() {
                             onChange={(e) => cambiarCampoPlan(p.plan, 'max_productos', e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">💲 Precio mensual (se muestra en la web)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                            <input type="number" min="0" step="500" value={p.precio ?? 0}
+                              onChange={(e) => cambiarCampoPlan(p.plan, 'precio', e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                          </div>
+                        </div>
 
                         <div className="pt-2 space-y-2">
                           <p className="text-xs font-semibold text-gray-600">Funciones incluidas</p>
@@ -1712,6 +1820,31 @@ function Superadmin() {
                               onChange={(e) => cambiarCampoPlan(p.plan, 'reportes_avanzados', e.target.checked)}
                               className="w-5 h-5 accent-purple-600" />
                           </label>
+                        </div>
+
+                        <div className="pt-2 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-gray-600">Módulos del menú de administración</p>
+                            <button type="button" onClick={() => agregarTodosModulos(p.plan)}
+                              className="text-[11px] font-semibold text-purple-600 hover:text-purple-800 border border-purple-200 hover:border-purple-400 rounded-lg px-2 py-1 transition-colors">
+                              ✓ Agregar todos
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-gray-400 -mt-1">Dashboard, Configuración y Usuarios están siempre disponibles.</p>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {MODULOS_PLAN.map(m => {
+                              const activo = modulosDelPlan(p).includes(m.key);
+                              return (
+                                <label key={m.key}
+                                  className={`flex items-center justify-between rounded-lg px-3 py-2 border cursor-pointer transition-colors ${activo ? 'bg-white border-gray-200 hover:border-purple-300' : 'bg-gray-100 border-gray-200 opacity-70'}`}>
+                                  <span className="text-sm text-gray-700">{m.icon} {m.label}</span>
+                                  <input type="checkbox" checked={activo}
+                                    onChange={() => toggleModuloPlan(p.plan, m.key)}
+                                    className="w-5 h-5 accent-purple-600" />
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         <button onClick={() => guardarPlan(p)} disabled={guardandoPlan === p.plan}

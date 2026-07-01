@@ -83,10 +83,13 @@ function NavLinkPremium({ icon, label }) {
 
 function Admin() {
   const navigate = useNavigate();
-  const { usuario, logout, tienePermiso } = useAuth();
+  const { usuario, logout, tienePermiso, moduloPermitidoPlan } = useAuth();
   const { colorPrimario } = useTema();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
+
+  // Un módulo se ve si el usuario tiene permiso Y el plan del negocio lo habilita.
+  const puedeVer = (modulo) => tienePermiso(modulo, 'ver') && moduloPermitidoPlan(modulo);
 
   // Primera sección que el usuario puede ver (para redirigir si no tiene Dashboard)
   const primeraSeccionDisponible = () => {
@@ -100,7 +103,7 @@ function Admin() {
       ['reportes', 'ver', '/admin/reportes'],
       ['soporte', 'ver', '/admin/soporte'],
     ];
-    const m = orden.find(([mod, acc]) => tienePermiso(mod, acc));
+    const m = orden.find(([mod, acc]) => tienePermiso(mod, acc) && moduloPermitidoPlan(mod));
     return m ? m[2] : '/pos';
   };
   
@@ -169,47 +172,47 @@ function Admin() {
             <NavLink to="/admin" icon="📊" label="Dashboard" exact />
           )}
 
-          {(tienePermiso('productos', 'ver') || tienePermiso('stock', 'ver')) && (
+          {(puedeVer('productos') || puedeVer('stock')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
           )}
-          {tienePermiso('productos', 'ver') && (
+          {puedeVer('productos') && (
             <>
               <NavLink to="/admin/productos" icon="📦" label="Productos" />
               <NavLink to="/admin/categorias" icon="🏷️" label="Categorías" />
             </>
           )}
-          {tienePermiso('stock', 'ver') && (
+          {puedeVer('stock') && (
             <NavLink to="/admin/stock" icon="📉" label="Stock" />
           )}
 
-          {(tienePermiso('caja', 'ver') || tienePermiso('clientes', 'ver') || tienePermiso('proveedores', 'ver') || tienePermiso('gastos', 'ver') || tienePermiso('resumen_fiscal', 'ver')) && (
+          {(puedeVer('caja') || puedeVer('clientes') || puedeVer('proveedores') || puedeVer('gastos') || puedeVer('resumen_fiscal')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Finanzas</p>
           )}
-          {tienePermiso('caja', 'ver') && (
+          {puedeVer('caja') && (
             <NavLink to="/admin/caja" icon="🏦" label="Control de Caja" />
           )}
-          {tienePermiso('clientes', 'ver') && (
+          {puedeVer('clientes') && (
             <NavLink to="/admin/cuentas-corrientes" icon="👥" label="Cuentas Corrientes" />
           )}
-          {tienePermiso('proveedores', 'ver') && (
+          {puedeVer('proveedores') && (
             <NavLink to="/admin/proveedores" icon="📦" label="Proveedores" />
           )}
-          {tienePermiso('gastos', 'ver') && (
+          {puedeVer('gastos') && (
             <NavLink to="/admin/gastos" icon="💸" label="Gastos" />
           )}
-          {tienePermiso('resumen_fiscal', 'ver') && (
+          {puedeVer('resumen_fiscal') && (
             esPremium
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
 
-          {(tienePermiso('reportes', 'ver') || tienePermiso('soporte', 'ver')) && (
+          {(puedeVer('reportes') || puedeVer('soporte')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
           )}
-          {tienePermiso('reportes', 'ver') && (
+          {puedeVer('reportes') && (
             <NavLink to="/admin/reportes" icon="📈" label="Reportes" />
           )}
-          {tienePermiso('soporte', 'ver') && (
+          {puedeVer('soporte') && (
             <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
           )}
           {['admin', 'superadmin'].includes(usuario?.rol) && (

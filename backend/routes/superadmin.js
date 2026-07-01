@@ -1124,6 +1124,67 @@ router.post('/errores/subir-git', async (req, res) => {
 // =============================================
 const { invalidarCachePlanes } = require('../middleware/planLimites');
 
+// GET /api/superadmin/finanzas — resumen de cobros/ingresos y alertas
+router.get('/finanzas', async (req, res) => {
+    try {
+        const [cobros, estimado, estados, ultimos] = await Promise.all([
+            db.query(`
+                SELECT
+                    COALESCE(SUM(monto) FILTER (WHERE pagado), 0) AS total,
+                    COALESCE(SUM(monto) FILTER (WHERE pagado AND date_trunc('month', fecha) = date_trunc('month', NOW())), 0) AS mes,
+                    COALESCE(SUM(monto) FILTER (WHERE pagado AND fecha > NOW() - INTERVAL '30 days'), 0) AS ult30,
+                    COUNT(*) FILTER (WHERE date_trunc('month', fecha) = date_trunc('month', NOW())) AS pagos_mes
+                FROM pagos_historial
+            `),
+            db.query(`
+                SELECT COALESCE(SUM(pc.precio), 0) AS ingreso_estimado
+                FROM negocios n
+                LEFT JOIN planes_config pc ON pc.plan = n.plan
+                WHERE n.estado = 'activo'
+            `),
+            db.query(`
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE estado = 'activo') AS activos,
+                    COUNT(*) FILTER (WHERE fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()) AS vencidos,
+                    COUNT(*) FILTER (WHERE fecha_vencimiento IS NOT NULL AND fecha_vencimiento >= NOW() AND fecha_vencimiento < NOW() + INTERVAL '7 days') AS por_vencer,
+                    COUNT(*) FILTER (WHERE plan = 'premium') AS premium,
+                    COUNT(*) FILTER (WHERE plan = 'estandar') AS estandar
+                FROM negocios
+            `),
+            db.query(`
+                SELECT ph.monto, ph.fecha, ph.metodo_pago, ph.tipo, ph.pagado, n.nombre AS negocio
+                FROM pagos_historial ph
+                JOIN negocios n ON n.id = ph.negocio_id
+                ORDER BY ph.fecha DESC
+                LIMIT 8
+            `),
+        ]);
+
+        const c = cobros.rows[0];
+        const e = estados.rows[0];
+        res.json({
+            cobrado_mes: Number(c.mes),
+            cobrado_total: Number(c.total),
+            cobrado_30d: Number(c.ult30),
+            pagos_mes: parseInt(c.pagos_mes),
+            ingreso_estimado: Number(estimado.rows[0].ingreso_estimado),
+            negocios: {
+                total: parseInt(e.total),
+                activos: parseInt(e.activos),
+                vencidos: parseInt(e.vencidos),
+                por_vencer: parseInt(e.por_vencer),
+                premium: parseInt(e.premium),
+                estandar: parseInt(e.estandar),
+            },
+            ultimos_pagos: ultimos.rows,
+        });
+    } catch (error) {
+        console.error('Error obteniendo finanzas:', error);
+        res.status(500).json({ error: 'Error al obtener finanzas' });
+    }
+});
+
 // GET /api/superadmin/planes — configuración actual de cada plan
 router.get('/planes', async (req, res) => {
     try {
@@ -1139,7 +1200,7 @@ router.get('/planes', async (req, res) => {
 router.put('/planes/:plan', async (req, res) => {
     try {
         const { plan } = req.params;
-        const { max_productos, max_usuarios, facturacion_electronica, reportes_avanzados } = req.body;
+        const { max_productos, max_usuarios, facturacion_electronica, reportes_avanzados, precio, modulos } = req.body;
 
         const maxProd = parseInt(max_productos);
         const maxUsu = parseInt(max_usuarios);
@@ -1147,16 +1208,22 @@ router.put('/planes/:plan', async (req, res) => {
             return res.status(400).json({ error: 'Los límites deben ser números mayores a 0' });
         }
 
+        const precioNum = Math.max(0, parseInt(precio) || 0);
+        // modulos: array de claves de módulos habilitados. null/ausente = todos.
+        const modulosJson = Array.isArray(modulos) ? JSON.stringify(modulos) : null;
+
         const r = await db.query(`
             UPDATE planes_config SET
                 max_productos = $1,
                 max_usuarios = $2,
                 facturacion_electronica = $3,
                 reportes_avanzados = $4,
+                precio = $5,
+                modulos = $6::jsonb,
                 updated_at = NOW()
-            WHERE plan = $5
+            WHERE plan = $7
             RETURNING *
-        `, [maxProd, maxUsu, !!facturacion_electronica, !!reportes_avanzados, plan]);
+        `, [maxProd, maxUsu, !!facturacion_electronica, !!reportes_avanzados, precioNum, modulosJson, plan]);
 
         if (r.rows.length === 0) {
             return res.status(404).json({ error: 'Plan no encontrado' });
