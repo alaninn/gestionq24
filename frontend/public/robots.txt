@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /login
+Disallow: /admin
+Disallow: /pos
+Disallow: /superadmin
+Disallow: /api/
+
+Sitemap: https://gestionq24.store/sitemap.xml

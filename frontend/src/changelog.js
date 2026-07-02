@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.27.0';
+export const VERSION_ACTUAL = '2.28.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.28.0',
+    fecha: '2026-07-02',
+    titulo: 'La web ahora está preparada para los buscadores',
+    cambios: [
+      { t: 'La página de presentación (landing) quedó optimizada para aparecer en Google y otros buscadores: título, descripción, datos del servicio y mapa del sitio.', super: true },
+      { t: 'Las pantallas internas del sistema (login, cajas, administración) quedan fuera de los buscadores por privacidad.', super: true },
+    ],
+  },
   {
     version: '2.27.0',
     fecha: '2026-07-01',
