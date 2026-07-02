@@ -227,6 +227,11 @@ function Landing() {
 
       {/* FOOTER */}
       <footer className="py-10 px-4 border-t border-gray-800 text-gray-500 text-center">
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-6 text-sm">
+          <a href="/sistema-gestion-almacenes-kioscos.html" className="hover:text-green-400 transition">Sistema para almacenes y kioscos</a>
+          <a href="/facturacion-electronica-arca.html" className="hover:text-green-400 transition">Facturación electrónica ARCA</a>
+          <a href="/control-de-stock.html" className="hover:text-green-400 transition">Control de stock</a>
+        </div>
         <p>© 2026 Gestión Q24 - Sistema de Gestión Comercial</p>
         <p className="mt-2">Todos los derechos reservados</p>
       </footer>

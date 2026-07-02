@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control de stock para comercios: dejá de contar a mano | GestionQ24</title>
+  <meta name="description" content="Sistema de control de stock para comercios: el inventario se descuenta solo con cada venta, avisa cuando un producto llega al mínimo y te dice qué reponer. Con lector de código de barras." />
+  <link rel="canonical" href="https://gestionq24.store/control-de-stock.html" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="GestionQ24" />
+  <meta property="og:title" content="Control de stock para comercios: dejá de contar a mano" />
+  <meta property="og:description" content="El inventario se descuenta solo con cada venta y te avisa qué reponer antes de quedarte sin mercadería." />
+  <meta property="og:url" content="https://gestionq24.store/control-de-stock.html" />
+  <meta property="og:locale" content="es_AR" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "¿Cómo se carga el stock inicial?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Cargás cada producto con su código de barras, precio de costo y cantidad. También te ayudamos a importar tu lista si ya la tenés en una planilla." }
+      },
+      {
+        "@type": "Question",
+        "name": "¿El stock se descuenta solo al vender?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Sí. Cada venta del punto de venta descuenta el stock automáticamente, incluso en productos combinados, que descuentan sus componentes." }
+      },
+      {
+        "@type": "Question",
+        "name": "¿Me avisa cuando queda poco de un producto?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Sí. Definís un stock mínimo por producto y el sistema lo resalta cuando llega a ese nivel, con una lista de reposición para comprarle al proveedor." }
+      }
+    ]
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root { --verde: #22c55e; --verde-claro: #4ade80; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111827; color: #e5e7eb; font-family: 'Hanken Grotesk', system-ui, sans-serif; line-height: 1.7; }
+    a { color: var(--verde-claro); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { position: sticky; top: 0; background: rgba(17,24,39,.95); backdrop-filter: blur(6px); border-bottom: 1px solid #1f2937; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+    .marca { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 800; font-size: 18px; }
+    .marca .cubo { width: 34px; height: 34px; background: var(--verde); border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .nav .cta { background: var(--verde); color: #052e16; font-weight: 700; padding: 9px 18px; border-radius: 10px; }
+    .nav .cta:hover { text-decoration: none; filter: brightness(1.08); }
+    main { max-width: 780px; margin: 0 auto; padding: 48px 20px 80px; }
+    h1 { color: #fff; font-size: clamp(28px, 5vw, 40px); line-height: 1.2; margin-bottom: 14px; }
+    h1 span { color: var(--verde-claro); }
+    .bajada { color: #9ca3af; font-size: 18px; margin-bottom: 36px; }
+    h2 { color: #fff; font-size: 24px; margin: 40px 0 12px; }
+    p { margin-bottom: 14px; color: #d1d5db; }
+    ul { margin: 0 0 14px 22px; color: #d1d5db; }
+    li { margin-bottom: 8px; }
+    .tarjeta { background: #1f2937; border: 1px solid #374151; border-radius: 16px; padding: 22px; margin: 26px 0; }
+    .tarjeta strong { color: #fff; }
+    .cta-final { text-align: center; background: linear-gradient(135deg, #14532d, #166534); border-radius: 18px; padding: 34px 22px; margin-top: 48px; }
+    .cta-final h2 { margin-top: 0; }
+    .boton-verde { display: inline-block; background: var(--verde); color: #052e16; font-weight: 800; font-size: 17px; padding: 14px 30px; border-radius: 12px; margin-top: 14px; }
+    .boton-verde:hover { text-decoration: none; filter: brightness(1.08); }
+    .relacionados { border-top: 1px solid #1f2937; margin-top: 48px; padding-top: 22px; font-size: 15px; }
+    footer { border-top: 1px solid #1f2937; color: #6b7280; text-align: center; padding: 28px 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/" class="marca"><span class="cubo">🛒</span> GestionQ24</a>
+    <a class="cta" href="/#precios">Ver planes</a>
+  </nav>
+
+  <main>
+    <h1>Control de stock: <span>dejá de contar a mano</span></h1>
+    <p class="bajada">Saber qué tenés, qué se vende y qué falta reponer, sin planillas ni recorrer las góndolas anotando en un papel. Así funciona el control de stock de GestionQ24.</p>
+
+    <h2>El stock se descuenta solo</h2>
+    <p>Cada venta que pasa por el punto de venta descuenta el inventario automáticamente. No hay que anotar nada: si vendiste 3 gaseosas, el sistema ya lo sabe. Los <strong>productos combinados</strong> (promos, packs) descuentan cada componente por separado, así el stock real siempre cierra.</p>
+
+    <h2>Alertas de reposición</h2>
+    <p>A cada producto le definís un <strong>stock mínimo</strong>. Cuando llega a ese nivel, aparece resaltado en el módulo de Stock: entrás y ves de un vistazo la lista de lo que hay que comprar. Menos faltantes, menos ventas perdidas.</p>
+    <ul>
+      <li><strong>Stock en verde, amarillo o rojo:</strong> estado de cada producto de un vistazo.</li>
+      <li><strong>Búsqueda por nombre o código de barras:</strong> encontrás cualquier producto en segundos.</li>
+      <li><strong>Ajustes de inventario:</strong> corregís diferencias (roturas, vencidos) y queda registrado.</li>
+      <li><strong>Precio de costo y margen:</strong> el precio de venta se calcula solo con tu porcentaje de ganancia.</li>
+    </ul>
+
+    <div class="tarjeta">
+      <strong>💡 Precios con inflación:</strong> cuando el proveedor te aumenta, actualizás el costo y el sistema recalcula el precio de venta manteniendo tu margen. También podés aumentar por categoría completa en un solo paso.
+    </div>
+
+    <h2>Proveedores y compras</h2>
+    <p>Registrás a tus proveedores y sus entregas: cuánta mercadería entró, a qué costo y qué le debés a cada uno. La deuda con proveedores queda a la vista para no llevarte sorpresas a fin de mes.</p>
+
+    <h2>Pensado para el mostrador</h2>
+    <p>El control de stock no sirve si es lento de usar. Por eso todo está integrado al <a href="/sistema-gestion-almacenes-kioscos.html">punto de venta para almacenes y kioscos</a>: lector de código de barras, alta rápida de productos desde la caja y funcionamiento sin internet. Y si necesitás factura, se integra con la <a href="/facturacion-electronica-arca.html">facturación electrónica de ARCA</a>.</p>
+
+    <div class="cta-final">
+      <h2>Ordená el stock de tu negocio</h2>
+      <p>Te mostramos el sistema funcionando con productos reales de tu rubro.</p>
+      <a class="boton-verde" href="https://wa.me/5491162684353?text=Hola!%20Quiero%20ordenar%20el%20stock%20de%20mi%20negocio%2C%20%C2%BFme%20pasan%20info%20del%20sistema%3F" target="_blank" rel="noopener">Consultar por WhatsApp</a>
+    </div>
+
+    <div class="relacionados">
+      <strong>Seguí leyendo:</strong>
+      <a href="/sistema-gestion-almacenes-kioscos.html">Sistema para almacenes y kioscos</a> ·
+      <a href="/facturacion-electronica-arca.html">Facturación electrónica ARCA</a> ·
+      <a href="/">Planes y precios</a>
+    </div>
+  </main>
+
+  <footer>© 2026 GestionQ24 — Sistema de gestión comercial · <a href="/">gestionq24.store</a></footer>
+</body>
+</html>

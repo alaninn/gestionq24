@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.28.0';
+export const VERSION_ACTUAL = '2.29.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.29.0',
+    fecha: '2026-07-02',
+    titulo: 'Nuevas páginas de contenido en la web',
+    cambios: [
+      { t: 'La web ahora tiene tres guías para atraer clientes desde Google: sistema para almacenes y kioscos, facturación electrónica ARCA y control de stock. Se linkean desde el pie de la página principal.', super: true },
+    ],
+  },
   {
     version: '2.28.0',
     fecha: '2026-07-02',
