@@ -789,20 +789,36 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
                 if (usado.rows.length > 0) throw new Error('Este producto ya es componente de un combo: no puede ser combinado a la vez');
             }
 
-            // El costo y el stock de un combo los maneja el sistema (costo = suma de
-            // componentes; stock = calculado). Para un producto normal, lo enviado.
+            // El costo de un combo lo maneja el sistema (suma de sus componentes).
             let costoFinal = precio_costo;
-            let stockFinal = stock;
             if (es_combinado) {
                 costoFinal = await calcularCostoCombo(client, negocio_id, componentes);
-                stockFinal = 0;
+            }
+
+            // El stock solo se toca cuando el pedido lo trae explicitamente. Un combo
+            // no tiene stock propio (queda en 0). Un producto normal mantiene su stock
+            // actual si el formulario no lo mando: asi editar el precio u otro dato no
+            // pisa el stock real, que pudo bajar por ventas mientras el modal estaba
+            // abierto. Los ajustes de stock van por su panel propio (con historial).
+            let stockParam = null; // null => COALESCE mantiene el stock actual
+            if (es_combinado) stockParam = 0;
+            else if (stock !== undefined && stock !== null && String(stock).trim() !== '') {
+                stockParam = parseFloat(stock);
+            }
+
+            // Si se va a ajustar el stock de un producto normal, guardamos el anterior
+            // para dejar registro del cambio en el historial.
+            let stockAnterior = null;
+            if (!es_combinado && stockParam !== null) {
+                const prev = await client.query('SELECT stock FROM productos WHERE id = $1 AND negocio_id = $2', [id, negocio_id]);
+                if (prev.rows.length > 0) stockAnterior = parseFloat(prev.rows[0].stock) || 0;
             }
 
             const resultado = await client.query(`
                 UPDATE productos SET
                     codigo = $1, nombre = $2, categoria_id = $3,
                     precio_costo = $4, precio_venta = $5,
-                    precio_mayorista = $6, stock = $7,
+                    precio_mayorista = $6, stock = COALESCE($7::numeric, stock),
                     stock_minimo = $8, unidad = $9,
                     alicuota_iva = $10, margen_ganancia = $11,
                     es_combinado = $14,
@@ -813,13 +829,24 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             `, [
                 codigoFinal, nombre, categoria_id,
                 costoFinal, precio_venta, precio_mayorista,
-                stockFinal, stock_minimo, unidad,
+                stockParam, stock_minimo, unidad,
                 alicuota_iva, margen_ganancia || 0, id, negocio_id, !!es_combinado
             ]);
 
             if (resultado.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: 'Producto no encontrado' });
+            }
+
+            // Dejar registro del ajuste manual de stock (si efectivamente cambio).
+            if (stockAnterior !== null) {
+                const stockNuevo = parseFloat(resultado.rows[0].stock) || 0;
+                if (stockNuevo !== stockAnterior) {
+                    await client.query(
+                        'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1,$2,$3,$4)',
+                        [negocio_id, id, stockAnterior, stockNuevo]
+                    );
+                }
             }
 
             // Reescribir los componentes del combo (o limpiarlos si dejó de serlo)

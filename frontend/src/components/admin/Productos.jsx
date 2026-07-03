@@ -137,6 +137,11 @@ const [categorias, setCategorias] = useState([]);
     es_combinado: false, componentes: [],
   });
 
+  // Guarda el stock que tenía el producto al abrir el modal de edición. Sirve para
+  // enviar un ajuste de stock solo si el usuario realmente lo cambió, y así no pisar
+  // el stock real (que pudo bajar por ventas) al editar precio, nombre, etc.
+  const stockOriginalRef = useRef(null);
+
   useEffect(() => { cargarProductos(); cargarCategorias(); cargarContadorRevisar(); }, []);
 
   // El botón "atrás" del celular cierra el modal abierto
@@ -238,7 +243,13 @@ const cargarCategorias = async () => {
     setCeldaEditando(null);
     if (String(nuevoValor) === String(producto[campo])) return;
     try {
-      const datosActualizados = { ...producto, [campo]: nuevoValor };
+      // Al editar un campo que NO es el stock (precio, etc.) no mandamos el stock:
+      // el del listado puede estar viejo (bajó por ventas) y lo pisaría. Cuando se
+      // edita el stock en sí, ese es el valor que el usuario quiere fijar.
+      const { stock: _stockViejo, ...sinStock } = producto;
+      const datosActualizados = campo === 'stock'
+        ? { ...producto, stock: nuevoValor }
+        : { ...sinStock, [campo]: nuevoValor };
       if (campo === 'precio_costo') {
         const nuevoCosto = parseFloat(nuevoValor) || 0;
         const margen = parseFloat(producto.margen_ganancia) || 0;
@@ -332,6 +343,7 @@ const cargarCategorias = async () => {
       stock: producto.stock, stock_minimo: producto.stock_minimo, unidad: producto.unidad,
       es_combinado: !!producto.es_combinado, componentes: [],
     });
+    stockOriginalRef.current = producto.stock;
     setProductoEditando(producto.id);
     setError('');
     setMostrarFormulario(true);
@@ -396,7 +408,7 @@ const cargarCategorias = async () => {
       const datos = {
         codigo: formulario.codigo, nombre: formulario.nombre, categoria_id: formulario.categoria_id,
         precio_costo: formulario.precio_costo, precio_venta: formulario.precio_venta,
-        precio_mayorista: formulario.precio_mayorista || null, stock: formulario.stock,
+        precio_mayorista: formulario.precio_mayorista || null,
         stock_minimo: formulario.stock_minimo, unidad: formulario.unidad,
         alicuota_iva: formulario.alicuota_iva, margen_ganancia: formulario.margen_ganancia || 0,
         es_combinado: formulario.es_combinado,
@@ -404,6 +416,16 @@ const cargarCategorias = async () => {
           ? formulario.componentes.map(c => ({ producto_id: c.producto_id, cantidad: c.cantidad }))
           : [],
       };
+      // El stock se manda solo cuando corresponde: al crear el producto (stock
+      // inicial) o al editar un producto normal cuyo stock el usuario realmente
+      // cambió. Así, editar precio/nombre no pisa el stock que bajó por ventas
+      // (los combos no tienen stock propio: lo maneja el sistema).
+      if (!formulario.es_combinado) {
+        const stockCambiado = String(formulario.stock ?? '').trim() !== String(stockOriginalRef.current ?? '').trim();
+        if (!productoEditando || stockCambiado) {
+          datos.stock = formulario.stock;
+        }
+      }
       if (productoEditando) {
         await api.put(`/api/productos/${productoEditando}`, datos);
         setExito('Producto actualizado correctamente');

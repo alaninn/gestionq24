@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.29.0';
+export const VERSION_ACTUAL = '2.30.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.30.0',
+    fecha: '2026-07-03',
+    titulo: 'El stock ya no se pisa al editar un producto',
+    cambios: [
+      { t: 'Al editar un producto para cambiar su precio, nombre u otro dato, el stock ya no se reemplaza por accidente: solo cambia cuando lo ajustás a propósito. Así los descuentos de las ventas (incluidos los componentes de un combo) nunca se pierden.' },
+      { t: 'Cuando ajustás la cantidad de un producto desde su ficha, el cambio queda registrado en el historial de stock, igual que desde el panel de Stock.' },
+    ],
+  },
   {
     version: '2.29.0',
     fecha: '2026-07-02',
