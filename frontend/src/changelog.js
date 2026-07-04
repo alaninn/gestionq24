@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.31.0';
+export const VERSION_ACTUAL = '2.31.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.31.1',
+    fecha: '2026-07-04',
+    titulo: 'Los descuentos del carrito ya no se pierden al cambiar de venta',
+    cambios: [
+      { t: 'Corregido: el descuento, recargo o redondeo general del carrito ahora se mantiene al pasar de una venta en espera a otra y volver. Cada venta conserva los suyos.' },
+    ],
+  },
   {
     version: '2.31.0',
     fecha: '2026-07-04',

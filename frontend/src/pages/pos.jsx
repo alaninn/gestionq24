@@ -2227,6 +2227,11 @@ function POS() {
                 !isNaN(parseFloat(item.subtotal))
               )
             : [],
+          // Conservar los ajustes de precio propios de la venta (por pestaña)
+          descuentoActivo: !!p.descuentoActivo,
+          recargoActivo: !!p.recargoActivo,
+          redondeoVenta: parseFloat(p.redondeoVenta) || 0,
+          descuentoPctManual: typeof p.descuentoPctManual === 'string' ? p.descuentoPctManual : '',
         }));
 
       return sanas.length > 0 ? sanas : porDefecto;
@@ -2320,15 +2325,9 @@ function POS() {
     localStorage.setItem('pos_pestana_activa', pestanaActiva.toString());
   }, [pestanaActiva]);
 
-  // Los ajustes de precio (descuento / recargo / redondeo) son por venta.
-  // Al cambiar de pestaña arrancan limpios para que NO se trasladen los de la
-  // venta anterior (que quedó en espera) a la venta nueva.
-  useEffect(() => {
-    setDescuentoActivo(false);
-    setRecargoActivo(false);
-    setDescuentoPctManual('');
-    setRedondeoVenta(0);
-  }, [pestanaActiva]);
+  // Los ajustes de precio (descuento / recargo / redondeo) se guardan DENTRO de
+  // cada pestaña, así que al cambiar de venta se muestran los de esa venta y NO
+  // hay que resetear nada al cambiar de pestaña.
 
   useEffect(() => {
     localStorage.setItem('pos_contador_ventas', contadorVentas.toString());
