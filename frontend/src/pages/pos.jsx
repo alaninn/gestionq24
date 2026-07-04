@@ -2555,28 +2555,31 @@ useEffect(() => {
     return precioBase;
   };
 
-  // Calcula el monto de ajuste (con signo) de un producto según el tipo elegido y
-  // su base (cantidad × precio). Se recalcula cada vez que cambia la cantidad, así
-  // el descuento/recargo por producto sigue el precio actual.
-  const calcularAjusteItem = (base, tipo, direccion) => {
-    if (tipo === 'descuento') {
-      const pct = parseFloat(config?.descuento_maximo) || 0;
-      return -Math.round(base * pct / 100);
+  // Recalcula el ajuste de precio de un producto del carrito a partir de su base
+  // (cantidad × precio) y de sus dos ajustes independientes:
+  //   - pctTipo: 'descuento' | 'recargo' | null  (porcentaje configurado)
+  //   - redondeoDir: 'arriba' | 'abajo' | null   (redondeo, se apila ENCIMA)
+  // Devuelve el item con `ajuste` (monto con signo) y `subtotal` ya calculados.
+  // Al recalcularlo cada vez que cambia la cantidad, los ajustes siguen el precio.
+  const recomputarAjusteItem = (item) => {
+    const base = item.cantidad * item.precio_unitario;
+    let ajuste = 0;
+    if (item.pctTipo === 'descuento') {
+      ajuste += -Math.round(base * (parseFloat(config?.descuento_maximo) || 0) / 100);
+    } else if (item.pctTipo === 'recargo') {
+      ajuste += Math.round(base * (parseFloat(config?.recargo_general) || 0) / 100);
     }
-    if (tipo === 'recargo') {
-      const pct = parseFloat(config?.recargo_general) || 0;
-      return Math.round(base * pct / 100);
-    }
-    if (tipo === 'redondeo') {
+    if (item.redondeoDir) {
       const mult = parseInt(config?.redondeo_precios) || 0;
       if (mult > 0) {
-        const objetivo = direccion === 'arriba'
-          ? Math.ceil(base / mult) * mult
-          : Math.floor(base / mult) * mult;
-        return objetivo - base;
+        const previo = base + ajuste; // redondea sobre el subtotal ya con descuento/recargo
+        const objetivo = item.redondeoDir === 'arriba'
+          ? Math.ceil(previo / mult) * mult
+          : Math.floor(previo / mult) * mult;
+        ajuste += objetivo - previo;
       }
     }
-    return 0;
+    return { ...item, ajuste, subtotal: base + ajuste };
   };
 
   const agregarAlCarrito = useCallback((producto) => {
@@ -2605,9 +2608,7 @@ useEffect(() => {
             if (item.producto_id !== producto.id) return item;
             const nuevaCant = item.cantidad + 1;
             const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? precioMayorista, nuevaCant);
-            const base = nuevaCant * precio;
-            const ajuste = item.ajusteTipo ? calcularAjusteItem(base, item.ajusteTipo, item.ajusteDir) : 0;
-            return { ...item, cantidad: nuevaCant, precio_unitario: precio, subtotal: base + ajuste, ajuste };
+            return recomputarAjusteItem({ ...item, cantidad: nuevaCant, precio_unitario: precio });
           })
         };
       }
@@ -2627,8 +2628,8 @@ useEffect(() => {
             cantidad: 1,
             subtotal: precioInicial,
             ajuste: 0,
-            ajusteTipo: null,
-            ajusteDir: null
+            pctTipo: null,
+            redondeoDir: null
           }
         ]
       };
@@ -2665,9 +2666,7 @@ useEffect(() => {
           const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? 0, nuevaCantidad);
           // Recalculamos el ajuste manual del producto (descuento/recargo/redondeo)
           // con la nueva cantidad, para que siga el precio actual.
-          const base = nuevaCantidad * precio;
-          const ajuste = item.ajusteTipo ? calcularAjusteItem(base, item.ajusteTipo, item.ajusteDir) : 0;
-          return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: base + ajuste, ajuste };
+          return recomputarAjusteItem({ ...item, cantidad: nuevaCantidad, precio_unitario: precio });
         })
       };
     }));
@@ -2698,14 +2697,19 @@ useEffect(() => {
         ...p,
         carrito: p.carrito.map(item => {
           if (item.producto_id !== productoId) return item;
-          const base = item.cantidad * item.precio_unitario; // subtotal sin ajuste
+          let nuevo = { ...item };
           if (tipo === 'quitar') {
-            return { ...item, ajuste: 0, ajusteTipo: null, ajusteDir: null, subtotal: base };
+            nuevo.pctTipo = null;
+            nuevo.redondeoDir = null;
+          } else if (tipo === 'descuento' || tipo === 'recargo') {
+            // Descuento y recargo son excluyentes entre sí. Volver a tocar el
+            // mismo lo saca (toggle). El redondeo se mantiene, se apila encima.
+            nuevo.pctTipo = item.pctTipo === tipo ? null : tipo;
+          } else if (tipo === 'redondeo') {
+            // Tocar la misma dirección de redondeo la saca (toggle).
+            nuevo.redondeoDir = item.redondeoDir === direccion ? null : direccion;
           }
-          // Guardamos el tipo/dirección para poder recalcular el monto si cambia
-          // la cantidad del producto.
-          const ajuste = calcularAjusteItem(base, tipo, direccion);
-          return { ...item, ajuste, ajusteTipo: tipo, ajusteDir: direccion || null, subtotal: base + ajuste };
+          return recomputarAjusteItem(nuevo);
         }),
       };
     }));
@@ -3549,7 +3553,7 @@ const imprimirTicketDesdeModal = () => {
                     {hayAjustesConfig && (
                       <button onClick={(e) => { e.stopPropagation(); setAjusteItemAbierto(panelAbierto ? null : item.producto_id); }}
                         className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-xs font-bold hover:scale-110"
-                        style={ajuste !== 0 ? { background: '#3b82f6', border: '1px solid #3b82f6', color: '#fff' } : estBtnAjuste}
+                        style={(item.pctTipo || item.redondeoDir) ? { background: '#3b82f6', border: '1px solid #3b82f6', color: '#fff' } : estBtnAjuste}
                         title="Descuento, recargo o redondeo de este producto">
                         %
                       </button>
@@ -3561,35 +3565,40 @@ const imprimirTicketDesdeModal = () => {
                       ✕
                     </button>
                   </div>
-                  {panelAbierto && hayAjustesConfig && (
+                  {panelAbierto && hayAjustesConfig && (() => {
+                    const estActivoVerde = { background: '#22c55e', border: '1px solid #22c55e', color: '#fff' };
+                    const estActivoAzul = { background: '#3b82f6', border: '1px solid #3b82f6', color: '#fff' };
+                    const tieneAjuste = !!item.pctTipo || !!item.redondeoDir;
+                    return (
                     <div className="px-4 pb-3 -mt-0.5 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {pctDescuento > 0 && (
                         <button onClick={() => aplicarAjusteItem(item.producto_id, 'descuento')}
                           className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                          style={estBtnAjuste}>− Desc {pctDescuento}%</button>
+                          style={item.pctTipo === 'descuento' ? estActivoVerde : estBtnAjuste}>− Desc {pctDescuento}%</button>
                       )}
                       {pctRecargo > 0 && (
                         <button onClick={() => aplicarAjusteItem(item.producto_id, 'recargo')}
                           className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                          style={estBtnAjuste}>+ Rec {pctRecargo}%</button>
+                          style={item.pctTipo === 'recargo' ? estActivoAzul : estBtnAjuste}>+ Rec {pctRecargo}%</button>
                       )}
                       {multiploRedondeo > 0 && (
                         <>
                           <button onClick={() => aplicarAjusteItem(item.producto_id, 'redondeo', 'abajo')}
                             className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                            style={estBtnAjuste} title={`Redondear hacia abajo (múltiplos de ${multiploRedondeo})`}>↓ Redondear</button>
+                            style={item.redondeoDir === 'abajo' ? estActivoAzul : estBtnAjuste} title={`Redondear hacia abajo (múltiplos de ${multiploRedondeo})`}>↓ Redondear</button>
                           <button onClick={() => aplicarAjusteItem(item.producto_id, 'redondeo', 'arriba')}
                             className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                            style={estBtnAjuste} title={`Redondear hacia arriba (múltiplos de ${multiploRedondeo})`}>↑ Redondear</button>
+                            style={item.redondeoDir === 'arriba' ? estActivoAzul : estBtnAjuste} title={`Redondear hacia arriba (múltiplos de ${multiploRedondeo})`}>↑ Redondear</button>
                         </>
                       )}
-                      {ajuste !== 0 && (
+                      {tieneAjuste && (
                         <button onClick={() => aplicarAjusteItem(item.producto_id, 'quitar')}
                           className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
                           style={{ ...estBtnAjuste, color: '#ef4444' }}>Quitar ✕</button>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                   </div>
                   );
                 })}

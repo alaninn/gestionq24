@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.31.1';
+export const VERSION_ACTUAL = '2.31.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.31.2',
+    fecha: '2026-07-04',
+    titulo: 'Redondeo por producto: ahora se suma al descuento o recargo',
+    cambios: [
+      { t: 'En los ajustes de un producto, el redondeo ya no borra el descuento o recargo que tenga puesto: se aplica encima. Podés, por ejemplo, hacer un descuento y además redondear el resultado.' },
+      { t: 'Los botones de ajuste por producto ahora se marcan cuando están activos y se apagan al volver a tocarlos. Si cambiás la cantidad, todo se recalcula solo.' },
+    ],
+  },
   {
     version: '2.31.1',
     fecha: '2026-07-04',
