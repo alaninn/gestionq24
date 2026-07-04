@@ -2183,12 +2183,13 @@ function POS() {
     const v = localStorage.getItem('pos_modo_oscuro');
     return v === null ? null : v === 'true';
   });
-  // Ajustes de precio del carrito (descuento, recargo, redondeo) — se ven antes de confirmar
-  const [descuentoActivo, setDescuentoActivo] = useState(false);
-  const [recargoActivo, setRecargoActivo] = useState(false);
-  const [redondeoVenta, setRedondeoVenta] = useState(0);
-  // En modo "editable", el % de descuento lo escribe el cajero (con tope = descuento_maximo)
-  const [descuentoPctManual, setDescuentoPctManual] = useState('');
+  // Los ajustes de precio del carrito (descuento, recargo, redondeo) se guardan
+  // DENTRO de cada pestaña, para que cada venta en espera tenga los suyos y no se
+  // pisen al cambiar de pestaña. Los getters/setters están más abajo (necesitan
+  // `pestanas` y `pestanaActiva` ya declarados).
+  // Producto del carrito que tiene abierto su panelcito de ajustes (descuento /
+  // recargo / redondeo por producto individual). null = ninguno abierto.
+  const [ajusteItemAbierto, setAjusteItemAbierto] = useState(null);
 
   // Estados para facturación electrónica (se resetean por venta)
   const [facturacionElectronica, setFacturacionElectronica] = useState(false);
@@ -2248,7 +2249,28 @@ function POS() {
   // Mientras se confirma/registra una venta, bloqueamos el auto-agregar del buscador
   // y del escáner para que un resultado tardío no "reviva" el carrito recién vaciado.
   const ventaEnCursoRef = useRef(false);
-  const carritoActivo = pestanas.find(p => p.id === pestanaActiva)?.carrito || [];
+  const pestanaActivaObj = pestanas.find(p => p.id === pestanaActiva);
+  const carritoActivo = pestanaActivaObj?.carrito || [];
+
+  // Ajustes de precio de la pestaña activa (descuento / recargo / redondeo). Se
+  // leen de la pestaña, así cada venta en espera conserva los suyos. Los setters
+  // aceptan un valor o una función (v => ...) como los de useState.
+  const descuentoActivo = !!pestanaActivaObj?.descuentoActivo;
+  const recargoActivo = !!pestanaActivaObj?.recargoActivo;
+  const redondeoVenta = pestanaActivaObj?.redondeoVenta || 0;
+  const descuentoPctManual = pestanaActivaObj?.descuentoPctManual ?? '';
+  const setCampoPestanaActiva = (campo, valorOrFn, porDefecto) => {
+    setPestanas(prev => prev.map(p => {
+      if (p.id !== pestanaActiva) return p;
+      const actual = p[campo] ?? porDefecto;
+      const nuevo = typeof valorOrFn === 'function' ? valorOrFn(actual) : valorOrFn;
+      return { ...p, [campo]: nuevo };
+    }));
+  };
+  const setDescuentoActivo = (v) => setCampoPestanaActiva('descuentoActivo', v, false);
+  const setRecargoActivo = (v) => setCampoPestanaActiva('recargoActivo', v, false);
+  const setRedondeoVenta = (v) => setCampoPestanaActiva('redondeoVenta', v, 0);
+  const setDescuentoPctManual = (v) => setCampoPestanaActiva('descuentoPctManual', v, '');
 
   // Función para resetear estados de facturación electrónica
   // El botón "atrás" del celular cierra el modal abierto en vez de salir del POS
@@ -2534,6 +2556,30 @@ useEffect(() => {
     return precioBase;
   };
 
+  // Calcula el monto de ajuste (con signo) de un producto según el tipo elegido y
+  // su base (cantidad × precio). Se recalcula cada vez que cambia la cantidad, así
+  // el descuento/recargo por producto sigue el precio actual.
+  const calcularAjusteItem = (base, tipo, direccion) => {
+    if (tipo === 'descuento') {
+      const pct = parseFloat(config?.descuento_maximo) || 0;
+      return -Math.round(base * pct / 100);
+    }
+    if (tipo === 'recargo') {
+      const pct = parseFloat(config?.recargo_general) || 0;
+      return Math.round(base * pct / 100);
+    }
+    if (tipo === 'redondeo') {
+      const mult = parseInt(config?.redondeo_precios) || 0;
+      if (mult > 0) {
+        const objetivo = direccion === 'arriba'
+          ? Math.ceil(base / mult) * mult
+          : Math.floor(base / mult) * mult;
+        return objetivo - base;
+      }
+    }
+    return 0;
+  };
+
   const agregarAlCarrito = useCallback((producto) => {
     // Verificar si el producto no es de unidad (es decir, tiene unidad kg, lt, mt)
     const unidadesNoUnitarias = ['kg', 'lt', 'mt'];
@@ -2560,7 +2606,9 @@ useEffect(() => {
             if (item.producto_id !== producto.id) return item;
             const nuevaCant = item.cantidad + 1;
             const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? precioMayorista, nuevaCant);
-            return { ...item, cantidad: nuevaCant, precio_unitario: precio, subtotal: nuevaCant * precio };
+            const base = nuevaCant * precio;
+            const ajuste = item.ajusteTipo ? calcularAjusteItem(base, item.ajusteTipo, item.ajusteDir) : 0;
+            return { ...item, cantidad: nuevaCant, precio_unitario: precio, subtotal: base + ajuste, ajuste };
           })
         };
       }
@@ -2578,7 +2626,10 @@ useEffect(() => {
             precio_mayorista_prod: precioMayorista,
             precio_unitario: precioInicial,
             cantidad: 1,
-            subtotal: precioInicial
+            subtotal: precioInicial,
+            ajuste: 0,
+            ajusteTipo: null,
+            ajusteDir: null
           }
         ]
       };
@@ -2613,7 +2664,11 @@ useEffect(() => {
         carrito: p.carrito.map(item => {
           if (item.producto_id !== productoId) return item;
           const precio = precioSegunCantidad(item.precio_base ?? item.precio_unitario, item.precio_mayorista_prod ?? 0, nuevaCantidad);
-          return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: nuevaCantidad * precio };
+          // Recalculamos el ajuste manual del producto (descuento/recargo/redondeo)
+          // con la nueva cantidad, para que siga el precio actual.
+          const base = nuevaCantidad * precio;
+          const ajuste = item.ajusteTipo ? calcularAjusteItem(base, item.ajusteTipo, item.ajusteDir) : 0;
+          return { ...item, cantidad: nuevaCantidad, precio_unitario: precio, subtotal: base + ajuste, ajuste };
         })
       };
     }));
@@ -2630,6 +2685,34 @@ useEffect(() => {
   };
 
   /**
+   * Aplica un ajuste de precio a UN producto del carrito (no a toda la venta).
+   * El ajuste es un monto (con signo) que se guarda en el item y se suma a su
+   * subtotal; así se refleja solo, sin tocar el backend.
+   * @param {string|number} productoId
+   * @param {'descuento'|'recargo'|'redondeo'|'quitar'} tipo
+   * @param {'arriba'|'abajo'} [direccion] solo para redondeo
+   */
+  const aplicarAjusteItem = (productoId, tipo, direccion) => {
+    setPestanas(prev => prev.map(p => {
+      if (p.id !== pestanaActiva) return p;
+      return {
+        ...p,
+        carrito: p.carrito.map(item => {
+          if (item.producto_id !== productoId) return item;
+          const base = item.cantidad * item.precio_unitario; // subtotal sin ajuste
+          if (tipo === 'quitar') {
+            return { ...item, ajuste: 0, ajusteTipo: null, ajusteDir: null, subtotal: base };
+          }
+          // Guardamos el tipo/dirección para poder recalcular el monto si cambia
+          // la cantidad del producto.
+          const ajuste = calcularAjusteItem(base, tipo, direccion);
+          return { ...item, ajuste, ajusteTipo: tipo, ajusteDir: direccion || null, subtotal: base + ajuste };
+        }),
+      };
+    }));
+  };
+
+  /**
    * Limpia completamente el carrito de la pestaña activa
    */
   // Resetea los ajustes de precio (al limpiar, confirmar o vaciar el carrito)
@@ -2638,6 +2721,7 @@ useEffect(() => {
     setRecargoActivo(false);
     setDescuentoPctManual('');
     setRedondeoVenta(0);
+    setAjusteItemAbierto(null);
   };
 
   const limpiarCarrito = () => {
@@ -3396,12 +3480,23 @@ const imprimirTicketDesdeModal = () => {
               </div>
             ) : (
               <div className="space-y-2 max-w-2xl mx-auto">
-                {carritoActivo.map((item, idx) => (
+                {carritoActivo.map((item, idx) => {
+                  const ajuste = item.ajuste || 0;
+                  const panelAbierto = ajusteItemAbierto === item.producto_id;
+                  const hayAjustesConfig = pctDescuento > 0 || pctRecargo > 0 || multiploRedondeo > 0;
+                  const estBtnAjuste = {
+                    background: oscuro ? 'rgba(255,255,255,0.06)' : '#ffffff',
+                    border: `1px solid ${oscuro ? 'rgba(255,255,255,0.15)' : '#e2e8f0'}`,
+                    color: oscuro ? 'rgba(255,255,255,0.8)' : '#475569',
+                  };
+                  return (
                <div key={item.producto_id}
-                  onClick={() => cambiarCantidad(item.producto_id, item.cantidad + 1)}
-                  title="Tocá la tarjeta para sumar 1"
-                  className="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all cursor-pointer active:scale-[0.99] select-none"
+                  className="rounded-2xl transition-all select-none overflow-hidden"
                   style={{ ...estilos.itemCarrito, animationDelay: `${idx * 30}ms` }}>
+                  <div
+                    onClick={() => cambiarCantidad(item.producto_id, item.cantidad + 1)}
+                    title="Tocá la tarjeta para sumar 1"
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer active:scale-[0.99]">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${item.esRapida ? 'bg-purple-500 bg-opacity-20 text-purple-300' : 'text-white'}`}
                       style={!item.esRapida ? { backgroundColor: 'var(--color-primario)' } : {}}>
                       {item.esRapida ? '⚡' : (item.nombre_producto || '?').charAt(0).toUpperCase()}
@@ -3446,7 +3541,20 @@ const imprimirTicketDesdeModal = () => {
                     </div>
                       <div className="text-right flex-shrink-0 w-20">
                       <p className="font-bold text-sm" style={estilos.textoItemCarrito}>{fmt(item.subtotal)}</p>
+                      {ajuste !== 0 && (
+                        <p className="text-[10px] font-bold leading-none mt-0.5" style={{ color: ajuste < 0 ? '#22c55e' : '#3b82f6' }}>
+                          {ajuste > 0 ? '+' : ''}{fmt(ajuste)}
+                        </p>
+                      )}
                     </div>
+                    {hayAjustesConfig && (
+                      <button onClick={(e) => { e.stopPropagation(); setAjusteItemAbierto(panelAbierto ? null : item.producto_id); }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-xs font-bold hover:scale-110"
+                        style={ajuste !== 0 ? { background: '#3b82f6', border: '1px solid #3b82f6', color: '#fff' } : estBtnAjuste}
+                        title="Descuento, recargo o redondeo de este producto">
+                        %
+                      </button>
+                    )}
                     <button onClick={(e) => { e.stopPropagation(); eliminarDelCarrito(item.producto_id); }}
                       className="w-7 h-7 rounded-lg flex items-center justify-center transition-all flex-shrink-0 text-xs hover:scale-110"
                       style={estilos.botonBasura}
@@ -3454,7 +3562,38 @@ const imprimirTicketDesdeModal = () => {
                       ✕
                     </button>
                   </div>
-                ))}
+                  {panelAbierto && hayAjustesConfig && (
+                    <div className="px-4 pb-3 -mt-0.5 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {pctDescuento > 0 && (
+                        <button onClick={() => aplicarAjusteItem(item.producto_id, 'descuento')}
+                          className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+                          style={estBtnAjuste}>− Desc {pctDescuento}%</button>
+                      )}
+                      {pctRecargo > 0 && (
+                        <button onClick={() => aplicarAjusteItem(item.producto_id, 'recargo')}
+                          className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+                          style={estBtnAjuste}>+ Rec {pctRecargo}%</button>
+                      )}
+                      {multiploRedondeo > 0 && (
+                        <>
+                          <button onClick={() => aplicarAjusteItem(item.producto_id, 'redondeo', 'abajo')}
+                            className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+                            style={estBtnAjuste} title={`Redondear hacia abajo (múltiplos de ${multiploRedondeo})`}>↓ Redondear</button>
+                          <button onClick={() => aplicarAjusteItem(item.producto_id, 'redondeo', 'arriba')}
+                            className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+                            style={estBtnAjuste} title={`Redondear hacia arriba (múltiplos de ${multiploRedondeo})`}>↑ Redondear</button>
+                        </>
+                      )}
+                      {ajuste !== 0 && (
+                        <button onClick={() => aplicarAjusteItem(item.producto_id, 'quitar')}
+                          className="px-2 py-1 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+                          style={{ ...estBtnAjuste, color: '#ef4444' }}>Quitar ✕</button>
+                      )}
+                    </div>
+                  )}
+                  </div>
+                  );
+                })}
               </div>
             )}
           </div>

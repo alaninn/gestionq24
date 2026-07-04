@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.30.0';
+export const VERSION_ACTUAL = '2.31.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.31.0',
+    fecha: '2026-07-04',
+    titulo: 'Descuento, recargo y redondeo por producto en el POS',
+    cambios: [
+      { t: 'Ahora podés aplicar descuento, recargo o redondeo a UN producto puntual del carrito, sin afectar el resto de la venta. Cada tarjeta del carrito tiene un botón "%" que abre esos ajustes.' },
+      { t: 'El ajuste de cada producto se ve en su tarjeta y se suma solo al total. Podés quitarlo cuando quieras. Si cambiás la cantidad, el descuento o recargo se recalcula solo.' },
+      { t: 'Cada venta en espera conserva sus propios descuentos y recargos: al cambiar de venta ya no se pierden ni se mezclan con las demás.' },
+    ],
+  },
   {
     version: '2.30.0',
     fecha: '2026-07-03',
