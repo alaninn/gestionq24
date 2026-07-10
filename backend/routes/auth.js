@@ -203,29 +203,39 @@ router.post('/acceso-negocio', async (req, res) => {
             return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
         }
 
-        // El acceso del negocio lo hace el dueño/admin con su mail. Verificamos
-        // mail + contraseña (crypt, igual que el login) sobre un usuario admin activo.
+        // El acceso del negocio se abre con el mail del negocio y la contraseña del
+        // portal (la conocen todos los usuarios). Esa contraseña es distinta de la
+        // del administrador. Traemos el negocio por el mail del admin y verificamos
+        // la contraseña del portal; si el negocio todavia no configuro una contraseña
+        // de portal, se acepta la del admin (compatibilidad, para no bloquear el acceso).
         const r = await db.query(`
             SELECT u.negocio_id, u.rol,
                    n.nombre AS negocio_nombre, n.estado AS negocio_estado,
-                   n.fecha_vencimiento, n.plan, n.color_primario
+                   n.fecha_vencimiento, n.plan, n.color_primario,
+                   (n.password_portal_hash IS NOT NULL) AS tiene_portal,
+                   (n.password_portal_hash IS NOT NULL
+                        AND n.password_portal_hash = crypt($2, n.password_portal_hash)) AS portal_ok,
+                   (u.password_hash = crypt($2, u.password_hash)) AS admin_ok
             FROM usuarios u
             JOIN negocios n ON u.negocio_id = n.id
             WHERE LOWER(u.email) = LOWER($1)
               AND u.activo = TRUE
               AND u.rol = 'admin'
-              AND u.password_hash = crypt($2, u.password_hash)
             LIMIT 1
         `, [email, password]);
 
-        if (r.rows.length === 0) {
+        const fila = r.rows[0];
+        // Contraseña válida: la del portal si está configurada; si no, la del admin.
+        const passwordValida = fila && (fila.portal_ok || (!fila.tiene_portal && fila.admin_ok));
+
+        if (!passwordValida) {
             const a = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
             a.count++; a.lastAttempt = now;
             loginAttempts.set(attemptKey, a);
             return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
         }
 
-        const neg = r.rows[0];
+        const neg = fila;
 
         // Estado del negocio (mismo criterio que el login)
         if (!['estandar', 'premium'].includes(neg.plan)) {

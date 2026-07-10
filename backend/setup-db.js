@@ -354,6 +354,11 @@ ALTER TABLE negocios ALTER COLUMN disponible_fecha_inicio TYPE TIMESTAMP USING d
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_efectivo NUMERIC(12,2) DEFAULT 0;
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS disponible_inicial_virtual NUMERIC(12,2) DEFAULT 0;
 
+-- Contraseña del acceso del negocio (Paso 1 del login) separada de la del admin.
+-- La conocen todos los usuarios por si el equipo se desloguea. Si esta en NULL
+-- el acceso del negocio acepta la contraseña del admin (compatibilidad).
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS password_portal_hash TEXT;
+
 -- Retiros de dinero del local (tomar ganancia). Bajan el dinero disponible pero
 -- NO son gastos del negocio (no afectan la ganancia). tipo: efectivo o virtual.
 CREATE TABLE IF NOT EXISTS retiros (

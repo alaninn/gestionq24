@@ -724,9 +724,12 @@ router.get('/negocios/:id/admin', async (req, res) => {
     try {
         const { id } = req.params;
         const resultado = await db.query(`
-            SELECT id, nombre, email, username, rol FROM usuarios
-            WHERE negocio_id = $1 AND rol = 'admin' AND activo = TRUE
-            ORDER BY created_at ASC LIMIT 1
+            SELECT u.id, u.nombre, u.email, u.username, u.rol,
+                   (n.password_portal_hash IS NOT NULL) AS tiene_password_portal
+            FROM usuarios u
+            JOIN negocios n ON u.negocio_id = n.id
+            WHERE u.negocio_id = $1 AND u.rol = 'admin' AND u.activo = TRUE
+            ORDER BY u.created_at ASC LIMIT 1
         `, [id]);
 
         if (resultado.rows.length === 0) {
@@ -745,7 +748,7 @@ router.get('/negocios/:id/admin', async (req, res) => {
 router.put('/negocios/:id/admin', async (req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, username, password, email } = req.body;
+        const { nombre, username, password, password_portal, email } = req.body;
 
         if (!nombre || !username) {
             return res.status(400).json({ error: 'Nombre y usuario son obligatorios' });
@@ -804,6 +807,15 @@ router.put('/negocios/:id/admin', async (req, res) => {
 
         // Sincronizar el mail del negocio con el del admin
         await db.query('UPDATE negocios SET email = $1 WHERE id = $2', [mail, id]);
+
+        // Contraseña del portal de acceso (Paso 1): es distinta de la del admin y la
+        // conocen todos los usuarios. Solo se actualiza si se mandó una nueva.
+        if (password_portal && password_portal.trim() !== '') {
+            await db.query(
+                'UPDATE negocios SET password_portal_hash = crypt($1, gen_salt(\'bf\')) WHERE id = $2',
+                [password_portal, id]
+            );
+        }
 
         res.json({ mensaje: 'Administrador actualizado correctamente' });
     } catch (error) {

@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.31.2';
+export const VERSION_ACTUAL = '2.32.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.32.0',
+    fecha: '2026-07-10',
+    titulo: 'El acceso del negocio tiene su propia contraseña',
+    cambios: [
+      { t: 'El acceso del negocio (Paso 1 del login) ahora usa una contraseña propia, distinta de la del administrador. Así se la puede compartir con todos los usuarios para volver a entrar si el equipo se desloguea, sin dar la clave del admin.', super: true },
+      { t: 'Al editar el administrador de un negocio se pueden cambiar por separado la contraseña del portal de acceso y la del administrador.', super: true },
+    ],
+  },
   {
     version: '2.31.2',
     fecha: '2026-07-04',

@@ -32,7 +32,7 @@ function Superadmin() {
   const [mostrarModalMiCuenta, setMostrarModalMiCuenta] = useState(false);
   const [mostrarModalAdminNegocio, setMostrarModalAdminNegocio] = useState(null);
   const [formMiCuenta, setFormMiCuenta] = useState({ nombre: '', email: '', password: '', confirmarPassword: '' });
-  const [formAdminNegocio, setFormAdminNegocio] = useState({ nombre: '', username: '', email: '', password: '' });
+  const [formAdminNegocio, setFormAdminNegocio] = useState({ nombre: '', username: '', email: '', password: '', password_portal: '', tiene_password_portal: false });
   const [guardandoCuenta, setGuardandoCuenta] = useState(false);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
@@ -353,6 +353,8 @@ function Superadmin() {
         username: res.data.username || '',
         email: res.data.email || '',
         password: '',
+        password_portal: '',
+        tiene_password_portal: !!res.data.tiene_password_portal,
         usuario_id: res.data.id
       });
       setMostrarModalAdminNegocio(negocio);
@@ -368,7 +370,8 @@ function Superadmin() {
         nombre: formAdminNegocio.nombre,
         username: formAdminNegocio.username,
         email: formAdminNegocio.email,
-        ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {})
+        ...(formAdminNegocio.password ? { password: formAdminNegocio.password } : {}),
+        ...(formAdminNegocio.password_portal ? { password_portal: formAdminNegocio.password_portal } : {})
       });
       setExito('✅ Administrador actualizado correctamente');
       // Reflejar el mail nuevo al instante en la lista, además de recargar del servidor.
@@ -902,7 +905,7 @@ function Superadmin() {
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl">👤</div>
                   <div className="text-left">
                     <p className="font-bold text-lg">Editar Administrador</p>
-                    <p className="text-white/80 text-sm">Cambiar nombre, email o contraseña del admin del negocio</p>
+                    <p className="text-white/80 text-sm">Cambiar nombre, email y las contraseñas del portal y del admin</p>
                   </div>
                 </button>
 
@@ -1232,7 +1235,7 @@ function Superadmin() {
               {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
               <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs text-indigo-700">
-                El <b>mail + contraseña</b> son el <b>Acceso del negocio</b> (Paso 1 del login). El <b>usuario + contraseña</b> es con lo que entra el admin después.
+                El <b>mail + contraseña del portal</b> son el <b>Acceso del negocio</b> (Paso 1 del login): la conocen todos los usuarios por si el equipo se desloguea. El <b>usuario + contraseña del administrador</b> es con lo que entra el admin después. Son dos contraseñas distintas.
               </div>
 
               <div>
@@ -1274,7 +1277,24 @@ function Superadmin() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nueva Contraseña (opcional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña del portal de acceso (Paso 1)</label>
+                <input
+                  type="text"
+                  value={formAdminNegocio.password_portal}
+                  onChange={(e) => setFormAdminNegocio(p => ({ ...p, password_portal: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Dejar vacío para no cambiar"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  La que conocen todos los usuarios para volver a entrar al negocio.
+                  {formAdminNegocio.tiene_password_portal
+                    ? ' Ya hay una configurada; completá solo si querés cambiarla.'
+                    : ' Aún no hay una propia: por ahora vale también la del administrador.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Nueva contraseña del administrador (Paso 2)</label>
                 <input
                   type="password"
                   value={formAdminNegocio.password}
@@ -1282,7 +1302,7 @@ function Superadmin() {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500"
                   placeholder="Dejar vacío para no cambiar"
                 />
-                <p className="text-xs text-gray-500 mt-1">Solo completar si querés cambiar la contraseña</p>
+                <p className="text-xs text-gray-500 mt-1">Es privada del admin. Solo completar si querés cambiarla.</p>
               </div>
 
               <div className="flex gap-3 pt-4">
