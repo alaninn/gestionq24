@@ -714,6 +714,7 @@ function Stock() {
                   type="number" inputMode="numeric" min="0"
                   value={nuevoStock}
                   onChange={(e) => setNuevoStock(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   onKeyDown={(e) => { if (e.key === 'Enter') guardarAjuste(); }}
                   className={`w-20 h-12 text-center text-2xl font-bold border-2 rounded-xl focus:outline-none flex-shrink-0 ${conteo ? 'border-green-300 focus:border-green-500' : 'border-gray-300 focus:border-yellow-400'}`}
                 />
@@ -861,8 +862,13 @@ function Stock() {
                 <p className="text-center text-gray-400 text-sm py-6">Sin movimientos registrados</p>
               ) : historial.map(h => (
                 <div key={h.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2 text-sm">
-                  <span className="text-gray-500 text-xs">{new Date(h.fecha).toLocaleString('es-AR')}</span>
-                  <span className="font-medium text-gray-700">
+                  <div className="min-w-0">
+                    <span className="text-gray-500 text-xs block">{new Date(h.fecha).toLocaleString('es-AR')}</span>
+                    {(h.usuario_nombre || h.usuario_username) && (
+                      <span className="text-gray-400 text-[11px] block truncate">por {h.usuario_nombre || h.usuario_username}</span>
+                    )}
+                  </div>
+                  <span className="font-medium text-gray-700 flex-shrink-0 ml-2">
                     {h.stock_anterior} → <span className={h.stock_nuevo >= h.stock_anterior ? 'text-green-600' : 'text-red-500'}>{h.stock_nuevo}</span>
                   </span>
                 </div>
@@ -987,6 +993,7 @@ function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-gray-400 text-sm">+</span>
                     <input type="number" value={cantidades[p.id] ?? ''} onChange={(e) => setCant(p.id, e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500"
                       placeholder="0" />
                     {tieneCant && (

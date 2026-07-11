@@ -732,8 +732,8 @@ router.post('/stock-sumar', verificarPermiso('productos', 'editar'), async (req,
 
             await db.query('UPDATE productos SET stock = $1 WHERE id = $2 AND negocio_id = $3', [nuevo, id, negocio_id]);
             await db.query(
-                'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1, $2, $3, $4)',
-                [negocio_id, id, anterior, nuevo]
+                'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo, usuario_id) VALUES ($1, $2, $3, $4, $5)',
+                [negocio_id, id, anterior, nuevo, req.usuario?.id || null]
             );
             actualizados.push({ id, stock_anterior: anterior, stock: nuevo });
         }
@@ -843,8 +843,8 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
                 const stockNuevo = parseFloat(resultado.rows[0].stock) || 0;
                 if (stockNuevo !== stockAnterior) {
                     await client.query(
-                        'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1,$2,$3,$4)',
-                        [negocio_id, id, stockAnterior, stockNuevo]
+                        'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo, usuario_id) VALUES ($1,$2,$3,$4,$5)',
+                        [negocio_id, id, stockAnterior, stockNuevo, req.usuario?.id || null]
                     );
                 }
             }
@@ -909,8 +909,8 @@ router.put('/:id/stock', verificarPermiso('productos', 'editar'), async (req, re
         await db.query('UPDATE productos SET stock = $1 WHERE id = $2 AND negocio_id = $3', [nuevoStock, req.params.id, negocio_id]);
 
         await db.query(
-            'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo) VALUES ($1, $2, $3, $4)',
-            [negocio_id, req.params.id, stockAnterior, nuevoStock]
+            'INSERT INTO historial_stock (negocio_id, producto_id, stock_anterior, stock_nuevo, usuario_id) VALUES ($1, $2, $3, $4, $5)',
+            [negocio_id, req.params.id, stockAnterior, nuevoStock, req.usuario?.id || null]
         );
 
         const productoActualizado = await db.query('SELECT * FROM productos WHERE id = $1 AND negocio_id = $2', [req.params.id, negocio_id]);
@@ -927,9 +927,11 @@ router.get('/:id/historial-stock', verificarPermiso('productos', 'ver'), async (
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         const historial = await db.query(
-            `SELECT hs.*, p.nombre AS producto_nombre
+            `SELECT hs.*, p.nombre AS producto_nombre,
+                    u.nombre AS usuario_nombre, u.username AS usuario_username
              FROM historial_stock hs
              LEFT JOIN productos p ON hs.producto_id = p.id
+             LEFT JOIN usuarios u ON hs.usuario_id = u.id
              WHERE hs.producto_id = $1 AND hs.negocio_id = $2
              ORDER BY hs.fecha DESC`,
             [req.params.id, negocio_id]

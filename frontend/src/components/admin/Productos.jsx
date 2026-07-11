@@ -1218,6 +1218,7 @@ const exportarExcel = async () => {
                         <div className="relative">
                           <span className="absolute left-3 top-2 text-gray-500">$</span>
                           <input type="number" name="precio_costo" value={formulario.precio_costo} onChange={manejarCambio}
+                            onWheel={(e) => e.currentTarget.blur()}
                             min="0" step="0.01" className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="0.00" />
                         </div>
                       )}
@@ -1226,6 +1227,7 @@ const exportarExcel = async () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Margen de Ganancia %</label>
                       <div className="relative">
                         <input type="number" name="margen_ganancia" value={formulario.margen_ganancia} onChange={manejarCambio}
+                          onWheel={(e) => e.currentTarget.blur()}
                           min="0" step="0.1" className="w-full border border-gray-300 rounded-lg px-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Ej: 50" />
                         <span className="absolute right-3 top-2 text-gray-500">%</span>
                       </div>
@@ -1236,6 +1238,7 @@ const exportarExcel = async () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Alícuota IVA %</label>
                       <div className="relative">
                         <input type="number" name="alicuota_iva" value={formulario.alicuota_iva} onChange={manejarCambio}
+                          onWheel={(e) => e.currentTarget.blur()}
                           min="0" max="100" step="0.5" className="w-full border border-gray-300 rounded-lg px-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
                         <span className="absolute right-3 top-2 text-gray-500">%</span>
                       </div>
@@ -1246,6 +1249,7 @@ const exportarExcel = async () => {
                       <div className="relative">
                         <span className="absolute left-3 top-2 text-gray-500">$</span>
                         <input type="number" name="precio_venta" value={formulario.precio_venta} onChange={manejarCambio}
+                          onWheel={(e) => e.currentTarget.blur()}
                           required min="0" className="w-full border border-green-400 bg-green-50 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 font-semibold text-green-800" />
                       </div>
                       {formulario.precio_costo > 0 && (
@@ -1269,11 +1273,13 @@ const exportarExcel = async () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad actual</label>
                       <input type="number" name="stock" value={formulario.stock} onChange={manejarCambio}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo (alerta)</label>
                       <input type="number" name="stock_minimo" value={formulario.stock_minimo} onChange={manejarCambio}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                   </div>
@@ -1444,6 +1450,7 @@ const exportarExcel = async () => {
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-2.5 text-gray-400">{formPrecios.operacion === 'porcentaje' ? '%' : '$'}</span>
                   <input type="number" value={formPrecios.valor} min="0" step="0.01" required autoFocus
+                    onWheel={(e) => e.currentTarget.blur()}
                     onChange={(e) => setFormPrecios(p => ({ ...p, valor: e.target.value }))}
                     className="w-full border-2 border-gray-200 rounded-xl pl-8 pr-3 py-2 text-lg font-semibold focus:outline-none focus:border-amber-400"
                     placeholder={formPrecios.operacion === 'porcentaje' ? 'Ej: 10' : 'Ej: 500'} />
@@ -1568,6 +1575,7 @@ function SelectorCombo({ componentes, excludeId, onChange }) {
               <div className="flex items-center gap-1 flex-shrink-0">
                 <span className="text-gray-400 text-sm">×</span>
                 <input type="number" min="0.001" step="0.001" value={c.cantidad}
+                  onWheel={(e) => e.currentTarget.blur()}
                   onChange={(e) => setCant(c.producto_id, e.target.value)}
                   className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>

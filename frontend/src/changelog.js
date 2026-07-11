@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.32.0';
+export const VERSION_ACTUAL = '2.33.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.33.0',
+    fecha: '2026-07-11',
+    titulo: 'Historial de stock con el usuario y freno a los cambios accidentales',
+    cambios: [
+      { t: 'El historial de stock (botón del reloj 🕒) ahora muestra en chiquito el nombre del usuario que hizo cada ajuste, así sabés quién cambió una cantidad.' },
+      { t: 'Los campos de números (stock, precios, cantidades) ya no se modifican solos al pasar la rueda del mouse por encima. Antes, si el cursor quedaba sobre el casillero y girabas la rueda, el número subía o bajaba sin querer y podía terminar en una cantidad muy distinta a la escrita.' },
+    ],
+  },
   {
     version: '2.32.0',
     fecha: '2026-07-10',

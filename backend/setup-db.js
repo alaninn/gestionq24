@@ -502,6 +502,9 @@ CREATE TABLE IF NOT EXISTS historial_stock (
 
 CREATE INDEX IF NOT EXISTS idx_historial_stock_producto ON historial_stock(producto_id);
 
+-- Usuario que hizo el ajuste de stock (para mostrar quien lo cambio en el historial).
+ALTER TABLE historial_stock ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+
 -- =============================================
 -- PRODUCTO COMBINADO (combos / packs)
 -- es_combinado marca el producto como combo. producto_combo guarda sus
