@@ -9,6 +9,11 @@ const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 2
 }).format(n || 0);
 
+// Escapa texto antes de meterlo en el HTML del comprobante que se imprime.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[c]));
+
 const nombresTipos = {
   1: 'Factura A', 6: 'Factura B', 11: 'Factura C',
   3: 'Nota de Crédito A', 8: 'Nota de Crédito B', 13: 'Nota de Crédito C',
@@ -185,12 +190,12 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   </style>
 </head>
 <body>
-  <div class="center bold grande">${config?.nombre_negocio || 'Mi Negocio'}</div>
-  <div class="center">${config?.direccion || 'Sin dirección'}</div>
-  ${config?.telefono ? `<div class="center">Tel: ${config.telefono}</div>` : ''}
-  ${cuitEmisor ? `<div class="center bold">CUIT: ${cuitEmisor}</div>` : ''}
-  ${config?.condicion_iva ? `<div class="center">${config.condicion_iva}</div>` : ''}
-  ${config?.ingresos_brutos ? `<div class="center">Ing. Brutos: ${config.ingresos_brutos}</div>` : ''}
+  <div class="center bold grande">${esc(config?.nombre_negocio || 'Mi Negocio')}</div>
+  <div class="center">${esc(config?.direccion || 'Sin dirección')}</div>
+  ${config?.telefono ? `<div class="center">Tel: ${esc(config.telefono)}</div>` : ''}
+  ${cuitEmisor ? `<div class="center bold">CUIT: ${esc(cuitEmisor)}</div>` : ''}
+  ${config?.condicion_iva ? `<div class="center">${esc(config.condicion_iva)}</div>` : ''}
+  ${config?.ingresos_brutos ? `<div class="center">Ing. Brutos: ${esc(config.ingresos_brutos)}</div>` : ''}
   ${config?.inicio_actividades ? `<div class="center">Inicio Act.: ${config.inicio_actividades.split('T')[0].split('-').reverse().join('/')}</div>` : ''}
   <div class="sep-doble"></div>
   <div class="center">
@@ -204,7 +209,7 @@ function ComprobanteElectronico({ comprobante, onClose, config }) {
   <div class="fila"><span>Cond. IVA Receptor:</span><span>${condReceptor}</span></div>
   <div class="fila"><span>Documento:</span><span>${documentoNombre}</span></div>
   ${comprobante.numero_documento ? `<div class="fila"><span>N&#176; Doc:</span><span>${comprobante.numero_documento}</span></div>` : ''}
-  ${comprobante.denominacion_comprador && comprobante.denominacion_comprador !== 'Consumidor Final' ? `<div class="fila"><span>Nombre:</span><span>${comprobante.denominacion_comprador}</span></div>` : ''}
+  ${comprobante.denominacion_comprador && comprobante.denominacion_comprador !== 'Consumidor Final' ? `<div class="fila"><span>Nombre:</span><span>${esc(comprobante.denominacion_comprador)}</span></div>` : ''}
   <div class="sep"></div>
   ${letra === 'A' ? `
     ${comprobante.importe_neto ? `<div class="fila"><span>Neto Gravado:</span><span>${fmt(comprobante.importe_neto)}</span></div>` : ''}

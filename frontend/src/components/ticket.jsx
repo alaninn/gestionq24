@@ -12,6 +12,12 @@ const fmtFecha = (f) => new Date(f).toLocaleDateString('es-AR', {
   hour: '2-digit', minute: '2-digit'
 });
 
+// Escapa texto antes de meterlo en el HTML del ticket, así un nombre de
+// producto, cliente o negocio con caracteres como < o > no rompe la impresion.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[c]));
+
 // ---- FUNCIÓN PRINCIPAL: imprimir ticket ----
 export function imprimirTicket({ venta, items, config, negocio, modo = 'automatico' }) {
 
@@ -169,19 +175,19 @@ export function imprimirTicket({ venta, items, config, negocio, modo = 'automati
     <body>
 
       <!-- ENCABEZADO -->
-      <div class="center bold grande">${nombreNegocio}</div>
-      ${direccion ? `<div class="center small">${direccion}</div>` : ''}
-      ${telefono ? `<div class="center small">Tel: ${telefono}</div>` : ''}
-      ${cuit ? `<div class="center small">CUIT: ${cuit}</div>` : ''}
+      <div class="center bold grande">${esc(nombreNegocio)}</div>
+      ${direccion ? `<div class="center small">${esc(direccion)}</div>` : ''}
+      ${telefono ? `<div class="center small">Tel: ${esc(telefono)}</div>` : ''}
+      ${cuit ? `<div class="center small">CUIT: ${esc(cuit)}</div>` : ''}
       
       <div class="separador-doble"></div>
       
-      <div class="center bold">${nombreTicket}</div>
+      <div class="center bold">${esc(nombreTicket)}</div>
       <div class="fila small">
         <span>N° ${String(venta.id).padStart(6, '0')}</span>
         <span>${fmtFecha(venta.fecha || new Date())}</span>
       </div>
-      ${venta.cliente_nombre ? `<div class="small">Cliente: ${venta.cliente_nombre}</div>` : ''}
+      ${venta.cliente_nombre ? `<div class="small">Cliente: ${esc(venta.cliente_nombre)}</div>` : ''}
       
       <div class="separador"></div>
 
@@ -195,7 +201,7 @@ export function imprimirTicket({ venta, items, config, negocio, modo = 'automati
 
       ${items.map(item => `
         <div class="fila-item">
-          <span class="nombre-item">${item.nombre_producto}</span>
+          <span class="nombre-item">${esc(item.nombre_producto)}</span>
           <span class="cant-item">${item.cantidad}</span>
           <span class="precio-item">${fmt(item.subtotal)}</span>
         </div>

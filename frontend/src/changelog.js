@@ -14,9 +14,21 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.33.0';
+export const VERSION_ACTUAL = '2.34.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.34.0',
+    fecha: '2026-07-12',
+    titulo: 'Refuerzos de seguridad del sistema',
+    cambios: [
+      { t: 'Se reforzó la asignación de roles al crear o editar usuarios: cada negocio solo puede usar los roles de su propio equipo, sin posibilidad de otorgar permisos que no correspondan.', super: true },
+      { t: 'La descarga de certificados de facturación ahora valida el archivo solicitado para que no se pueda acceder a archivos fuera de la carpeta de certificados.', super: true },
+      { t: 'La impresión de tickets y comprobantes ahora protege los textos (nombre del negocio, del cliente y de los productos) para que ningún carácter especial pueda alterar la impresión.' },
+      { t: 'El resumen de un cliente cuenta únicamente los pagos de su propio negocio.', super: true },
+      { t: 'El servidor ahora responde los errores de forma genérica, sin exponer detalles internos.', super: true },
+    ],
+  },
   {
     version: '2.33.0',
     fecha: '2026-07-11',

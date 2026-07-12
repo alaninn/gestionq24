@@ -83,16 +83,25 @@ router.post('/generar-certificados', verificarToken, soloAdmin, async (req, res)
 // =============================================
 // DESCARGAR ARCHIVO GENERADO (.key o .csr)
 // =============================================
-router.get('/descargar/:tipo/:filename', verificarToken, async (req, res) => {
+router.get('/descargar/:tipo/:filename', verificarToken, soloAdmin, async (req, res) => {
     try {
         const { tipo, filename } = req.params;
-        
+
         if (!['key', 'csr', 'crt'].includes(tipo)) {
             return res.status(400).json({ error: 'Tipo de archivo no válido' });
         }
 
-        const filePath = path.join(__dirname, '../uploads/certificados', filename);
-        
+        // Nos quedamos solo con el nombre del archivo (sin rutas) para que no se
+        // pueda salir de la carpeta de certificados con "../".
+        const nombreSeguro = path.basename(filename);
+        const carpeta = path.join(__dirname, '../uploads/certificados');
+        const filePath = path.join(carpeta, nombreSeguro);
+
+        // Confirmamos que el archivo resuelto sigue dentro de la carpeta permitida.
+        if (!filePath.startsWith(carpeta + path.sep)) {
+            return res.status(400).json({ error: 'Nombre de archivo no válido' });
+        }
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Archivo no encontrado' });
         }

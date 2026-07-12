@@ -85,8 +85,8 @@ router.get('/:id/historial', async (req, res) => {
         // Total pagado de deudas (solo movimientos de tipo 'pago', no las deudas
         // cargadas a mano que también viven en pagos_deuda con tipo 'deuda').
         const pagos = await db.query(
-            "SELECT COALESCE(SUM(monto), 0) AS total_pagado, COUNT(*) AS cantidad FROM pagos_deuda WHERE cliente_id = $1 AND COALESCE(tipo, 'pago') = 'pago'",
-            [cliente_id]
+            "SELECT COALESCE(SUM(monto), 0) AS total_pagado, COUNT(*) AS cantidad FROM pagos_deuda WHERE cliente_id = $1 AND negocio_id = $2 AND COALESCE(tipo, 'pago') = 'pago'",
+            [cliente_id, negocio_id]
         );
 
         // Lista de compras (todas, no solo fiadas), opcionalmente de un mes

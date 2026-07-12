@@ -42,7 +42,10 @@ node setup-db.js
 
 # 7) Reiniciar
 echo "🔄 Reiniciando servidor..."
-pm2 restart gestionq24
+# NODE_ENV=production: Express no expone detalles internos (stack traces, rutas
+# de archivos) en las respuestas de error. --update-env aplica la variable al
+# proceso ya existente.
+NODE_ENV=production pm2 restart gestionq24 --update-env
 
 echo "✅ Actualización completada"
 # --nostream: imprime las últimas líneas y SALE. Sin esto, al correr el script

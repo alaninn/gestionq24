@@ -8,6 +8,9 @@ require('./services/logBuffer').instalar();
 
 const express = require('express');
 const app = express();
+// Detrás de nginx: confiar en el primer proxy para leer la IP real del cliente
+// (necesario para que el rate-limit y los logs no vean siempre la IP del proxy).
+app.set('trust proxy', 1);
 const cors = require('cors');
 const path = require('path');
 const schedule = require('node-schedule');
@@ -119,6 +122,19 @@ app.use((req, res, next) => {
     } else {
         next();
     }
+});
+
+// Manejador de errores: responde JSON genérico sin exponer detalles internos
+// del servidor (rutas de archivos, stack traces) al cliente.
+app.use((err, req, res, next) => {
+    if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+        return res.status(400).json({ error: 'La solicitud no tiene un formato válido' });
+    }
+    if (err && err.type === 'entity.too.large') {
+        return res.status(413).json({ error: 'El contenido enviado es demasiado grande' });
+    }
+    console.error('Error no controlado:', err);
+    res.status(500).json({ error: 'Ocurrió un error en el servidor' });
 });
 
 const PUERTO = process.env.PORT || 3001;

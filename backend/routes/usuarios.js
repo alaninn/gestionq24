@@ -175,7 +175,10 @@ router.post('/', soloAdmin, validarLimitePlan, async (req, res) => {
             return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
         }
 
-        const rolFinal = rol || 'cajero';
+        // Roles válidos que un admin puede asignar. Nunca 'superadmin':
+        // ese rol es global y solo se crea desde el panel de superadmin.
+        const ROLES_PERMITIDOS = ['admin', 'encargado', 'cajero'];
+        const rolFinal = ROLES_PERMITIDOS.includes(rol) ? rol : 'cajero';
 
         const resultado = await db.query(`
             INSERT INTO usuarios (negocio_id, nombre, username, email, password_hash, rol, permisos)
@@ -224,6 +227,16 @@ router.put('/:id', soloAdmin, async (req, res) => {
             }
         }
 
+        // Solo se pueden asignar roles del negocio; 'superadmin' nunca se toca
+        // desde acá. Si llega un rol inválido, se conserva el rol actual.
+        const ROLES_PERMITIDOS = ['admin', 'encargado', 'cajero'];
+        const rolActualRes = await db.query(
+            'SELECT rol FROM usuarios WHERE id = $1 AND negocio_id = $2',
+            [id, negocio_id]
+        );
+        const rolActual = rolActualRes.rows[0]?.rol || 'cajero';
+        const rolFinal = ROLES_PERMITIDOS.includes(rol) ? rol : rolActual;
+
         if (password) {
             await db.query(`
                 UPDATE usuarios SET
@@ -231,14 +244,14 @@ router.put('/:id', soloAdmin, async (req, res) => {
                     permisos = $5, activo = $6,
                     password_hash = crypt($7, gen_salt('bf'))
                 WHERE id = $8 AND negocio_id = $9
-            `, [nombre, username, email || null, rol, JSON.stringify(permisos || {}), activo, password, id, negocio_id]);
+            `, [nombre, username, email || null, rolFinal, JSON.stringify(permisos || {}), activo, password, id, negocio_id]);
         } else {
             await db.query(`
                 UPDATE usuarios SET
                     nombre = $1, username = $2, email = $3, rol = $4,
                     permisos = $5, activo = $6
                 WHERE id = $7 AND negocio_id = $8
-            `, [nombre, username, email || null, rol, JSON.stringify(permisos || {}), activo, id, negocio_id]);
+            `, [nombre, username, email || null, rolFinal, JSON.stringify(permisos || {}), activo, id, negocio_id]);
         }
 
        const resultado = await db.query(
