@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.35.0';
+export const VERSION_ACTUAL = '2.35.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.35.1',
+    fecha: '2026-07-12',
+    titulo: 'Las cajas se agrupan por el día correcto',
+    cambios: [
+      { t: 'En el Control de Cajas, cada caja se cuenta en el día en que se abrió. Antes, una caja abierta a la tarde/noche podía figurar en el día siguiente; ahora el cambio de día recién ocurre pasada la medianoche.' },
+    ],
+  },
   {
     version: '2.35.0',
     fecha: '2026-07-12',

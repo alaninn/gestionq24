@@ -29,28 +29,17 @@ const fmtDiaLargo = (iso) => {
 
 const virtualDe = (t) => parseFloat(t.ventas_tarjeta || 0) + parseFloat(t.ventas_mp || 0) + parseFloat(t.ventas_transferencia || 0);
 
-// DÍA COMERCIAL: una caja que abre de noche (la trasnoche) cuenta para el día
-// SIGUIENTE. Ej: trasnoche abierta a las 22:00 del 12/06 → cuenta para el 13/06.
-// Se decide por la hora de apertura (hora Argentina): si abre a partir de esta
-// hora, su día comercial es la fecha de apertura + 1. Así también funciona si la
-// trasnoche abre pasada la medianoche (esa ya cae en el día correcto).
-// Si tus turnos arrancan a otra hora, cambiá este número.
-const CORTE_DIA_COMERCIAL_HORA = 18; // 18:00 (6 PM)
-
+// DÍA COMERCIAL: cada caja cuenta para el día calendario (hora Argentina) en el
+// que se abrió. El cambio de día ocurre a la medianoche: una caja abierta a las
+// 18:00 o a las 23:00 sigue siendo del mismo día, y recién a partir de las 00:00
+// pasa a contar para el día siguiente.
 function diaComercial(fechaApertura) {
   const partes = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Argentina/Buenos_Aires',
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(new Date(fechaApertura));
   const val = (t) => partes.find(p => p.type === t)?.value;
-  let y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
-  let h = Number(val('hour'));
-  if (h === 24) h = 0; // algunos motores devuelven '24' a la medianoche
-  if (h >= CORTE_DIA_COMERCIAL_HORA) {
-    // Sumamos un día usando UTC para no depender de la zona local del navegador
-    const sig = new Date(Date.UTC(y, m - 1, d + 1));
-    y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
-  }
+  const y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
