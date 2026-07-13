@@ -29,27 +29,35 @@ const fmtDiaLargo = (iso) => {
 
 const virtualDe = (t) => parseFloat(t.ventas_tarjeta || 0) + parseFloat(t.ventas_mp || 0) + parseFloat(t.ventas_transferencia || 0);
 
-// DÍA COMERCIAL: cada caja cuenta para el día calendario (hora Argentina) en el
-// que se abrió. El cambio de día ocurre a la medianoche: una caja abierta a las
-// 18:00 o a las 23:00 sigue siendo del mismo día, y recién a partir de las 00:00
-// pasa a contar para el día siguiente.
-function diaComercial(fechaApertura) {
+// DÍA COMERCIAL: día (hora Argentina) al que pertenece cada caja según la hora
+// de corte configurada por el negocio.
+//   corteHora = 0  → día calendario: el día cambia a la medianoche (una caja
+//                    abierta a las 18:00 o 23:00 sigue siendo del mismo día).
+//   corteHora 1..23 → turno noche: las cajas abiertas a partir de esa hora
+//                    cuentan para el día siguiente.
+function diaComercial(fechaApertura, corteHora = 0) {
   const partes = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Argentina/Buenos_Aires',
-    year: 'numeric', month: '2-digit', day: '2-digit',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
   }).formatToParts(new Date(fechaApertura));
   const val = (t) => partes.find(p => p.type === t)?.value;
-  const y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
+  let y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
+  let h = Number(val('hour'));
+  if (h === 24) h = 0;
+  if (corteHora > 0 && h >= corteHora) {
+    const sig = new Date(Date.UTC(y, m - 1, d + 1));
+    y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
+  }
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 // Agrupa los turnos (cajas) por DÍA COMERCIAL (ver diaComercial).
 // Cada día es una "caja general": la suma de todas las cajas (mañana, tarde,
 // trasnoche...) de ese día comercial. La cantidad de cajas por día es variable.
-function agruparPorDia(turnos) {
+function agruparPorDia(turnos, corteHora = 0) {
   const mapa = new Map();
   for (const t of turnos) {
-    const dia = diaComercial(t.fecha_apertura); // 'YYYY-MM-DD' (día comercial)
+    const dia = diaComercial(t.fecha_apertura, corteHora); // 'YYYY-MM-DD' (día comercial)
     if (!mapa.has(dia)) mapa.set(dia, []);
     mapa.get(dia).push(t);
   }
@@ -622,6 +630,9 @@ function ControlCaja() {
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [errorCajas, setErrorCajas] = useState('');
+  // Hora de corte del día comercial (0 = día calendario). Define cómo se agrupan
+  // las cajas por día en el historial.
+  const [corteHora, setCorteHora] = useState(0);
 
   const cargarCajasFijas = async () => {
     try {
@@ -658,6 +669,12 @@ function ControlCaja() {
   };
 
   useEffect(() => { cargarCajasFijas(); }, []);
+
+  useEffect(() => {
+    api.get('/api/configuracion')
+      .then(res => setCorteHora(Math.min(23, Math.max(0, parseInt(res.data?.cajas_corte_hora) || 0))))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     cargarDatos();
@@ -757,7 +774,7 @@ function ControlCaja() {
               cajas mañana/tarde/trasnoche). Al tocarlo se ve el cierre general
               del día con el detalle de cada caja individual. */}
           {(() => {
-            const dias = agruparPorDia(datos.turnos);
+            const dias = agruparPorDia(datos.turnos, corteHora);
             return (
               <div className="bg-white rounded-xl shadow overflow-hidden">
                 <div className="p-4 border-b flex items-center justify-between gap-2 flex-wrap">

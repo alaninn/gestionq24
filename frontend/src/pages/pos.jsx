@@ -38,8 +38,15 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
 
   const confirmar = () => {
     if (!seleccion) return;
-    if (seleccion.tipo === 'fija-cerrada') onAbrirFija(seleccion.id, parseFloat(inicioCaja) || 0);
-    else onUnirse(seleccion.id); // fija-abierta y abierta usan el turno_id
+    if (seleccion.tipo === 'fija-cerrada') {
+      // Si la caja fija ya se usó hoy (en el día comercial actual), avisamos antes
+      // de abrirla de nuevo.
+      const caja = cajasFijas.find(c => c.id === seleccion.id);
+      if (caja?.usada_hoy && !window.confirm(`La caja "${caja.nombre}" ya se usó hoy.\n\n¿Querés abrirla otra vez?`)) return;
+      onAbrirFija(seleccion.id, parseFloat(inicioCaja) || 0);
+    } else {
+      onUnirse(seleccion.id); // fija-abierta y abierta usan el turno_id
+    }
   };
 
   return (
@@ -67,9 +74,16 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
                         className={`w-full p-3.5 rounded-xl border-2 text-left transition-all ${activa ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}>
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="font-bold text-gray-800">{cf.nombre}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-gray-800">{cf.nombre}</p>
+                              {!abierta && cf.usada_hoy && (
+                                <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">ya se usó hoy</span>
+                              )}
+                            </div>
                             {abierta ? (
                               <p className="text-xs text-green-600 mt-0.5">🔓 Abierta · {info?.total_usuarios || 1} usuario(s) · {info?.total_ventas || 0} ventas</p>
+                            ) : cf.usada_hoy ? (
+                              <p className="text-xs text-gray-400 mt-0.5">🔒 Cerrada — tocá para volver a abrirla</p>
                             ) : (
                               <p className="text-xs text-gray-400 mt-0.5">🔒 Cerrada — tocá para abrirla</p>
                             )}

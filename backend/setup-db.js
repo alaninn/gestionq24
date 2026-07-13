@@ -109,6 +109,10 @@ ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_primario VARCHAR(20) DE
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS recargo_general NUMERIC DEFAULT 0;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS modo_oscuro BOOLEAN DEFAULT TRUE;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS entorno_arca VARCHAR(20) DEFAULT 'homologacion';
+-- Modo de dia comercial de las cajas: 0 = dia calendario (de 00:00 a 00:00);
+-- 1..23 = hora de corte del turno noche (cajas abiertas a partir de esa hora
+-- cuentan para el dia siguiente).
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS cajas_corte_hora INTEGER DEFAULT 0;
 
 -- Tabla de codigos alternativos de productos (si no existe)
 CREATE TABLE IF NOT EXISTS producto_codigos (

@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.35.1';
+export const VERSION_ACTUAL = '2.36.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.36.0',
+    fecha: '2026-07-12',
+    titulo: 'Elegí cómo se cuenta el día de las cajas',
+    cambios: [
+      { t: 'En Configuración podés elegir a qué día pertenece cada caja: por día calendario (de 00:00 a 00:00) o que el turno noche cuente para el día siguiente a partir de la hora que elijas.' },
+      { t: 'Al abrir una caja fija que ya se usó hoy (por ejemplo, volver a abrir la caja "Noche"), el sistema lo avisa con una etiqueta "ya se usó hoy" y te pregunta si querés abrirla otra vez.' },
+    ],
+  },
   {
     version: '2.35.1',
     fecha: '2026-07-12',

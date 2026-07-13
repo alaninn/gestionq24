@@ -2,6 +2,25 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 
+// Día comercial (YYYY-MM-DD, hora Argentina) al que pertenece una apertura.
+// corteHora = 0: día calendario (cambia a la medianoche). corteHora 1..23: las
+// aperturas a partir de esa hora cuentan para el día siguiente (turno noche).
+function diaComercial(fecha, corteHora = 0) {
+    const partes = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+    }).formatToParts(new Date(fecha));
+    const val = (t) => partes.find(p => p.type === t)?.value;
+    let y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
+    let h = Number(val('hour'));
+    if (h === 24) h = 0;
+    if (corteHora > 0 && h >= corteHora) {
+        const sig = new Date(Date.UTC(y, m - 1, d + 1));
+        y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
+    }
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 // =============================================
 // CAJAS FIJAS del local (Mañana, Tarde, Trasnoche...)
 // Se administran desde Control de Cajas; cualquier usuario las ve al abrir.
@@ -24,7 +43,31 @@ router.get('/cajas-fijas', async (req, res) => {
             ORDER BY cd.orden ASC, cd.id ASC
         `, [negocio_id]);
 
-        res.json(resultado.rows);
+        // Marcamos qué cajas fijas ya se usaron en el día comercial actual, para
+        // avisar si se vuelve a abrir una que ya se usó hoy. El día se calcula
+        // según la hora de corte configurada por el negocio.
+        const cfg = await db.query(
+            'SELECT cajas_corte_hora FROM configuracion WHERE negocio_id = $1 LIMIT 1',
+            [negocio_id]
+        );
+        const corte = Math.min(23, Math.max(0, parseInt(cfg.rows[0]?.cajas_corte_hora) || 0));
+        const hoyComercial = diaComercial(new Date(), corte);
+
+        const recientes = await db.query(`
+            SELECT caja_definida_id, fecha_apertura
+            FROM turnos
+            WHERE negocio_id = $1 AND caja_definida_id IS NOT NULL
+              AND fecha_apertura >= NOW() - INTERVAL '2 days'
+        `, [negocio_id]);
+        const usadasHoy = new Set();
+        for (const t of recientes.rows) {
+            if (diaComercial(t.fecha_apertura, corte) === hoyComercial) {
+                usadasHoy.add(t.caja_definida_id);
+            }
+        }
+
+        const filas = resultado.rows.map(c => ({ ...c, usada_hoy: usadasHoy.has(c.id) }));
+        res.json(filas);
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al obtener cajas fijas' });
