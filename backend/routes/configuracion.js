@@ -124,6 +124,47 @@ router.put('/', soloAdmin, async (req, res) => {
 });
 
 // =============================================
+// PUT /cajas
+// Actualiza SOLO la configuración de cajas (día comercial + alerta de cierre),
+// sin tocar el resto de la config. Se usa desde el panel de Control de Cajas.
+// =============================================
+router.put('/cajas', soloAdmin, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        const { cajas_corte_hora, alerta_cierre_activa, alerta_cierre_minutos, cierre_politica } = req.body;
+
+        const corte = cajas_corte_hora == null ? null : Math.min(23, Math.max(0, parseInt(cajas_corte_hora) || 0));
+        const minutos = alerta_cierre_minutos == null ? null : Math.min(120, Math.max(5, parseInt(alerta_cierre_minutos) || 30));
+        const politica = cierre_politica == null ? null : (['seguir', 'forzar'].includes(cierre_politica) ? cierre_politica : 'seguir');
+        const activa = alerta_cierre_activa == null ? null : !!alerta_cierre_activa;
+
+        // Nos aseguramos de que exista la fila de configuración del negocio.
+        await db.query(
+            'INSERT INTO configuracion (negocio_id) VALUES ($1) ON CONFLICT (negocio_id) DO NOTHING',
+            [negocio_id]
+        );
+
+        const resultado = await db.query(`
+            UPDATE configuracion SET
+                cajas_corte_hora = COALESCE($1, cajas_corte_hora),
+                alerta_cierre_activa = COALESCE($2, alerta_cierre_activa),
+                alerta_cierre_minutos = COALESCE($3, alerta_cierre_minutos),
+                cierre_politica = COALESCE($4, cierre_politica),
+                updated_at = NOW()
+            WHERE negocio_id = $5
+            RETURNING cajas_corte_hora, alerta_cierre_activa, alerta_cierre_minutos, cierre_politica
+        `, [corte, activa, minutos, politica, negocio_id]);
+
+        res.json(resultado.rows[0] || {});
+    } catch (error) {
+        console.error('Error al actualizar config de cajas:', error);
+        res.status(500).json({ error: 'Error al actualizar la configuración de cajas' });
+    }
+});
+
+// =============================================
 // POST /reiniciar-datos
 // Borra de forma selectiva los datos del negocio (estadísticas, gastos/compras,
 // caja, fiados, comprobantes AFIP y/o productos), dejando todo en cero, sin tocar

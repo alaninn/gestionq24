@@ -14,9 +14,22 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.36.0';
+export const VERSION_ACTUAL = '2.37.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.37.0',
+    fecha: '2026-07-13',
+    titulo: 'Cierre de caja más prolijo por día',
+    cambios: [
+      { t: 'Cuando ya se usaron todas las cajas del local, al abrir caja aparece una "Caja provisoria" con la hora, para no repetir nombres en el reporte del día.' },
+      { t: 'La configuración del día y el cierre de caja ahora está toda junta en el Control de Cajas (antes el modo de día estaba en Configuración).' },
+      { t: 'Se puede activar un aviso en el POS para cerrar la caja antes de que termine el día, con los minutos de anticipación que elijas.' },
+      { t: 'Podés elegir qué pasa si una caja sigue abierta pasado el fin del día: seguir vendiendo normal (y queda marcada como "fuera de horario" en el detalle del día) o forzar el cierre de esa caja antes de seguir.' },
+      { t: 'Al abrir una caja nueva, el efectivo inicial viene precargado con lo que dejó la caja anterior.' },
+      { t: 'En el detalle del día, las cajas provisorias y las que se cerraron fuera de horario quedan claramente marcadas.' },
+    ],
+  },
   {
     version: '2.36.0',
     fecha: '2026-07-12',

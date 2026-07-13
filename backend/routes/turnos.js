@@ -21,6 +21,32 @@ function diaComercial(fecha, corteHora = 0) {
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+// Momento (instante UTC) en que TERMINA el día comercial de una apertura.
+//   corteHora = 0  → termina a las 00:00 AR del día siguiente.
+//   corteHora N    → termina a las N:00 AR del día de su etiqueta comercial.
+// Argentina es UTC-3 fija (sin horario de verano): AR HH:00 = UTC (HH+3):00.
+function finDiaComercial(fecha, corteHora = 0) {
+    const D = diaComercial(fecha, corteHora);
+    let [y, m, d] = D.split('-').map(Number);
+    let horaFin;
+    if (corteHora > 0) {
+        horaFin = corteHora;
+    } else {
+        const sig = new Date(Date.UTC(y, m - 1, d + 1));
+        y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
+        horaFin = 0;
+    }
+    return new Date(Date.UTC(y, m - 1, d, horaFin + 3, 0, 0));
+}
+
+// Hora local Argentina (HH:MM) de una fecha, para nombrar cajas provisorias.
+function horaArgentina(fecha) {
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(fecha));
+}
+
 // =============================================
 // CAJAS FIJAS del local (Mañana, Tarde, Trasnoche...)
 // Se administran desde Control de Cajas; cualquier usuario las ve al abrir.
@@ -180,6 +206,22 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     }
 });
 
+// GET efectivo que dejó la última caja cerrada (para precargar la próxima)
+router.get('/ultimo-cierre', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await db.query(
+            "SELECT dinero_siguiente FROM turnos WHERE negocio_id = $1 AND estado = 'cerrado' ORDER BY fecha_cierre DESC NULLS LAST LIMIT 1",
+            [negocio_id]
+        );
+        res.json({ dinero_siguiente: parseFloat(r.rows[0]?.dinero_siguiente) || 0 });
+    } catch (error) {
+        console.error('Error:', error);
+        res.json({ dinero_siguiente: 0 });
+    }
+});
+
 // GET todos los turnos
 router.get('/', async (req, res) => {
     try {
@@ -201,7 +243,7 @@ router.post('/abrir', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
 if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const usuario_id = req.usuario.id;
-        const { inicio_caja, nombre, caja_definida_id } = req.body;
+        const { inicio_caja, nombre, caja_definida_id, es_provisoria } = req.body;
 
         // Verificamos que el usuario no esté ya en una caja abierta
         const yaEnCaja = await db.query(`
@@ -216,10 +258,16 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
             });
         }
 
+        // Caja PROVISORIA: se abre cuando ya se usaron las cajas fijas del día.
+        // Nombre automático con la hora de apertura para no repetir nombres.
+        let esProvisoria = false;
         // Si abre una caja FIJA: usar su nombre y evitar que se abra dos veces
         let nombreFinal = nombre || 'Caja Principal';
         let cajaDefinidaId = null;
-        if (caja_definida_id) {
+        if (es_provisoria) {
+            esProvisoria = true;
+            nombreFinal = `Provisoria ${horaArgentina(new Date())}`;
+        } else if (caja_definida_id) {
             const cf = await db.query(
                 'SELECT * FROM cajas_definidas WHERE id = $1 AND negocio_id = $2 AND activa = TRUE',
                 [caja_definida_id, negocio_id]
@@ -242,10 +290,10 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         // Creamos la nueva caja
         const turno = await db.query(`
-            INSERT INTO turnos (inicio_caja, estado, negocio_id, nombre, usuario_id, caja_definida_id)
-            VALUES ($1, 'abierto', $2, $3, $4, $5)
+            INSERT INTO turnos (inicio_caja, estado, negocio_id, nombre, usuario_id, caja_definida_id, es_provisoria)
+            VALUES ($1, 'abierto', $2, $3, $4, $5, $6)
             RETURNING *
-        `, [inicio_caja || 0, negocio_id, nombreFinal, usuario_id, cajaDefinidaId]);
+        `, [inicio_caja || 0, negocio_id, nombreFinal, usuario_id, cajaDefinidaId, esProvisoria]);
 
         // Agregamos al usuario a la caja
         await db.query(`
@@ -333,11 +381,26 @@ router.put('/:id/cerrar', async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { id } = req.params;
-        const { 
-            efectivo_retirado, dinero_siguiente, 
-            total_tarjetas, total_mercadopago, 
-            total_transferencias, comentarios 
+        const {
+            efectivo_retirado, dinero_siguiente,
+            total_tarjetas, total_mercadopago,
+            total_transferencias, comentarios
         } = req.body;
+
+        // ¿Se cierra fuera del horario del día comercial? Se compara el momento
+        // actual con el fin del día comercial de su apertura (según la hora de
+        // corte configurada por el negocio).
+        const info = await db.query(`
+            SELECT t.fecha_apertura, COALESCE(c.cajas_corte_hora, 0) AS corte
+            FROM turnos t
+            LEFT JOIN configuracion c ON c.negocio_id = t.negocio_id
+            WHERE t.id = $1 AND t.negocio_id = $2
+        `, [id, negocio_id]);
+        let fueraDeHora = false;
+        if (info.rows.length > 0) {
+            const corte = Math.min(23, Math.max(0, parseInt(info.rows[0].corte) || 0));
+            fueraDeHora = new Date() > finDiaComercial(info.rows[0].fecha_apertura, corte);
+        }
 
         const resultado = await db.query(`
             UPDATE turnos SET
@@ -349,7 +412,8 @@ router.put('/:id/cerrar', async (req, res) => {
                 total_mercadopago = $4,
                 total_transferencias = $5,
                 comentarios = $6,
-                usuario_cierre_id = $9
+                usuario_cierre_id = $9,
+                cerrado_fuera_de_hora = $10
             WHERE id = $7 AND negocio_id = $8
             RETURNING *
         `, [
@@ -360,7 +424,8 @@ router.put('/:id/cerrar', async (req, res) => {
             total_transferencias || 0,
             comentarios || '',
             id, negocio_id,
-            req.usuario?.id || null
+            req.usuario?.id || null,
+            fueraDeHora
         ]);
 
         if (resultado.rows.length === 0) {

@@ -387,75 +387,8 @@ function Configuracion() {
                   </div>
                 </div>
 
-                {/* Día de la caja */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                    📅 Día de la caja
-                  </h3>
-                  <div className="p-4 rounded-lg border bg-gray-50 border-gray-200">
-                    <p className="font-medium text-gray-700 mb-1">¿A qué día pertenece cada caja?</p>
-                    <p className="text-sm text-gray-500 mb-3">
-                      Define cómo se agrupan las cajas por día en el Control de Cajas.
-                    </p>
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => set('cajas_corte_hora', 0)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
-                          !Number(config?.cajas_corte_hora)
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 bg-white hover:border-gray-300'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                          !Number(config?.cajas_corte_hora) ? 'border-green-500' : 'border-gray-300'
-                        }`}>
-                          {!Number(config?.cajas_corte_hora) && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-800">Por día calendario (de 00:00 a 00:00)</p>
-                          <p className="text-xs text-gray-500">Cada caja cuenta en el día en que se abrió. El día cambia a la medianoche.</p>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => set('cajas_corte_hora', Number(config?.cajas_corte_hora) > 0 ? Number(config?.cajas_corte_hora) : 20)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
-                          Number(config?.cajas_corte_hora) > 0
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 bg-white hover:border-gray-300'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                          Number(config?.cajas_corte_hora) > 0 ? 'border-green-500' : 'border-gray-300'
-                        }`}>
-                          {Number(config?.cajas_corte_hora) > 0 && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-800">Turno noche cuenta para el día siguiente</p>
-                          <p className="text-xs text-gray-500">Las cajas abiertas a partir de cierta hora se cuentan en el día siguiente.</p>
-                        </div>
-                      </button>
-
-                      {Number(config?.cajas_corte_hora) > 0 && (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-3">
-                          <label className="text-sm font-medium text-gray-700">A partir de las</label>
-                          <select
-                            value={Number(config?.cajas_corte_hora)}
-                            onChange={(e) => set('cajas_corte_hora', parseInt(e.target.value))}
-                            className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                          >
-                            {Array.from({ length: 23 }, (_, i) => i + 1).map(h => (
-                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00 hs</option>
-                            ))}
-                          </select>
-                          <span className="text-sm text-gray-500">cuenta para el día siguiente</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                {/* La configuración del día y el cierre de caja se movió al panel
+                    de Control de Cajas, junto con las cajas fijas del local. */}
 
                 {/* Hardware */}
                 <div>

@@ -113,6 +113,12 @@ ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS entorno_arca VARCHAR(20) DEFA
 -- 1..23 = hora de corte del turno noche (cajas abiertas a partir de esa hora
 -- cuentan para el dia siguiente).
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS cajas_corte_hora INTEGER DEFAULT 0;
+-- Alerta de fin del dia comercial para cerrar la caja a tiempo, y politica al
+-- pasarse del horario: 'seguir' (avisa y marca fuera de hora) o 'forzar'
+-- (bloquea esa caja hasta cerrarla).
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS alerta_cierre_activa BOOLEAN DEFAULT FALSE;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS alerta_cierre_minutos INTEGER DEFAULT 30;
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS cierre_politica VARCHAR(20) DEFAULT 'seguir';
 
 -- Tabla de codigos alternativos de productos (si no existe)
 CREATE TABLE IF NOT EXISTS producto_codigos (
@@ -180,6 +186,10 @@ CREATE INDEX IF NOT EXISTS idx_cajas_definidas_negocio ON cajas_definidas(negoci
 -- Quién cerró cada caja + de qué caja fija proviene el turno
 ALTER TABLE turnos ADD COLUMN IF NOT EXISTS usuario_cierre_id INTEGER;
 ALTER TABLE turnos ADD COLUMN IF NOT EXISTS caja_definida_id INTEGER;
+-- Caja provisoria (se abre cuando ya se usaron las cajas fijas del dia) y marca
+-- de cierre fuera del horario del dia comercial.
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS es_provisoria BOOLEAN DEFAULT FALSE;
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS cerrado_fuera_de_hora BOOLEAN DEFAULT FALSE;
 
 -- =============================================
 -- TABLA: plantillas_permisos

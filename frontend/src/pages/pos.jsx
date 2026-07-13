@@ -10,6 +10,7 @@ import { imprimirTicket } from '../components/ticket';
 import ComprobanteElectronico from '../components/ComprobanteElectronico';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import VentaProductoModal from '../components/admin/VentaProductoModal';
+import { finDiaComercial } from '../utils/fecha';
 
 /**
  * Formatea un número como moneda argentina (ARS)
@@ -24,17 +25,23 @@ const fmt = (n) => new Intl.NumberFormat('es-AR', {
 // =============================================
 // MODAL: SELECCIÓN/APERTURA DE CAJA
 // =============================================
-function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, onUnirse }) {
-  // Selección: { tipo: 'fija-cerrada'|'fija-abierta'|'abierta', id }
+function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, onAbrirProvisoria, onUnirse, sugerenciaInicio = 0 }) {
+  // Selección: { tipo: 'fija-cerrada'|'fija-abierta'|'abierta'|'provisoria', id }
   const [seleccion, setSeleccion] = useState(null);
   const [vistaEventual, setVistaEventual] = useState(false);
   const [nombre, setNombre] = useState('');
-  const [inicioCaja, setInicioCaja] = useState('');
+  // Precargamos el efectivo con lo que dejó la caja anterior (arrastre).
+  const [inicioCaja, setInicioCaja] = useState(sugerenciaInicio ? String(sugerenciaInicio) : '');
 
   // Cajas abiertas que NO son cajas fijas (eventuales abiertas por alguien)
   const idsTurnosFijas = cajasFijas.filter(c => c.turno_abierto_id).map(c => c.turno_abierto_id);
   const abiertasEventuales = cajasAbiertas.filter(c => !idsTurnosFijas.includes(c.id));
   const datosAbierta = (turnoId) => cajasAbiertas.find(c => c.id === turnoId);
+
+  // Todas las cajas fijas ya se usaron hoy o están abiertas → no queda ninguna
+  // fija "fresca" para abrir; se ofrece una caja provisoria.
+  const todasFijasUsadas = cajasFijas.length > 0 && cajasFijas.every(c => c.usada_hoy || c.turno_abierto_id);
+  const horaActual = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
   const confirmar = () => {
     if (!seleccion) return;
@@ -44,6 +51,8 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
       const caja = cajasFijas.find(c => c.id === seleccion.id);
       if (caja?.usada_hoy && !window.confirm(`La caja "${caja.nombre}" ya se usó hoy.\n\n¿Querés abrirla otra vez?`)) return;
       onAbrirFija(seleccion.id, parseFloat(inicioCaja) || 0);
+    } else if (seleccion.tipo === 'provisoria') {
+      onAbrirProvisoria(parseFloat(inicioCaja) || 0);
     } else {
       onUnirse(seleccion.id); // fija-abierta y abierta usan el turno_id
     }
@@ -98,6 +107,22 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
                 </>
               )}
 
+              {/* Caja provisoria: cuando ya se usaron todas las cajas fijas del día */}
+              {todasFijasUsadas && (
+                <>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button type="button" onClick={() => setSeleccion({ tipo: 'provisoria' })}
+                    className={`w-full p-3.5 rounded-xl border-2 text-left transition-all ${seleccion?.tipo === 'provisoria' ? 'border-orange-500 bg-orange-50' : 'border-dashed border-gray-300 hover:border-gray-400'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-gray-800">➕ Caja provisoria</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Ya se usaron las cajas del local · {horaActual} → fin del día</p>
+                      </div>
+                    </div>
+                  </button>
+                </>
+              )}
+
               {/* Cajas eventuales abiertas */}
               {abiertasEventuales.length > 0 && (
                 <>
@@ -123,8 +148,8 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
                 </p>
               )}
 
-              {/* Efectivo inicial: solo al abrir una caja fija cerrada */}
-              {seleccion?.tipo === 'fija-cerrada' && (
+              {/* Efectivo inicial: al abrir una caja fija cerrada o una provisoria */}
+              {(seleccion?.tipo === 'fija-cerrada' || seleccion?.tipo === 'provisoria') && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 animate-aparecer">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Efectivo inicial en caja</label>
                   <div className="relative">
@@ -133,6 +158,9 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
                       className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
                       placeholder="0" min="0" />
                   </div>
+                  {sugerenciaInicio > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">Precargado con el efectivo que dejó la caja anterior ({fmt(sugerenciaInicio)}).</p>
+                  )}
                 </div>
               )}
 
@@ -141,6 +169,7 @@ function ModalSeleccionCaja({ cajasAbiertas, cajasFijas, onAbrir, onAbrirFija, o
                 className="w-full py-3 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors">
                 {!seleccion ? 'Seleccioná una caja'
                   : seleccion.tipo === 'fija-cerrada' ? '🔓 Abrir caja'
+                  : seleccion.tipo === 'provisoria' ? '🔓 Abrir caja provisoria'
                   : '✅ Unirme a esta caja'}
               </button>
 
@@ -2172,6 +2201,10 @@ function POS() {
   const [cajasFijas, setCajasFijas] = useState([]);
   const [cargandoTurno, setCargandoTurno] = useState(true);
   const [config, setConfig] = useState(null);
+  // Reloj para chequear el fin del día comercial (alerta / cierre forzado).
+  const [ahora, setAhora] = useState(() => Date.now());
+  // Efectivo que dejó la última caja cerrada del día, para precargar la próxima.
+  const [sugerenciaInicio, setSugerenciaInicio] = useState(0);
   const [productos, setProductos] = useState([]);
   const [buscar, setBuscar] = useState('');
   // 'relevancia' respeta el orden del servidor: lo que EMPIEZA con lo buscado primero
@@ -2318,6 +2351,12 @@ function POS() {
   };
 
   useEffect(() => { verificarTurno(); cargarConfig(); }, []);
+
+  // Reloj: se refresca cada 30s para evaluar el fin del día comercial.
+  useEffect(() => {
+    const id = setInterval(() => setAhora(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Cachear el turno en localStorage para sobrevivir recargas SIN internet (así la
   // caja no se "cierra" sola al refrescar offline). Se limpia cuando no hay turno.
@@ -2498,12 +2537,14 @@ useEffect(() => {
       const res = await api.get('/api/turnos/actual');
       setTurno(res.data);
       if (!res.data) {
-        const [resCajas, resFijas] = await Promise.all([
+        const [resCajas, resFijas, resUltimo] = await Promise.all([
           api.get('/api/turnos/abiertas'),
           api.get('/api/turnos/cajas-fijas').catch(() => ({ data: [] })),
+          api.get('/api/turnos/ultimo-cierre').catch(() => ({ data: { dinero_siguiente: 0 } })),
         ]);
         setCajasAbiertas(resCajas.data);
         setCajasFijas(resFijas.data);
+        setSugerenciaInicio(parseFloat(resUltimo.data?.dinero_siguiente) || 0);
       }
     } catch (err) {
       // Sin internet (error de red, sin response): restauramos el turno cacheado para
@@ -3035,6 +3076,19 @@ const imprimirTicketDesdeModal = () => {
   };
 
 
+  // --- Fin del día comercial: alerta y política de cierre ---
+  const corteCaja = Math.min(23, Math.max(0, parseInt(config?.cajas_corte_hora) || 0));
+  const alertaCierreActiva = !!config?.alerta_cierre_activa;
+  const minutosAvisoCierre = parseInt(config?.alerta_cierre_minutos) || 30;
+  const politicaCierre = config?.cierre_politica === 'forzar' ? 'forzar' : 'seguir';
+  const finDia = turno?.fecha_apertura ? finDiaComercial(turno.fecha_apertura, corteCaja) : null;
+  const msParaFinDia = finDia ? finDia.getTime() - ahora : null;
+  const pasadoFinDia = finDia ? ahora >= finDia.getTime() : false;
+  const minutosRestantes = msParaFinDia != null ? Math.max(0, Math.ceil(msParaFinDia / 60000)) : 0;
+  const enVentanaAvisoCierre = alertaCierreActiva && msParaFinDia != null && msParaFinDia > 0 && msParaFinDia <= minutosAvisoCierre * 60000;
+  const cierreForzadoActivo = !!turno && alertaCierreActiva && politicaCierre === 'forzar' && pasadoFinDia;
+  const avisoFueraHora = !!turno && alertaCierreActiva && politicaCierre === 'seguir' && pasadoFinDia;
+
   if (cargandoTurno) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -3088,8 +3142,10 @@ const imprimirTicketDesdeModal = () => {
     };
     return (
       <ModalSeleccionCaja cajasAbiertas={cajasAbiertas} cajasFijas={cajasFijas}
+        sugerenciaInicio={sugerenciaInicio}
         onAbrir={(nombre, inicioCaja) => abrirCaja({ nombre, inicio_caja: inicioCaja })}
         onAbrirFija={(cajaDefinidaId, inicioCaja) => abrirCaja({ caja_definida_id: cajaDefinidaId, inicio_caja: inicioCaja })}
+        onAbrirProvisoria={(inicioCaja) => abrirCaja({ es_provisoria: true, inicio_caja: inicioCaja })}
         onUnirse={async (turnoId) => {
           try { const res = await api.post(`/api/turnos/${turnoId}/unirse`); setTurno(res.data); }
           catch (err) { alert(err.response?.data?.error || 'Error al unirse a la caja'); verificarTurno(); }
@@ -3098,8 +3154,80 @@ const imprimirTicketDesdeModal = () => {
     );
   }
 
+  // Cierre forzado: pasó el fin del día y la política es forzar. Se bloquea SOLO
+  // esta caja hasta cerrarla. El usuario puede cerrar sesión para que otro entre
+  // y siga en otra caja.
+  if (cierreForzadoActivo) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center">
+          <div className="text-5xl mb-3">🔒</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">El día cerró</h2>
+          <p className="text-gray-600 text-sm mb-1">
+            La caja <b>{turno.nombre}</b> se pasó del horario del día y no puede seguir vendiendo.
+          </p>
+          <p className="text-gray-500 text-sm mb-5">
+            Cerrá la caja para hacer el arqueo. Si otro usuario tiene que seguir vendiendo, puede
+            cerrar sesión e ingresar en otra caja.
+          </p>
+          <div className="space-y-2">
+            <button onClick={() => setMostrarModalCierre(true)}
+              className="w-full py-3 text-white rounded-xl font-bold transition-colors"
+              style={{ backgroundColor: 'var(--color-primario)' }}>
+              🔒 Cerrar caja ahora
+            </button>
+            <button onClick={() => { localStorage.removeItem('pos_pestanas'); localStorage.removeItem('pos_pestana_activa'); localStorage.removeItem('pos_contador_ventas'); logout(); }}
+              className="w-full py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
+              Cerrar sesión (que entre otro usuario)
+            </button>
+          </div>
+        </div>
+        {mostrarModalCierre && (
+          <ModalCierreCaja turno={turno}
+            onCerrar={() => setMostrarModalCierre(false)}
+            onCerrado={() => {
+              localStorage.removeItem('pos_pestanas');
+              localStorage.removeItem('pos_pestana_activa');
+              localStorage.removeItem('pos_contador_ventas');
+              logout();
+            }} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ background: oscuro ? '#0f0f1a' : '#f1f5f9' }}>
+
+      {/* ---- BANNER FIN DE DÍA (avisar antes) ---- */}
+      {enVentanaAvisoCierre && (
+        <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between gap-2 text-sm flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="animate-pulse">⏰</span>
+            <span className="font-semibold truncate">
+              Falta{minutosRestantes !== 1 ? 'n' : ''} {minutosRestantes} min para el fin del día. Cerrá la caja a tiempo.
+            </span>
+          </div>
+          <button onClick={() => setMostrarModalCierre(true)}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors">
+            Cerrar caja
+          </button>
+        </div>
+      )}
+
+      {/* ---- BANNER FUERA DE HORA (política seguir) ---- */}
+      {avisoFueraHora && (
+        <div className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between gap-2 text-sm flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span>⚠️</span>
+            <span className="font-semibold truncate">Esta caja se pasó del horario del día. Conviene cerrarla.</span>
+          </div>
+          <button onClick={() => setMostrarModalCierre(true)}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors">
+            Cerrar caja
+          </button>
+        </div>
+      )}
 
       {/* ---- BANNER OFFLINE ---- */}
       {!online && (

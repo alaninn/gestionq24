@@ -179,11 +179,20 @@ function ModalCierreGeneralDia({ diaData, onCerrar, onVerCaja }) {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                         caja.estado === 'abierto' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                       }`}>{caja.estado}</span>
+                      {caja.es_provisoria && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">Provisoria</span>
+                      )}
+                      {caja.cerrado_fuera_de_hora && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">⚠ fuera de hora</span>
+                      )}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5">
                       {fmtHora(caja.fecha_apertura)} → {caja.fecha_cierre ? fmtHora(caja.fecha_cierre) : 'en curso'}
                       {caja.usuario_cierre_nombre ? ` · cerró ${caja.usuario_cierre_nombre}` : ''}
                     </p>
+                    {caja.cerrado_fuera_de_hora && caja.fecha_cierre && (
+                      <p className="text-[11px] text-amber-600 mt-0.5">Se pasó de horario hasta {fmtHora(caja.fecha_cierre)}</p>
+                    )}
                     <div className="flex gap-3 mt-1 text-[11px] text-gray-500 flex-wrap">
                       <span>💵 {fmt(caja.ventas_efectivo)}</span>
                       <span>📲 {fmt(virtualDe(caja))}</span>
@@ -630,9 +639,27 @@ function ControlCaja() {
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [errorCajas, setErrorCajas] = useState('');
-  // Hora de corte del día comercial (0 = día calendario). Define cómo se agrupan
-  // las cajas por día en el historial.
-  const [corteHora, setCorteHora] = useState(0);
+  // Configuración de cajas: hora de corte del día comercial (0 = día calendario)
+  // y alerta/política de cierre de fin de día.
+  const [cfgCajas, setCfgCajas] = useState({
+    cajas_corte_hora: 0,
+    alerta_cierre_activa: false,
+    alerta_cierre_minutos: 30,
+    cierre_politica: 'seguir',
+  });
+  const [okCfg, setOkCfg] = useState(false);
+  const corteHora = Math.min(23, Math.max(0, parseInt(cfgCajas.cajas_corte_hora) || 0));
+
+  // Guarda (auto) la config de cajas usando el endpoint dedicado.
+  const guardarCfgCajas = async (cambios) => {
+    const nueva = { ...cfgCajas, ...cambios };
+    setCfgCajas(nueva);
+    try {
+      await api.put('/api/configuracion/cajas', nueva);
+      setOkCfg(true);
+      setTimeout(() => setOkCfg(false), 1500);
+    } catch { }
+  };
 
   const cargarCajasFijas = async () => {
     try {
@@ -672,7 +699,15 @@ function ControlCaja() {
 
   useEffect(() => {
     api.get('/api/configuracion')
-      .then(res => setCorteHora(Math.min(23, Math.max(0, parseInt(res.data?.cajas_corte_hora) || 0))))
+      .then(res => {
+        const c = res.data || {};
+        setCfgCajas({
+          cajas_corte_hora: Math.min(23, Math.max(0, parseInt(c.cajas_corte_hora) || 0)),
+          alerta_cierre_activa: !!c.alerta_cierre_activa,
+          alerta_cierre_minutos: parseInt(c.alerta_cierre_minutos) || 30,
+          cierre_politica: c.cierre_politica === 'forzar' ? 'forzar' : 'seguir',
+        });
+      })
       .catch(() => {});
   }, []);
 
@@ -745,6 +780,107 @@ function ControlCaja() {
             ➕ Crear caja fija
           </button>
         </form>
+      </div>
+
+      {/* Día y cierre de caja */}
+      <div className="bg-white rounded-xl shadow p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <h3 className="font-semibold text-gray-700">📅 Día y cierre de caja</h3>
+          {okCfg && <span className="text-xs text-green-600 font-medium">✓ Guardado</span>}
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          Definí a qué día pertenece cada caja y qué pasa cuando una caja se queda abierta pasado el fin del día.
+        </p>
+
+        {/* Modo de día */}
+        <p className="text-sm font-medium text-gray-700 mb-2">¿A qué día pertenece cada caja?</p>
+        <div className="space-y-2 mb-5">
+          <button type="button" onClick={() => guardarCfgCajas({ cajas_corte_hora: 0 })}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${!corteHora ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${!corteHora ? 'border-green-500' : 'border-gray-300'}`}>
+              {!corteHora && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+            </div>
+            <div>
+              <p className="font-medium text-gray-800">Por día calendario (de 00:00 a 00:00)</p>
+              <p className="text-xs text-gray-500">Cada caja cuenta en el día en que se abrió. El día cambia a la medianoche.</p>
+            </div>
+          </button>
+          <button type="button" onClick={() => guardarCfgCajas({ cajas_corte_hora: corteHora > 0 ? corteHora : 20 })}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${corteHora > 0 ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${corteHora > 0 ? 'border-green-500' : 'border-gray-300'}`}>
+              {corteHora > 0 && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+            </div>
+            <div>
+              <p className="font-medium text-gray-800">Turno noche cuenta para el día siguiente</p>
+              <p className="text-xs text-gray-500">Las cajas abiertas a partir de cierta hora se cuentan en el día siguiente.</p>
+            </div>
+          </button>
+          {corteHora > 0 && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-3 flex-wrap">
+              <label className="text-sm font-medium text-gray-700">A partir de las</label>
+              <select value={corteHora} onChange={(e) => guardarCfgCajas({ cajas_corte_hora: parseInt(e.target.value) })}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                {Array.from({ length: 23 }, (_, i) => i + 1).map(h => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00 hs</option>
+                ))}
+              </select>
+              <span className="text-sm text-gray-500">cuenta para el día siguiente</span>
+            </div>
+          )}
+        </div>
+
+        {/* Alerta de fin de día */}
+        <div className="border-t border-gray-100 pt-4">
+          <label className="flex items-center justify-between gap-3 cursor-pointer">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Avisar antes del fin del día</p>
+              <p className="text-xs text-gray-500">Muestra un aviso en el POS para cerrar la caja a tiempo.</p>
+            </div>
+            <input type="checkbox" checked={cfgCajas.alerta_cierre_activa}
+              onChange={(e) => guardarCfgCajas({ alerta_cierre_activa: e.target.checked })}
+              className="w-5 h-5 accent-green-600 flex-shrink-0" />
+          </label>
+
+          {cfgCajas.alerta_cierre_activa && (
+            <div className="mt-3 space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-sm text-gray-700">Avisar</label>
+                <input type="number" min="5" max="120" value={cfgCajas.alerta_cierre_minutos}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  onChange={(e) => setCfgCajas(p => ({ ...p, alerta_cierre_minutos: e.target.value }))}
+                  onBlur={(e) => guardarCfgCajas({ alerta_cierre_minutos: Math.min(120, Math.max(5, parseInt(e.target.value) || 30)) })}
+                  className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <span className="text-sm text-gray-700">minutos antes del fin del día.</span>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-700 mb-2">Si la caja sigue abierta al pasar el fin del día:</p>
+                <div className="space-y-2">
+                  <button type="button" onClick={() => guardarCfgCajas({ cierre_politica: 'seguir' })}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${cfgCajas.cierre_politica === 'seguir' ? 'border-green-500 bg-white' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${cfgCajas.cierre_politica === 'seguir' ? 'border-green-500' : 'border-gray-300'}`}>
+                      {cfgCajas.cierre_politica === 'seguir' && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">Seguir normal (recomendado)</p>
+                      <p className="text-xs text-gray-500">Sigue vendiendo; en el detalle del día se marca que la caja se pasó de horario.</p>
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => guardarCfgCajas({ cierre_politica: 'forzar' })}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${cfgCajas.cierre_politica === 'forzar' ? 'border-amber-500 bg-white' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${cfgCajas.cierre_politica === 'forzar' ? 'border-amber-500' : 'border-gray-300'}`}>
+                      {cfgCajas.cierre_politica === 'forzar' && <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">Forzar cierre</p>
+                      <p className="text-xs text-gray-500">Esa caja no puede seguir vendiendo hasta cerrarla. El usuario puede cerrar sesión y otro sigue en otra caja.</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {cargando ? (
