@@ -205,10 +205,19 @@ router.put('/:id', verificarPermiso('proveedores', 'editar'), async (req, res) =
             return res.status(400).json({ error: 'El nombre es obligatorio' });
         }
         
+        // Los saldos solo se tocan si vienen en el pedido. Si no vienen (edición
+        // común de datos de contacto), se conservan los actuales con COALESCE.
+        // Así editar el nombre nunca borra la deuda. Cuando sí se manda un valor
+        // (corrección manual), se acepta incluso 0 y no se permiten negativos.
+        const normalizarSaldo = (v) =>
+            (v === undefined || v === null || v === '') ? null : Math.max(0, Number(v) || 0);
+
         const resultado = await db.query(`
-            UPDATE proveedores 
-            SET nombre=$1, telefono=$2, email=$3, direccion=$4, notas=$5, 
-                saldo_deuda=$6, saldo_a_favor=$7, updated_at=CURRENT_TIMESTAMP
+            UPDATE proveedores
+            SET nombre=$1, telefono=$2, email=$3, direccion=$4, notas=$5,
+                saldo_deuda=COALESCE($6, saldo_deuda),
+                saldo_a_favor=COALESCE($7, saldo_a_favor),
+                updated_at=CURRENT_TIMESTAMP
             WHERE id=$8 AND negocio_id=$9
             RETURNING *
         `, [
@@ -217,8 +226,8 @@ router.put('/:id', verificarPermiso('proveedores', 'editar'), async (req, res) =
             email || null,
             direccion || null,
             notas || null,
-            saldo_deuda || 0,
-            saldo_a_favor || 0,
+            normalizarSaldo(saldo_deuda),
+            normalizarSaldo(saldo_a_favor),
             parseInt(req.params.id),
             negocio_id
         ]);

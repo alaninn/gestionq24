@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.34.0';
+export const VERSION_ACTUAL = '2.35.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.35.0',
+    fecha: '2026-07-12',
+    titulo: 'Corregir a mano las deudas de proveedores',
+    cambios: [
+      { t: 'Al editar un proveedor ahora podés corregir manualmente los saldos "Nos deben" y "Le debemos", por si quedó cargado un monto equivocado.' },
+      { t: 'Editar los datos de un proveedor (nombre, teléfono) ya no modifica sus saldos: las deudas quedan intactas salvo que las cambies a propósito.' },
+    ],
+  },
   {
     version: '2.34.0',
     fecha: '2026-07-12',

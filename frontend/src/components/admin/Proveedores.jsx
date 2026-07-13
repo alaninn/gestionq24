@@ -106,8 +106,12 @@ function Proveedores() {
       }
 
       if (proveedorSeleccionado?.id) {
-        // Editar
-        await api.put(`/api/proveedores/${proveedorSeleccionado.id}`, formulario);
+        // Editar (los saldos van como número; permite corregir la deuda a mano)
+        await api.put(`/api/proveedores/${proveedorSeleccionado.id}`, {
+          ...formulario,
+          saldo_deuda: Math.max(0, Number(formulario.saldo_deuda) || 0),
+          saldo_a_favor: Math.max(0, Number(formulario.saldo_a_favor) || 0),
+        });
         setExito('Proveedor actualizado');
       } else {
         // Crear
@@ -142,6 +146,8 @@ function Proveedores() {
       email: proveedor.email || '',
       direccion: proveedor.direccion || '',
       notas: proveedor.notas || '',
+      saldo_deuda: proveedor.saldo_deuda ?? 0,
+      saldo_a_favor: proveedor.saldo_a_favor ?? 0,
     });
     setMostrarModal(true);
   };
@@ -683,6 +689,50 @@ function Proveedores() {
                   placeholder="+54 11 1234-5678"
                 />
               </div>
+
+              {proveedorSeleccionado?.id && (
+                <div className="border-t border-gray-200 pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Corregir saldos</label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Modificá estos montos solo si hay un error de carga. Normalmente las
+                    deudas se ajustan solas al registrar compras y pagos.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-emerald-700 mb-1">Nos deben</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formulario.saldo_deuda}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) => setFormulario(p => ({ ...p, saldo_deuda: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-red-700 mb-1">Le debemos</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formulario.saldo_a_favor}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          onChange={(e) => setFormulario(p => ({ ...p, saldo_a_favor: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-2">
                 <button
