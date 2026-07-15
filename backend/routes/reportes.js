@@ -311,6 +311,9 @@ router.get('/control-caja', async (req, res) => {
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         const { desde, hasta } = rangoSeguro(req);
 
+        // 1) Metadata + totales de cada CAJA COMPLETA (para el detalle de la caja,
+        //    que es el cierre real del usuario y NO se divide por día). Se incluyen
+        //    las cajas que abrieron, cerraron o tuvieron ventas dentro del rango.
         const resultado = await db.query(`
             SELECT
                 t.*,
@@ -335,20 +338,58 @@ router.get('/control-caja', async (req, res) => {
                 FROM gastos WHERE negocio_id = $3
                 GROUP BY turno_id
             ) g ON g.turno_id = t.id
-            WHERE t.fecha_apertura::date >= $1::date
-              AND t.fecha_apertura::date <= $2::date
-              AND t.negocio_id = $3
+            WHERE t.negocio_id = $3
+              AND (
+                    t.fecha_apertura::date BETWEEN $1::date AND $2::date
+                 OR t.fecha_cierre::date BETWEEN $1::date AND $2::date
+                 OR EXISTS (SELECT 1 FROM ventas vv WHERE vv.turno_id = t.id AND vv.fecha::date BETWEEN $1::date AND $2::date)
+              )
             GROUP BY t.id, g.total_gastos, g.gastos_caja, uc.nombre
             ORDER BY t.fecha_apertura DESC
         `, [desde, hasta, negocio_id]);
 
+        // 2) Ventas agrupadas por (caja, DÍA CALENDARIO de la venta). El día siempre
+        //    corta a la medianoche (00 a 00): una caja que cruza la medianoche
+        //    aparece en dos días. Esto es solo informativo, no toca el cierre real.
+        const ventasPorDia = await db.query(`
+            SELECT v.turno_id,
+                   to_char(v.fecha::date, 'YYYY-MM-DD') AS dia,
+                   COUNT(*) AS total_ventas,
+                   COALESCE(SUM(v.total),0) AS total_facturado,
+                   COALESCE(SUM(CASE WHEN v.metodo_pago='efectivo' THEN v.total WHEN v.metodo_pago='dividido' THEN COALESCE(v.monto_efectivo,0) ELSE 0 END),0) AS ventas_efectivo,
+                   COALESCE(SUM(CASE WHEN v.metodo_pago='tarjeta' THEN v.total WHEN v.metodo_pago='dividido' AND v.metodo_virtual='tarjeta' THEN COALESCE(v.monto_virtual,0) ELSE 0 END),0) AS ventas_tarjeta,
+                   COALESCE(SUM(CASE WHEN v.metodo_pago='mercadopago' THEN v.total WHEN v.metodo_pago='dividido' AND v.metodo_virtual='mercadopago' THEN COALESCE(v.monto_virtual,0) ELSE 0 END),0) AS ventas_mp,
+                   COALESCE(SUM(CASE WHEN v.metodo_pago='transferencia' THEN v.total WHEN v.metodo_pago='dividido' AND v.metodo_virtual='transferencia' THEN COALESCE(v.monto_virtual,0) ELSE 0 END),0) AS ventas_transferencia
+            FROM ventas v
+            WHERE v.negocio_id = $3 AND v.turno_id IS NOT NULL
+              AND v.fecha::date BETWEEN $1::date AND $2::date
+            GROUP BY v.turno_id, v.fecha::date
+        `, [desde, hasta, negocio_id]);
+
+        // 3) Gastos agrupados por (caja, día calendario del gasto).
+        const gastosPorDia = await db.query(`
+            SELECT g.turno_id,
+                   to_char(g.fecha::date, 'YYYY-MM-DD') AS dia,
+                   COALESCE(SUM(g.monto),0) AS total_gastos,
+                   COALESCE(SUM(CASE WHEN COALESCE(g.origen_dinero,'caja')='caja' AND COALESCE(g.tipo,'variable') NOT IN ('compra','pago_proveedor') THEN g.monto ELSE 0 END),0) AS gastos_caja
+            FROM gastos g
+            WHERE g.negocio_id = $3 AND g.turno_id IS NOT NULL
+              AND g.fecha::date BETWEEN $1::date AND $2::date
+            GROUP BY g.turno_id, g.fecha::date
+        `, [desde, hasta, negocio_id]);
+
         const totales = {
-            total_ventas: resultado.rows.reduce((a, r) => a + parseInt(r.total_ventas), 0),
-            total_facturado: resultado.rows.reduce((a, r) => a + parseFloat(r.total_facturado), 0),
-            total_gastos: resultado.rows.reduce((a, r) => a + parseFloat(r.total_gastos), 0),
+            total_ventas: ventasPorDia.rows.reduce((a, r) => a + parseInt(r.total_ventas), 0),
+            total_facturado: ventasPorDia.rows.reduce((a, r) => a + parseFloat(r.total_facturado), 0),
+            total_gastos: gastosPorDia.rows.reduce((a, r) => a + parseFloat(r.total_gastos), 0),
         };
 
-        res.json({ turnos: resultado.rows, totales });
+        res.json({
+            turnos: resultado.rows,
+            ventasPorDia: ventasPorDia.rows,
+            gastosPorDia: gastosPorDia.rows,
+            totales,
+        });
     } catch (error) {
         console.error('Error control caja:', error);
         res.status(500).json({ error: 'Error al obtener control de caja' });

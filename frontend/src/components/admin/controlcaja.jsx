@@ -29,53 +29,96 @@ const fmtDiaLargo = (iso) => {
 
 const virtualDe = (t) => parseFloat(t.ventas_tarjeta || 0) + parseFloat(t.ventas_mp || 0) + parseFloat(t.ventas_transferencia || 0);
 
-// DÍA COMERCIAL: día (hora Argentina) al que pertenece cada caja según la hora
-// de corte configurada por el negocio.
-//   corteHora = 0  → día calendario: el día cambia a la medianoche (una caja
-//                    abierta a las 18:00 o 23:00 sigue siendo del mismo día).
-//   corteHora 1..23 → turno noche: las cajas abiertas a partir de esa hora
-//                    cuentan para el día siguiente.
-function diaComercial(fechaApertura, corteHora = 0) {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Argentina/Buenos_Aires',
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
-  }).formatToParts(new Date(fechaApertura));
-  const val = (t) => partes.find(p => p.type === t)?.value;
-  let y = Number(val('year')), m = Number(val('month')), d = Number(val('day'));
-  let h = Number(val('hour'));
-  if (h === 24) h = 0;
-  if (corteHora > 0 && h >= corteHora) {
-    const sig = new Date(Date.UTC(y, m - 1, d + 1));
-    y = sig.getUTCFullYear(); m = sig.getUTCMonth() + 1; d = sig.getUTCDate();
-  }
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+// Fecha calendario (YYYY-MM-DD, hora Argentina) de un timestamp.
+const fechaDiaAR = (ts) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(ts));
+
+// Hora (HH:MM, Argentina) de un timestamp.
+const horaAR = (ts) => new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+}).format(new Date(ts));
+
+// Rango horario de una caja DENTRO de un día calendario. Una caja que cruza la
+// medianoche se muestra recortada: de su apertura a 00:00 el primer día, y de
+// 00:00 a su cierre el día siguiente.
+function rangoSegmento(turno, dia) {
+  const diaApertura = fechaDiaAR(turno.fecha_apertura);
+  const desde = diaApertura === dia ? horaAR(turno.fecha_apertura) : '00:00';
+  let hasta;
+  if (!turno.fecha_cierre) hasta = 'en curso';
+  else hasta = fechaDiaAR(turno.fecha_cierre) === dia ? horaAR(turno.fecha_cierre) : '00:00';
+  return { desde, hasta };
 }
 
-// Agrupa los turnos (cajas) por DÍA COMERCIAL (ver diaComercial).
-// Cada día es una "caja general": la suma de todas las cajas (mañana, tarde,
-// trasnoche...) de ese día comercial. La cantidad de cajas por día es variable.
-function agruparPorDia(turnos, corteHora = 0) {
-  const mapa = new Map();
+// Arma los días del informe a partir del desglose por (caja, día) del backend.
+// El día SIEMPRE corta a la medianoche (00 a 00): una caja que cruza la
+// medianoche aparece como un segmento en cada día, con su rango horario y sus
+// montos de ese día. El arqueo va al día donde ocurre: el efectivo inicial al
+// día de apertura; el retirado / para el día siguiente al día de cierre. Esto es
+// solo informativo y no toca el cierre real de la caja.
+function armarDias(turnos = [], ventasPorDia = [], gastosPorDia = []) {
+  const vKey = new Map(); ventasPorDia.forEach(v => vKey.set(`${v.turno_id}|${v.dia}`, v));
+  const gKey = new Map(); gastosPorDia.forEach(g => gKey.set(`${g.turno_id}|${g.dia}`, g));
+
+  const diasMap = new Map();
+  const addSeg = (dia, seg) => {
+    if (!diasMap.has(dia)) diasMap.set(dia, []);
+    diasMap.get(dia).push(seg);
+  };
+
   for (const t of turnos) {
-    const dia = diaComercial(t.fecha_apertura, corteHora); // 'YYYY-MM-DD' (día comercial)
-    if (!mapa.has(dia)) mapa.set(dia, []);
-    mapa.get(dia).push(t);
+    const diaApertura = fechaDiaAR(t.fecha_apertura);
+    const diaCierre = t.fecha_cierre ? fechaDiaAR(t.fecha_cierre) : null;
+    // Días en los que esta caja tuvo presencia (ventas, gastos, apertura o cierre)
+    const dias = new Set();
+    ventasPorDia.forEach(v => { if (v.turno_id === t.id) dias.add(v.dia); });
+    gastosPorDia.forEach(g => { if (g.turno_id === t.id) dias.add(g.dia); });
+    dias.add(diaApertura);
+    if (diaCierre) dias.add(diaCierre);
+
+    for (const dia of dias) {
+      const v = vKey.get(`${t.id}|${dia}`) || {};
+      const g = gKey.get(`${t.id}|${dia}`) || {};
+      const esApertura = dia === diaApertura;
+      const esCierre = diaCierre != null && dia === diaCierre;
+      addSeg(dia, {
+        turno: t,
+        dia,
+        rango: rangoSegmento(t, dia),
+        abierta: t.estado === 'abierto',
+        total_facturado: parseFloat(v.total_facturado || 0),
+        total_ventas: parseInt(v.total_ventas || 0),
+        ventas_efectivo: parseFloat(v.ventas_efectivo || 0),
+        ventas_tarjeta: parseFloat(v.ventas_tarjeta || 0),
+        ventas_mp: parseFloat(v.ventas_mp || 0),
+        ventas_transferencia: parseFloat(v.ventas_transferencia || 0),
+        total_gastos: parseFloat(g.total_gastos || 0),
+        gastos_caja: parseFloat(g.gastos_caja || 0),
+        inicio_caja: esApertura ? parseFloat(t.inicio_caja || 0) : 0,
+        efectivo_retirado: esCierre ? parseFloat(t.efectivo_retirado || 0) : 0,
+        dinero_siguiente: esCierre ? parseFloat(t.dinero_siguiente || 0) : 0,
+        esApertura, esCierre,
+      });
+    }
   }
+
   const dias = [];
-  for (const [dia, cajas] of mapa) {
-    // Ordenamos las cajas del día por horario de apertura
-    cajas.sort((a, b) => new Date(a.fecha_apertura) - new Date(b.fecha_apertura));
-    const totales = cajas.reduce((acc, t) => ({
-      total_facturado: acc.total_facturado + parseFloat(t.total_facturado || 0),
-      total_ventas: acc.total_ventas + parseInt(t.total_ventas || 0),
-      ventas_efectivo: acc.ventas_efectivo + parseFloat(t.ventas_efectivo || 0),
-      ventas_tarjeta: acc.ventas_tarjeta + parseFloat(t.ventas_tarjeta || 0),
-      ventas_mp: acc.ventas_mp + parseFloat(t.ventas_mp || 0),
-      ventas_transferencia: acc.ventas_transferencia + parseFloat(t.ventas_transferencia || 0),
-      total_gastos: acc.total_gastos + parseFloat(t.total_gastos || 0),
-      inicio_caja: acc.inicio_caja + parseFloat(t.inicio_caja || 0),
-      efectivo_retirado: acc.efectivo_retirado + parseFloat(t.efectivo_retirado || 0),
-      dinero_siguiente: acc.dinero_siguiente + parseFloat(t.dinero_siguiente || 0),
+  for (const [dia, segmentos] of diasMap) {
+    segmentos.sort((a, b) => new Date(a.turno.fecha_apertura) - new Date(b.turno.fecha_apertura));
+    const totales = segmentos.reduce((acc, s) => ({
+      total_facturado: acc.total_facturado + s.total_facturado,
+      total_ventas: acc.total_ventas + s.total_ventas,
+      ventas_efectivo: acc.ventas_efectivo + s.ventas_efectivo,
+      ventas_tarjeta: acc.ventas_tarjeta + s.ventas_tarjeta,
+      ventas_mp: acc.ventas_mp + s.ventas_mp,
+      ventas_transferencia: acc.ventas_transferencia + s.ventas_transferencia,
+      total_gastos: acc.total_gastos + s.total_gastos,
+      inicio_caja: acc.inicio_caja + s.inicio_caja,
+      efectivo_retirado: acc.efectivo_retirado + s.efectivo_retirado,
+      dinero_siguiente: acc.dinero_siguiente + s.dinero_siguiente,
     }), {
       total_facturado: 0, total_ventas: 0, ventas_efectivo: 0, ventas_tarjeta: 0,
       ventas_mp: 0, ventas_transferencia: 0, total_gastos: 0, inicio_caja: 0,
@@ -83,14 +126,8 @@ function agruparPorDia(turnos, corteHora = 0) {
     });
     totales.virtual = totales.ventas_tarjeta + totales.ventas_mp + totales.ventas_transferencia;
     totales.ganancia = totales.total_facturado - totales.total_gastos;
-    dias.push({
-      dia,
-      cajas,
-      totales,
-      algunaAbierta: cajas.some(c => c.estado === 'abierto'),
-    });
+    dias.push({ dia, segmentos, totales, algunaAbierta: segmentos.some(s => s.abierta) });
   }
-  // Más reciente primero
   dias.sort((a, b) => (a.dia < b.dia ? 1 : -1));
   return dias;
 }
@@ -100,7 +137,7 @@ function agruparPorDia(turnos, corteHora = 0) {
 // Consolida todas las cajas (mañana/tarde/trasnoche) de un mismo día.
 // =============================================
 function ModalCierreGeneralDia({ diaData, onCerrar, onVerCaja }) {
-  const { dia, cajas, totales, algunaAbierta } = diaData;
+  const { dia, segmentos, totales, algunaAbierta } = diaData;
 
   const metodos = [
     { label: '💵 Efectivo', valor: totales.ventas_efectivo, color: 'text-green-600' },
@@ -118,7 +155,7 @@ function ModalCierreGeneralDia({ diaData, onCerrar, onVerCaja }) {
           <div className="min-w-0">
             <h3 className="text-lg sm:text-xl font-bold capitalize">🗓️ Cierre general · {fmtDiaLargo(dia)}</h3>
             <p className="text-slate-300 text-xs sm:text-sm mt-1">
-              {cajas.length} caja{cajas.length !== 1 ? 's' : ''} en el día
+              {segmentos.length} caja{segmentos.length !== 1 ? 's' : ''} en el día
               {algunaAbierta && <span className="ml-2 bg-green-400/20 text-green-300 border border-green-400/30 px-2 py-0.5 rounded-full text-[11px]">una sigue abierta</span>}
             </p>
           </div>
@@ -167,47 +204,52 @@ function ModalCierreGeneralDia({ diaData, onCerrar, onVerCaja }) {
             </div>
           )}
 
-          {/* Cada caja individual del día */}
+          {/* Cada caja del día (segmentos: una caja que cruza la medianoche se
+              muestra recortada al tramo de este día). */}
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-2">Cajas del día (individuales)</p>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-2">Cajas del día (por horario)</p>
             <div className="space-y-2">
-              {cajas.map(caja => (
-                <div key={caja.id} className="border border-gray-200 rounded-xl p-3.5 flex items-center justify-between gap-3 hover:border-slate-300 transition-colors">
+              {segmentos.map(seg => {
+                const caja = seg.turno;
+                const partida = !seg.esApertura || !seg.esCierre;
+                return (
+                <div key={`${caja.id}-${seg.dia}`} className="border border-gray-200 rounded-xl p-3.5 flex items-center justify-between gap-3 hover:border-slate-300 transition-colors">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-gray-800 truncate">{caja.nombre || 'Caja'}</p>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        caja.estado === 'abierto' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        seg.abierta ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                       }`}>{caja.estado}</span>
                       {caja.es_provisoria && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">Provisoria</span>
                       )}
-                      {caja.cerrado_fuera_de_hora && (
+                      {partida && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600" title="Esta caja cruza la medianoche; se muestra solo el tramo de este día">tramo del día</span>
+                      )}
+                      {caja.cerrado_fuera_de_hora && seg.esCierre && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">⚠ fuera de hora</span>
                       )}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5">
-                      {fmtHora(caja.fecha_apertura)} → {caja.fecha_cierre ? fmtHora(caja.fecha_cierre) : 'en curso'}
-                      {caja.usuario_cierre_nombre ? ` · cerró ${caja.usuario_cierre_nombre}` : ''}
+                      {seg.rango.desde} → {seg.rango.hasta}
+                      {seg.esCierre && caja.usuario_cierre_nombre ? ` · cerró ${caja.usuario_cierre_nombre}` : ''}
                     </p>
-                    {caja.cerrado_fuera_de_hora && caja.fecha_cierre && (
-                      <p className="text-[11px] text-amber-600 mt-0.5">Se pasó de horario hasta {fmtHora(caja.fecha_cierre)}</p>
-                    )}
                     <div className="flex gap-3 mt-1 text-[11px] text-gray-500 flex-wrap">
-                      <span>💵 {fmt(caja.ventas_efectivo)}</span>
-                      <span>📲 {fmt(virtualDe(caja))}</span>
-                      <span className="text-red-500">💸 {fmt(caja.total_gastos)}</span>
+                      <span>💵 {fmt(seg.ventas_efectivo)}</span>
+                      <span>📲 {fmt(virtualDe(seg))}</span>
+                      <span className="text-red-500">💸 {fmt(seg.total_gastos)}</span>
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-green-600 tabular-nums">{fmt(caja.total_facturado)}</p>
+                    <p className="font-bold text-green-600 tabular-nums">{fmt(seg.total_facturado)}</p>
                     <button onClick={() => onVerCaja(caja)}
                       className="mt-1 text-xs font-semibold text-slate-600 border border-gray-300 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap">
-                      Ver detalle
+                      Ver caja completa
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -910,7 +952,7 @@ function ControlCaja() {
               cajas mañana/tarde/trasnoche). Al tocarlo se ve el cierre general
               del día con el detalle de cada caja individual. */}
           {(() => {
-            const dias = agruparPorDia(datos.turnos, corteHora);
+            const dias = armarDias(datos.turnos, datos.ventasPorDia, datos.gastosPorDia);
             return (
               <div className="bg-white rounded-xl shadow overflow-hidden">
                 <div className="p-4 border-b flex items-center justify-between gap-2 flex-wrap">
@@ -933,7 +975,7 @@ function ControlCaja() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-gray-800 capitalize">{fmtDiaLargo(d.dia)}</p>
                             <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-                              {d.cajas.length} caja{d.cajas.length !== 1 ? 's' : ''}
+                              {d.segmentos.length} caja{d.segmentos.length !== 1 ? 's' : ''}
                             </span>
                             {d.algunaAbierta && (
                               <span className="text-[11px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">en curso</span>

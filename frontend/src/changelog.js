@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.37.0';
+export const VERSION_ACTUAL = '2.38.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.38.0',
+    fecha: '2026-07-15',
+    titulo: 'El informe de cajas separa lo vendido por día real',
+    cambios: [
+      { t: 'En Control de Cajas, lo que se vendió se cuenta por día calendario (de 00:00 a 00:00). Una caja que cruza la medianoche (por ejemplo la trasnoche) aparece en los dos días: el tramo hasta las 00:00 cuenta para el día que empezó, y el tramo desde las 00:00 para el día siguiente.' },
+      { t: 'Al abrir el informe de un día, cada caja se muestra con su rango horario y lo facturado en ese tramo (ej: Trasnoche de 22:00 a 00:00, y al otro día Trasnoche de 00:00 a 06:00). Si la misma caja se reabre, cada una aparece con sus horarios.' },
+      { t: 'Esto es solo a modo visual e informativo: el cierre y el arqueo de la caja del usuario no cambian. Con "Ver caja completa" siempre ves la caja entera como se cerró.' },
+    ],
+  },
   {
     version: '2.37.0',
     fecha: '2026-07-13',
