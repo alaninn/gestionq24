@@ -3076,12 +3076,11 @@ const imprimirTicketDesdeModal = () => {
   };
 
 
-  // --- Fin del día comercial: alerta y política de cierre ---
-  const corteCaja = Math.min(23, Math.max(0, parseInt(config?.cajas_corte_hora) || 0));
+  // --- Fin del día: alerta y política de cierre. El día siempre va de 00 a 00. ---
   const alertaCierreActiva = !!config?.alerta_cierre_activa;
   const minutosAvisoCierre = parseInt(config?.alerta_cierre_minutos) || 30;
   const politicaCierre = config?.cierre_politica === 'forzar' ? 'forzar' : 'seguir';
-  const finDia = turno?.fecha_apertura ? finDiaComercial(turno.fecha_apertura, corteCaja) : null;
+  const finDia = turno?.fecha_apertura ? finDiaComercial(turno.fecha_apertura, 0) : null;
   const msParaFinDia = finDia ? finDia.getTime() - ahora : null;
   const pasadoFinDia = finDia ? ahora >= finDia.getTime() : false;
   const minutosRestantes = msParaFinDia != null ? Math.max(0, Math.ceil(msParaFinDia / 60000)) : 0;

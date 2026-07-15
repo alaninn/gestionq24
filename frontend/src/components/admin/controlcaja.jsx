@@ -681,16 +681,14 @@ function ControlCaja() {
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [errorCajas, setErrorCajas] = useState('');
-  // Configuración de cajas: hora de corte del día comercial (0 = día calendario)
-  // y alerta/política de cierre de fin de día.
+  // Configuración de cajas: alerta/política de cierre de fin de día. El día de la
+  // caja siempre va de 00:00 a 00:00.
   const [cfgCajas, setCfgCajas] = useState({
-    cajas_corte_hora: 0,
     alerta_cierre_activa: false,
     alerta_cierre_minutos: 30,
     cierre_politica: 'seguir',
   });
   const [okCfg, setOkCfg] = useState(false);
-  const corteHora = Math.min(23, Math.max(0, parseInt(cfgCajas.cajas_corte_hora) || 0));
 
   // Guarda (auto) la config de cajas usando el endpoint dedicado.
   const guardarCfgCajas = async (cambios) => {
@@ -744,7 +742,6 @@ function ControlCaja() {
       .then(res => {
         const c = res.data || {};
         setCfgCajas({
-          cajas_corte_hora: Math.min(23, Math.max(0, parseInt(c.cajas_corte_hora) || 0)),
           alerta_cierre_activa: !!c.alerta_cierre_activa,
           alerta_cierre_minutos: parseInt(c.alerta_cierre_minutos) || 30,
           cierre_politica: c.cierre_politica === 'forzar' ? 'forzar' : 'seguir',
@@ -824,55 +821,18 @@ function ControlCaja() {
         </form>
       </div>
 
-      {/* Día y cierre de caja */}
+      {/* Cierre de caja: aviso de fin de día */}
       <div className="bg-white rounded-xl shadow p-4 sm:p-5">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <h3 className="font-semibold text-gray-700">📅 Día y cierre de caja</h3>
+          <h3 className="font-semibold text-gray-700">⏰ Cierre de caja</h3>
           {okCfg && <span className="text-xs text-green-600 font-medium">✓ Guardado</span>}
         </div>
         <p className="text-xs text-gray-400 mb-4">
-          Definí a qué día pertenece cada caja y qué pasa cuando una caja se queda abierta pasado el fin del día.
+          El día de la caja va de 00:00 a 00:00. Elegí si querés un aviso para cerrar la caja antes de la medianoche.
         </p>
 
-        {/* Modo de día */}
-        <p className="text-sm font-medium text-gray-700 mb-2">¿A qué día pertenece cada caja?</p>
-        <div className="space-y-2 mb-5">
-          <button type="button" onClick={() => guardarCfgCajas({ cajas_corte_hora: 0 })}
-            className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${!corteHora ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${!corteHora ? 'border-green-500' : 'border-gray-300'}`}>
-              {!corteHora && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
-            </div>
-            <div>
-              <p className="font-medium text-gray-800">Por día calendario (de 00:00 a 00:00)</p>
-              <p className="text-xs text-gray-500">Cada caja cuenta en el día en que se abrió. El día cambia a la medianoche.</p>
-            </div>
-          </button>
-          <button type="button" onClick={() => guardarCfgCajas({ cajas_corte_hora: corteHora > 0 ? corteHora : 20 })}
-            className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${corteHora > 0 ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${corteHora > 0 ? 'border-green-500' : 'border-gray-300'}`}>
-              {corteHora > 0 && <div className="w-2.5 h-2.5 rounded-full bg-green-500" />}
-            </div>
-            <div>
-              <p className="font-medium text-gray-800">Turno noche cuenta para el día siguiente</p>
-              <p className="text-xs text-gray-500">Las cajas abiertas a partir de cierta hora se cuentan en el día siguiente.</p>
-            </div>
-          </button>
-          {corteHora > 0 && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-3 flex-wrap">
-              <label className="text-sm font-medium text-gray-700">A partir de las</label>
-              <select value={corteHora} onChange={(e) => guardarCfgCajas({ cajas_corte_hora: parseInt(e.target.value) })}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                {Array.from({ length: 23 }, (_, i) => i + 1).map(h => (
-                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00 hs</option>
-                ))}
-              </select>
-              <span className="text-sm text-gray-500">cuenta para el día siguiente</span>
-            </div>
-          )}
-        </div>
-
         {/* Alerta de fin de día */}
-        <div className="border-t border-gray-100 pt-4">
+        <div>
           <label className="flex items-center justify-between gap-3 cursor-pointer">
             <div>
               <p className="text-sm font-medium text-gray-700">Avisar antes del fin del día</p>

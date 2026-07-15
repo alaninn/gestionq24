@@ -69,15 +69,9 @@ router.get('/cajas-fijas', async (req, res) => {
             ORDER BY cd.orden ASC, cd.id ASC
         `, [negocio_id]);
 
-        // Marcamos qué cajas fijas ya se usaron en el día comercial actual, para
-        // avisar si se vuelve a abrir una que ya se usó hoy. El día se calcula
-        // según la hora de corte configurada por el negocio.
-        const cfg = await db.query(
-            'SELECT cajas_corte_hora FROM configuracion WHERE negocio_id = $1 LIMIT 1',
-            [negocio_id]
-        );
-        const corte = Math.min(23, Math.max(0, parseInt(cfg.rows[0]?.cajas_corte_hora) || 0));
-        const hoyComercial = diaComercial(new Date(), corte);
+        // Marcamos qué cajas fijas ya se usaron HOY (día calendario, de 00 a 00),
+        // para avisar si se vuelve a abrir una que ya se usó hoy.
+        const hoyComercial = diaComercial(new Date(), 0);
 
         const recientes = await db.query(`
             SELECT caja_definida_id, fecha_apertura
@@ -87,7 +81,7 @@ router.get('/cajas-fijas', async (req, res) => {
         `, [negocio_id]);
         const usadasHoy = new Set();
         for (const t of recientes.rows) {
-            if (diaComercial(t.fecha_apertura, corte) === hoyComercial) {
+            if (diaComercial(t.fecha_apertura, 0) === hoyComercial) {
                 usadasHoy.add(t.caja_definida_id);
             }
         }
@@ -387,19 +381,17 @@ router.put('/:id/cerrar', async (req, res) => {
             total_transferencias, comentarios
         } = req.body;
 
-        // ¿Se cierra fuera del horario del día comercial? Se compara el momento
-        // actual con el fin del día comercial de su apertura (según la hora de
-        // corte configurada por el negocio).
+        // ¿Se cierra fuera del horario del día? Solo se marca si el negocio activó
+        // el aviso de fin de día; el día siempre corta a la medianoche.
         const info = await db.query(`
-            SELECT t.fecha_apertura, COALESCE(c.cajas_corte_hora, 0) AS corte
+            SELECT t.fecha_apertura, COALESCE(c.alerta_cierre_activa, FALSE) AS alerta_activa
             FROM turnos t
             LEFT JOIN configuracion c ON c.negocio_id = t.negocio_id
             WHERE t.id = $1 AND t.negocio_id = $2
         `, [id, negocio_id]);
         let fueraDeHora = false;
-        if (info.rows.length > 0) {
-            const corte = Math.min(23, Math.max(0, parseInt(info.rows[0].corte) || 0));
-            fueraDeHora = new Date() > finDiaComercial(info.rows[0].fecha_apertura, corte);
+        if (info.rows.length > 0 && info.rows[0].alerta_activa) {
+            fueraDeHora = new Date() > finDiaComercial(info.rows[0].fecha_apertura, 0);
         }
 
         const resultado = await db.query(`

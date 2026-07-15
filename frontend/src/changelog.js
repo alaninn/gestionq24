@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.38.0';
+export const VERSION_ACTUAL = '2.38.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.38.1',
+    fecha: '2026-07-15',
+    titulo: 'Día de la caja siempre de 00 a 00',
+    cambios: [
+      { t: 'Se quitó la opción de "turno noche cuenta para el día siguiente": el día de la caja siempre va de 00:00 a 00:00, igual que el informe, para que no se confundan los horarios. El aviso de cierre y la política (seguir / forzar) siguen disponibles en Control de Cajas.' },
+    ],
+  },
   {
     version: '2.38.0',
     fecha: '2026-07-15',

@@ -133,9 +133,8 @@ router.put('/cajas', soloAdmin, async (req, res) => {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
-        const { cajas_corte_hora, alerta_cierre_activa, alerta_cierre_minutos, cierre_politica } = req.body;
+        const { alerta_cierre_activa, alerta_cierre_minutos, cierre_politica } = req.body;
 
-        const corte = cajas_corte_hora == null ? null : Math.min(23, Math.max(0, parseInt(cajas_corte_hora) || 0));
         const minutos = alerta_cierre_minutos == null ? null : Math.min(120, Math.max(5, parseInt(alerta_cierre_minutos) || 30));
         const politica = cierre_politica == null ? null : (['seguir', 'forzar'].includes(cierre_politica) ? cierre_politica : 'seguir');
         const activa = alerta_cierre_activa == null ? null : !!alerta_cierre_activa;
@@ -148,14 +147,13 @@ router.put('/cajas', soloAdmin, async (req, res) => {
 
         const resultado = await db.query(`
             UPDATE configuracion SET
-                cajas_corte_hora = COALESCE($1, cajas_corte_hora),
-                alerta_cierre_activa = COALESCE($2, alerta_cierre_activa),
-                alerta_cierre_minutos = COALESCE($3, alerta_cierre_minutos),
-                cierre_politica = COALESCE($4, cierre_politica),
+                alerta_cierre_activa = COALESCE($1, alerta_cierre_activa),
+                alerta_cierre_minutos = COALESCE($2, alerta_cierre_minutos),
+                cierre_politica = COALESCE($3, cierre_politica),
                 updated_at = NOW()
-            WHERE negocio_id = $5
-            RETURNING cajas_corte_hora, alerta_cierre_activa, alerta_cierre_minutos, cierre_politica
-        `, [corte, activa, minutos, politica, negocio_id]);
+            WHERE negocio_id = $4
+            RETURNING alerta_cierre_activa, alerta_cierre_minutos, cierre_politica
+        `, [activa, minutos, politica, negocio_id]);
 
         res.json(resultado.rows[0] || {});
     } catch (error) {
