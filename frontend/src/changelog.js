@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.39.0';
+export const VERSION_ACTUAL = '2.39.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.39.1',
+    fecha: '2026-07-16',
+    titulo: 'Ajustes en Stock y Reportes',
+    cambios: [
+      { t: 'En "Vendidos por sección" las secciones ahora aparecen cerradas y se abren al tocarlas, para leer más cómodo.' },
+      { t: 'La leyenda de vendidos hoy al lado de cada producto ahora se ve más destacada.' },
+      { t: 'Se terminó de corregir la cantidad en el informe de Artículos Vendidos: la columna "Cantidad" (unidades totales vendidas) ahora muestra el número correcto (ej. 40 en vez de 40.000).' },
+      { t: 'En Reportes, al cambiar las fechas o la categoría el informe se actualiza solo, sin tener que tocar "Filtrar".' },
+    ],
+  },
   {
     version: '2.39.0',
     fecha: '2026-07-16',

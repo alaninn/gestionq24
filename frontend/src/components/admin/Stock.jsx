@@ -123,8 +123,8 @@ function FilaProducto({ producto, organizar, secciones, vendidosHoy, onMover, on
           Ajustar
         </button>
         {Number(vendidoHoy) > 0 && (
-          <span className="text-[11px] text-gray-400 self-center whitespace-nowrap" title="Vendidos hoy (desde las 00:00)">
-            {cant(vendidoHoy)} vend. hoy
+          <span className="self-center whitespace-nowrap inline-flex items-center gap-1 bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-lg text-xs font-bold" title="Unidades vendidas hoy (desde las 00:00)">
+            🛒 {cant(vendidoHoy)} <span className="font-medium text-indigo-500">vend. hoy</span>
           </span>
         )}
         <span className="flex-1" />
@@ -962,6 +962,8 @@ function ModalVendidosPorSeccion({ onClose }) {
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  // Secciones colapsadas por defecto; se abren al tocar el encabezado.
+  const [abiertas, setAbiertas] = useState({});
 
   useCerrarConAtras(true, onClose);
 
@@ -1053,22 +1055,32 @@ function ModalVendidosPorSeccion({ onClose }) {
               {grupos.map(g => {
                 const uni = g.items.reduce((a, it) => a + (Number(it.cantidad) || 0), 0);
                 const tot = g.items.reduce((a, it) => a + (Number(it.total) || 0), 0);
+                const clave = g.seccion;
+                const abierta = !!abiertas[clave];
                 return (
-                  <div key={g.seccion} className="border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between border-b">
-                      <p className="font-semibold text-gray-800">📦 {g.seccion}</p>
-                      <p className="text-xs text-gray-500"><b>{cant(uni)}</b> art. · {fmtMoneda(tot)}</p>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                      {g.items.map((it, i) => (
-                        <div key={i} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
-                          <span className="text-gray-700 min-w-0 truncate">{it.nombre_producto}</span>
-                          <span className="flex-shrink-0 text-gray-500">
-                            <b className="text-gray-800">{cant(it.cantidad)}</b> · {fmtMoneda(it.total)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  <div key={clave} className="border border-gray-200 rounded-xl overflow-hidden">
+                    <button type="button"
+                      onClick={() => setAbiertas(prev => ({ ...prev, [clave]: !prev[clave] }))}
+                      className="w-full bg-gray-50 hover:bg-gray-100 px-4 py-2.5 flex items-center justify-between gap-3 border-b transition-colors text-left">
+                      <p className="font-semibold text-gray-800 flex items-center gap-2 min-w-0">
+                        <span className={`text-gray-400 transition-transform ${abierta ? 'rotate-90' : ''}`}>▶</span>
+                        <span className="truncate">📦 {g.seccion}</span>
+                        <span className="text-[11px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full flex-shrink-0">{g.items.length}</span>
+                      </p>
+                      <p className="text-xs text-gray-500 flex-shrink-0"><b>{cant(uni)}</b> art. · {fmtMoneda(tot)}</p>
+                    </button>
+                    {abierta && (
+                      <div className="divide-y divide-gray-100">
+                        {g.items.map((it, i) => (
+                          <div key={i} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                            <span className="text-gray-700 min-w-0 truncate">{it.nombre_producto}</span>
+                            <span className="flex-shrink-0 text-gray-500">
+                              <b className="text-gray-800">{cant(it.cantidad)}</b> · {fmtMoneda(it.total)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

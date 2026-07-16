@@ -211,6 +211,13 @@ const calcularFechas = () => {
     }
   };
 
+  // Recarga el reporte activo al cambiar las fechas o la categoría, sin tener que
+  // tocar "Filtrar". No aplica al reporte de stock (no usa fechas).
+  useEffect(() => {
+    if (reporteActivo && reporteActivo !== 'stock') cargarReporte(reporteActivo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reporteFechaDesde, reporteFechaHasta, categoriaSeleccionada]);
+
   // ---- EXPORTAR A PDF ----
   const exportarPDF = (titulo, columnas, filas) => {
     const doc = new jsPDF();
@@ -792,7 +799,7 @@ const calcularFechas = () => {
                               <tr key={i} className="hover:bg-gray-50">
                                 <td className="px-4 py-3 font-medium text-gray-800">{p.nombre_producto}</td>
                                 <td className="px-4 py-3 text-sm text-gray-500">{p.categoria || '-'}</td>
-                                <td className="px-4 py-3 text-right text-gray-700">{p.total_cantidad}</td>
+                                <td className="px-4 py-3 text-right text-gray-700">{cant(p.total_cantidad)}</td>
                                 <td className="px-4 py-3 text-right text-gray-700">{p.veces_vendido}</td>
                                 <td className="px-4 py-3 text-right font-medium text-green-600">{fmt(p.total_facturado)}</td>
                               </tr>
@@ -1018,7 +1025,7 @@ const calcularFechas = () => {
                         </div>
                         <div className="bg-white rounded-xl p-4 shadow">
                           <p className="text-gray-500 text-sm">Total Unidades</p>
-                          <p className="text-2xl font-bold text-gray-800">{datosReporte.totalUnidades}</p>
+                          <p className="text-2xl font-bold text-gray-800">{cant(datosReporte.totalUnidades)}</p>
                         </div>
                         <div className="bg-white rounded-xl p-4 shadow">
                           <p className="text-gray-500 text-sm">Costo Total</p>
