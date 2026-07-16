@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.38.1';
+export const VERSION_ACTUAL = '2.39.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.39.0',
+    fecha: '2026-07-16',
+    titulo: 'Vendidos del día en Stock e informe por sección',
+    cambios: [
+      { t: 'En el menú de Stock, al lado del botón "Ajustar" de cada producto aparece en chiquito cuántas unidades se vendieron hoy (desde las 00:00), y se va actualizando solo.' },
+      { t: 'Nuevo botón "📊 Vendidos por sección" en Stock: arma un informe de los artículos vendidos agrupados por las secciones que creaste, con opción de elegir el período y exportar a Excel.' },
+      { t: 'Se corrigió la cantidad en los informes de artículos vendidos: antes un producto con 40 vendidos figuraba como "40.000"; ahora se muestra la cantidad correcta (40).' },
+    ],
+  },
   {
     version: '2.38.1',
     fecha: '2026-07-15',

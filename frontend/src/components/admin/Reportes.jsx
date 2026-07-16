@@ -19,6 +19,10 @@ const fmt = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 0
 }).format(n || 0);
 
+// Cantidad de artículos: la base guarda las cantidades como número con decimales
+// (ej. "40.000"), así que las mostramos limpias (40, o 40,5 si es fraccionada).
+const cant = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(Number(n) || 0);
+
 // ---- FUNCIÓN PARA FORMATEAR FECHAS ----
 const fmtFecha = (f) => new Date(f).toLocaleDateString('es-AR', {
   day: '2-digit', month: '2-digit', year: 'numeric'
@@ -246,7 +250,7 @@ const calcularFechas = () => {
         columnas: ['Producto', 'Código', 'Categoría', 'Cantidad', 'Veces Vendido', 'Total Facturado'],
         filas: datosReporte.map(p => [
           p.nombre_producto, p.codigo || '-', p.categoria || '-',
-          p.total_cantidad, p.veces_vendido, fmt(p.total_facturado)
+          Number(p.total_cantidad) || 0, p.veces_vendido, fmt(p.total_facturado)
         ])
       };
     }
@@ -268,7 +272,7 @@ const calcularFechas = () => {
         titulo: 'Rentabilidad por Producto',
         columnas: ['Producto', 'Cantidad', 'Total Vendido', 'Costo Total', 'Ganancia', 'Margen %'],
         filas: datosReporte.porProducto.map(p => [
-          p.nombre_producto, p.cantidad_vendida,
+          p.nombre_producto, Number(p.cantidad_vendida) || 0,
           fmt(p.total_vendido), fmt(p.total_costo),
           fmt(p.ganancia), `${p.margen_porcentaje}%`
         ])
@@ -290,7 +294,7 @@ const calcularFechas = () => {
         titulo: 'Ventas por Categoría',
         columnas: ['Producto', 'Cantidad', 'Veces Vendido', 'Total Facturado', 'Ganancia'],
         filas: (datosReporte.productos || []).map(p => [
-          p.nombre_producto, p.total_cantidad, p.veces_vendido,
+          p.nombre_producto, Number(p.total_cantidad) || 0, p.veces_vendido,
           fmt(p.total_facturado), fmt(p.ganancia)
         ])
       };
@@ -915,7 +919,7 @@ const calcularFechas = () => {
                               {datosReporte.porProducto.map((p, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
                                   <td className="px-4 py-3 font-medium text-gray-800">{p.nombre_producto}</td>
-                                  <td className="px-4 py-3 text-right text-gray-700">{p.cantidad_vendida}</td>
+                                  <td className="px-4 py-3 text-right text-gray-700">{cant(p.cantidad_vendida)}</td>
                                   <td className="px-4 py-3 text-right text-gray-700">{fmt(p.total_vendido)}</td>
                                   <td className="px-4 py-3 text-right text-red-500">{fmt(p.total_costo)}</td>
                                   <td className="px-4 py-3 text-right font-bold text-green-600">{fmt(p.ganancia)}</td>
@@ -1054,7 +1058,7 @@ const calcularFechas = () => {
                                 {datosReporte.productos.map((p, i) => (
                                   <tr key={i} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 font-medium text-gray-800">{p.nombre_producto}</td>
-                                    <td className="px-4 py-3 text-right text-gray-700">{p.total_cantidad}</td>
+                                    <td className="px-4 py-3 text-right text-gray-700">{cant(p.total_cantidad)}</td>
                                     <td className="px-4 py-3 text-right text-gray-500">{p.veces_vendido}</td>
                                     <td className="px-4 py-3 text-right font-medium text-green-600">{fmt(p.total_facturado)}</td>
                                     <td className="px-4 py-3 text-right font-medium text-blue-600">{fmt(p.ganancia)}</td>

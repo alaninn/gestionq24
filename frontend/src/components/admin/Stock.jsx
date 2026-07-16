@@ -19,6 +19,13 @@ import autoTable from 'jspdf-autotable';
 
 const SIN_UBICACION = 'sin';
 
+// Cantidad de artículos: la base guarda las cantidades con decimales (ej.
+// "40.000"), así que las mostramos limpias (40, o 40,5 si es fraccionada).
+const cant = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(Number(n) || 0);
+const fmtMoneda = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(Number(n) || 0);
+// Fecha local Argentina (YYYY-MM-DD) para los rangos por defecto.
+const hoyAR = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+
 // Detecta cuánto espacio tapa el teclado del celular (Visual Viewport API).
 // Sirve para posicionar el panel de conteo PEGADO ENCIMA del teclado,
 // con los botones siempre visibles sin tener que cerrarlo.
@@ -48,7 +55,8 @@ const mantenerTeclado = (e) => e.preventDefault();
 // ---- Fila de producto ----
 // Modo normal: stock visible + botones Ajustar / Historial / Modificar / Eliminar
 // Modo organizar: handle de arrastre + selector de sección
-function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHistorial, onModificar, onEliminar }) {
+function FilaProducto({ producto, organizar, secciones, vendidosHoy, onMover, onAjustar, onHistorial, onModificar, onEliminar }) {
+  const vendidoHoy = vendidosHoy ? (vendidosHoy[producto.id] || 0) : 0;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: producto.id, disabled: !organizar });
 
@@ -114,6 +122,11 @@ function FilaProducto({ producto, organizar, secciones, onMover, onAjustar, onHi
           className="px-5 py-1.5 bg-amber-100 hover:bg-amber-200 active:scale-95 text-amber-700 border border-amber-200 rounded-lg text-sm font-semibold transition-all">
           Ajustar
         </button>
+        {Number(vendidoHoy) > 0 && (
+          <span className="text-[11px] text-gray-400 self-center whitespace-nowrap" title="Vendidos hoy (desde las 00:00)">
+            {cant(vendidoHoy)} vend. hoy
+          </span>
+        )}
         <span className="flex-1" />
         <button onClick={() => onHistorial(producto)} title="Historial de stock"
           className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm transition-colors">
@@ -144,6 +157,10 @@ function Stock() {
   const [organizar, setOrganizar] = useState(false);
   const [abiertas, setAbiertas] = useState({});
   const [visibles, setVisibles] = useState({});
+  // Cantidad vendida hoy por producto (mapa producto_id -> cantidad), en tiempo real.
+  const [vendidosHoy, setVendidosHoy] = useState({});
+  // Modal: informe de artículos vendidos por sección
+  const [mostrarVendidosSeccion, setMostrarVendidosSeccion] = useState(false);
 
   // Modal Agregar stock (recepción de mercadería: suma existencias al stock actual)
   const [mostrarAgregarStock, setMostrarAgregarStock] = useState(false);
@@ -198,7 +215,25 @@ function Stock() {
     }
   };
 
-  useEffect(() => { cargarTodo(); }, []);
+  // Carga las cantidades vendidas hoy (para la leyenda de cada producto).
+  const cargarVendidosHoy = async () => {
+    try {
+      const res = await api.get('/api/reportes/vendidos-hoy');
+      const mapa = {};
+      (res.data || []).forEach(r => { mapa[r.producto_id] = r.cantidad; });
+      setVendidosHoy(mapa);
+    } catch { /* sin bloquear el inventario */ }
+  };
+
+  useEffect(() => { cargarTodo(); cargarVendidosHoy(); }, []);
+
+  // Refresco en tiempo real de lo vendido hoy (cada 45s y al volver a la pestaña).
+  useEffect(() => {
+    const id = setInterval(cargarVendidosHoy, 45000);
+    const onFoco = () => { if (!document.hidden) cargarVendidosHoy(); };
+    document.addEventListener('visibilitychange', onFoco);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onFoco); };
+  }, []);
 
   // Autofoco + selección del número al abrir el modal Ajustar o avanzar de producto
   // (en el modo conteo, el teclado queda abierto y el número seleccionado: tipeo directo)
@@ -478,7 +513,7 @@ function Stock() {
   };
 
   const propsFila = {
-    organizar, secciones,
+    organizar, secciones, vendidosHoy,
     onMover: moverProducto,
     onAjustar: abrirAjustar,
     onHistorial: abrirHistorial,
@@ -570,6 +605,13 @@ function Stock() {
               title="Sumar existencias al stock (recepción de mercadería / compra)"
               className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
               📥 Agregar stock
+            </button>
+          )}
+          {!organizar && (
+            <button onClick={() => setMostrarVendidosSeccion(true)}
+              title="Informe de artículos vendidos agrupados por sección"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-colors">
+              📊 Vendidos por sección
             </button>
           )}
           {!organizar && (
@@ -901,6 +943,139 @@ function Stock() {
           onExportado={(cant, formato) => { setMostrarExportar(false); avisoOk(`✅ ${cant} producto(s) exportados a ${formato}`); }}
         />
       )}
+
+      {mostrarVendidosSeccion && (
+        <ModalVendidosPorSeccion onClose={() => setMostrarVendidosSeccion(false)} />
+      )}
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: INFORME DE ARTÍCULOS VENDIDOS POR SECCIÓN
+// Agrupa lo vendido por las secciones de stock que creó el usuario. Por defecto
+// muestra el día de hoy (desde las 00), con opción de cambiar el rango de fechas.
+// =============================================
+function ModalVendidosPorSeccion({ onClose }) {
+  const [desde, setDesde] = useState(hoyAR());
+  const [hasta, setHasta] = useState(hoyAR());
+  const [filas, setFilas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+
+  useCerrarConAtras(true, onClose);
+
+  const cargar = async () => {
+    try {
+      setCargando(true);
+      setError('');
+      const res = await api.get(`/api/reportes/vendidos-por-seccion?fecha_desde=${desde}&fecha_hasta=${hasta}`);
+      setFilas(res.data || []);
+    } catch {
+      setError('No se pudo generar el informe');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => { cargar(); }, [desde, hasta]);
+
+  // Agrupamos las filas por sección
+  const grupos = useMemo(() => {
+    const mapa = new Map();
+    for (const f of filas) {
+      const clave = f.seccion_id ?? 'sin';
+      if (!mapa.has(clave)) mapa.set(clave, { seccion: f.seccion, orden: Number(f.seccion_orden) || 999999, items: [] });
+      mapa.get(clave).items.push(f);
+    }
+    return [...mapa.values()].sort((a, b) => a.orden - b.orden || a.seccion.localeCompare(b.seccion));
+  }, [filas]);
+
+  const totalGeneral = filas.reduce((a, f) => a + (Number(f.total) || 0), 0);
+  const unidadesGeneral = filas.reduce((a, f) => a + (Number(f.cantidad) || 0), 0);
+
+  const exportarExcel = () => {
+    const datos = [];
+    for (const g of grupos) {
+      for (const it of g.items) datos.push({ Sección: g.seccion, Producto: it.nombre_producto, Cantidad: Number(it.cantidad) || 0, Total: Number(it.total) || 0 });
+    }
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendidos por sección');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf]), `Vendidos por seccion ${desde}${desde !== hasta ? '_a_' + hasta : ''}.xlsx`);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b bg-indigo-600 text-white flex-shrink-0">
+          <h3 className="text-lg font-bold">📊 Vendidos por sección</h3>
+          <button onClick={onClose} className="text-indigo-200 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        <div className="p-4 border-b flex items-end gap-2 flex-wrap flex-shrink-0">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Desde</label>
+            <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Hasta</label>
+            <input type="date" value={hasta} min={desde} max={hoyAR()} onChange={(e) => setHasta(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <button onClick={() => { setDesde(hoyAR()); setHasta(hoyAR()); }}
+            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">Hoy</button>
+          <span className="flex-1" />
+          {filas.length > 0 && (
+            <button onClick={exportarExcel}
+              className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-semibold transition-colors">📤 Excel</button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {cargando ? (
+            <p className="text-center text-gray-400 py-10">Cargando...</p>
+          ) : error ? (
+            <p className="text-center text-red-500 py-10">❌ {error}</p>
+          ) : filas.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <p className="text-4xl mb-2">📭</p>
+              <p>No hay ventas en el período seleccionado</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+                <span className="text-sm font-semibold text-indigo-800">Total general</span>
+                <span className="text-sm text-indigo-800"><b>{cant(unidadesGeneral)}</b> artículos · <b>{fmtMoneda(totalGeneral)}</b></span>
+              </div>
+              {grupos.map(g => {
+                const uni = g.items.reduce((a, it) => a + (Number(it.cantidad) || 0), 0);
+                const tot = g.items.reduce((a, it) => a + (Number(it.total) || 0), 0);
+                return (
+                  <div key={g.seccion} className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between border-b">
+                      <p className="font-semibold text-gray-800">📦 {g.seccion}</p>
+                      <p className="text-xs text-gray-500"><b>{cant(uni)}</b> art. · {fmtMoneda(tot)}</p>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {g.items.map((it, i) => (
+                        <div key={i} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                          <span className="text-gray-700 min-w-0 truncate">{it.nombre_producto}</span>
+                          <span className="flex-shrink-0 text-gray-500">
+                            <b className="text-gray-800">{cant(it.cantidad)}</b> · {fmtMoneda(it.total)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

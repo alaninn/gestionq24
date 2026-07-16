@@ -132,6 +132,58 @@ router.get('/productos-vendidos', async (req, res) => {
     }
 });
 
+// Cantidad vendida HOY (día calendario, desde las 00) por producto. Para el
+// contador en tiempo real del menú de Stock.
+router.get('/vendidos-hoy', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const hoy = new Date();
+        const hoyStr = new Date(hoy - hoy.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+        const r = await db.query(`
+            SELECT vi.producto_id, SUM(vi.cantidad) AS cantidad
+            FROM venta_items vi
+            JOIN ventas v ON v.id = vi.venta_id
+            WHERE v.negocio_id = $1 AND vi.producto_id IS NOT NULL
+              AND v.fecha::date = $2::date
+            GROUP BY vi.producto_id
+        `, [negocio_id, hoyStr]);
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error vendidos hoy:', error);
+        res.status(500).json({ error: 'Error al obtener vendidos hoy' });
+    }
+});
+
+// Artículos vendidos agrupados por SECCIÓN de stock (las secciones que crea el
+// usuario). Rango configurable; por defecto arma todo lo del rango elegido.
+router.get('/vendidos-por-seccion', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const { desde, hasta } = rangoSeguro(req);
+        const r = await db.query(`
+            SELECT sc.id AS seccion_id,
+                   COALESCE(sc.nombre, 'Sin sección') AS seccion,
+                   COALESCE(sc.orden, 999999) AS seccion_orden,
+                   vi.nombre_producto,
+                   SUM(vi.cantidad) AS cantidad,
+                   SUM(vi.subtotal) AS total
+            FROM venta_items vi
+            JOIN ventas v ON v.id = vi.venta_id
+            LEFT JOIN productos p ON p.id = vi.producto_id
+            LEFT JOIN stock_categorias sc ON sc.id = p.stock_categoria_id
+            WHERE v.negocio_id = $3 AND v.fecha::date BETWEEN $1::date AND $2::date
+            GROUP BY sc.id, sc.nombre, sc.orden, vi.nombre_producto
+            ORDER BY seccion_orden ASC, seccion ASC, cantidad DESC
+        `, [desde, hasta, negocio_id]);
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error vendidos por sección:', error);
+        res.status(500).json({ error: 'Error al generar el reporte por sección' });
+    }
+});
+
 router.get('/por-turno', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
