@@ -8,22 +8,23 @@ const db = require('../config/database');
 // stock propio: descuenta/repone el stock de cada componente según su cantidad
 // en el combo. Si es normal, ajusta el producto directo.
 // signo: -1 al vender, +1 al restaurar (anular/editar).
-async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo) {
-    const combo = await db.query(
+// exec: conexión a usar (un client dentro de una transacción, o el pool por defecto).
+async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo, exec = db) {
+    const combo = await exec.query(
         'SELECT producto_id, cantidad FROM producto_combo WHERE combo_id = $1 AND negocio_id = $2',
         [producto_id, negocio_id]
     );
     if (combo.rows.length > 0) {
         for (const comp of combo.rows) {
             const delta = signo * (parseFloat(comp.cantidad) || 0) * (parseFloat(cantidadVenta) || 0);
-            await db.query(
+            await exec.query(
                 'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
                 [delta, comp.producto_id, negocio_id]
             );
         }
     } else {
         const delta = signo * (parseFloat(cantidadVenta) || 0);
-        await db.query(
+        await exec.query(
             'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
             [delta, producto_id, negocio_id]
         );
@@ -31,8 +32,8 @@ async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo) {
 }
 
 // Disponible real de un combo = lo que alcanza del componente más escaso.
-async function disponibleCombo(negocio_id, combo_id) {
-    const r = await db.query(`
+async function disponibleCombo(negocio_id, combo_id, exec = db) {
+    const r = await exec.query(`
         SELECT MIN(FLOOR(comp.stock / NULLIF(cc.cantidad, 0))) AS disp
         FROM producto_combo cc
         JOIN productos comp ON comp.id = cc.producto_id
@@ -143,7 +144,9 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             ? (configResult.rows[0]?.permite_stock_negativo || false)
             : false;
 
-        await db.query('BEGIN');
+        const client = await db.pool.connect();
+        try {
+        await client.query('BEGIN');
 
         // Validar y calcular precios para cada item
         const itemsProcesados = [];
@@ -162,7 +165,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             }
 
             // Obtener información del producto
-            const productoResult = await db.query(
+            const productoResult = await client.query(
                 'SELECT nombre, precio_venta, precio_costo, stock, unidad, es_combinado FROM productos WHERE id = $1 AND negocio_id = $2',
                 [item.producto_id, negocio_id]
             );
@@ -174,7 +177,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             const producto = productoResult.rows[0];
             // Para combos, el stock disponible se calcula desde los componentes
             if (producto.es_combinado) {
-                producto.stock = await disponibleCombo(negocio_id, item.producto_id);
+                producto.stock = await disponibleCombo(negocio_id, item.producto_id, client);
             }
             const cantidad = parseFloat(item.cantidad);
             const precioUnitario = parseFloat(item.precio_unitario);
@@ -216,7 +219,7 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
             throw new Error(`Total incorrecto. Calculado: ${totalEsperado.toFixed(2)}, enviado: ${total.toFixed(2)}`);
         }
 
-        const ventaResult = await db.query(`
+        const ventaResult = await client.query(`
             INSERT INTO ventas (turno_id, cliente_id, total, descuento, recargo, metodo_pago, es_fiado, negocio_id,
                                 monto_efectivo, monto_virtual, metodo_virtual, offline_uuid)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
@@ -229,33 +232,38 @@ router.post('/', verificarPermiso('ventas', 'crear'), async (req, res) => {
         for (const item of itemsProcesados) {
             if (!item.producto_id) {
                 // Producto rápido: guardar el ítem igual, pero sin actualizar stock
-                await db.query(`
+                await client.query(`
                     INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
                     VALUES ($1, NULL, $2, $3::numeric, $4::numeric, $5::numeric, $6)
                 `, [ventaId, item.nombre_producto || 'Producto rápido', parseFloat(item.cantidad) || 1, parseFloat(item.precio_unitario) || 0, parseFloat(item.subtotal) || 0, negocio_id]);
                 continue;
             }
 
-            await db.query(`
+            await client.query(`
                 INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id, costo_unitario)
                 VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric)
             `, [ventaId, item.producto_id, item.nombre_producto, parseFloat(item.cantidad), parseFloat(item.precio_unitario), parseFloat(item.subtotal), negocio_id, parseFloat(item.costo_unitario) || 0]);
 
             // Actualizar stock (combo-aware: si es combinado descuenta los componentes)
-            await ajustarStock(negocio_id, item.producto_id, parseFloat(item.cantidad), -1);
+            await ajustarStock(negocio_id, item.producto_id, parseFloat(item.cantidad), -1, client);
         }
 
         if (es_fiado && cliente_id) {
-            await db.query(
+            await client.query(
                 'UPDATE clientes SET saldo_deuda = saldo_deuda + $1 WHERE id = $2 AND negocio_id = $3',
                 [total, cliente_id, negocio_id]
             );
         }
 
-        await db.query('COMMIT');
+        await client.query('COMMIT');
         res.status(201).json({ ...ventaResult.rows[0], mensaje: 'Venta registrada correctamente' });
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
     } catch (error) {
-        await db.query('ROLLBACK');
         console.error('Error al registrar venta:', error.message);
         res.status(400).json({ error: error.message || 'Error al registrar venta' });
     }
@@ -280,10 +288,11 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
             return res.status(400).json({ error: 'No se puede editar una venta de un turno cerrado' });
         }
 
-       await db.query('BEGIN');
+        const client = await db.pool.connect();
         try {
+        await client.query('BEGIN');
         // Actualizar datos principales de la venta
-        await db.query(
+        await client.query(
             'UPDATE ventas SET metodo_pago = $1, descuento = $2, recargo = $3, total = $4, cliente_id = $5, es_fiado = $6 WHERE id = $7 AND negocio_id = $8',
             [metodo_pago, descuento, recargo, total, cliente_id, es_fiado, id, negocio_id]
         );
@@ -291,35 +300,37 @@ router.put('/:id/editar', verificarPermiso('ventas', 'editar'), async (req, res)
         // Si vinieron items nuevos, actualizar venta_items y stock
         if (items && items.length > 0) {
             // Primero restaurar el stock de los items anteriores
-            const itemsAnteriores = await db.query(
+            const itemsAnteriores = await client.query(
                 'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
                 [id]
             );
             for (const item of itemsAnteriores.rows) {
-                await ajustarStock(negocio_id, item.producto_id, item.cantidad, +1);
+                await ajustarStock(negocio_id, item.producto_id, item.cantidad, +1, client);
             }
 
             // Borrar items anteriores
-            await db.query('DELETE FROM venta_items WHERE venta_id = $1', [id]);
+            await client.query('DELETE FROM venta_items WHERE venta_id = $1', [id]);
 
             // Insertar items nuevos y descontar stock
             for (const item of items) {
-                await db.query(`
+                await client.query(`
                     INSERT INTO venta_items (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal, negocio_id)
                     VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7)
                 `, [id, item.producto_id || null, item.nombre_producto, item.cantidad, item.precio_unitario, item.subtotal, negocio_id]);
 
                 if (item.producto_id) {
-                    await ajustarStock(negocio_id, item.producto_id, item.cantidad, -1);
+                    await ajustarStock(negocio_id, item.producto_id, item.cantidad, -1, client);
                 }
             }
         }
 
-        await db.query('COMMIT');
+        await client.query('COMMIT');
         res.json({ mensaje: 'Venta actualizada correctamente' });
         } catch (innerError) {
-            await db.query('ROLLBACK');
+            await client.query('ROLLBACK');
             throw innerError;
+        } finally {
+            client.release();
         }
     } catch (error) {
         console.error('Error al editar venta:', error);
@@ -349,10 +360,11 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             }
         }
         
-        await db.query('BEGIN');
+        const client = await db.pool.connect();
         try {
+        await client.query('BEGIN');
         // Restaurar stock de los productos antes de eliminar
-        const itemsVenta = await db.query(
+        const itemsVenta = await client.query(
             'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
             [id]
         );
@@ -360,11 +372,11 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             // La cantidad viene de la base como numérico (ej. "2.000" = 2 unidades);
             // parseFloat la interpreta bien. NO quitar el punto: es el separador decimal.
             const cantidadItem = parseFloat(item.cantidad) || 0;
-            await ajustarStock(negocioId, item.producto_id, cantidadItem, +1);
+            await ajustarStock(negocioId, item.producto_id, cantidadItem, +1, client);
         }
 
         // Restaurar saldo de deuda si era venta fiada
-        const ventaInfo = await db.query(
+        const ventaInfo = await client.query(
             'SELECT cliente_id, total, es_fiado FROM ventas WHERE id = $1 AND negocio_id = $2',
             [id, negocioId]
         );
@@ -372,19 +384,21 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             // El total viene de la base como numérico (ej. "1500.00"); parseFloat lo
             // interpreta bien. NO quitar el punto: es el separador decimal.
             const totalVenta = parseFloat(ventaInfo.rows[0].total) || 0;
-            await db.query(
+            await client.query(
                 'UPDATE clientes SET saldo_deuda = GREATEST(saldo_deuda - $1, 0) WHERE id = $2',
                 [totalVenta, ventaInfo.rows[0].cliente_id]
             );
         }
 
         // Eliminar venta
-        await db.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocioId]);
-        await db.query('COMMIT');
+        await client.query('DELETE FROM ventas WHERE id = $1 AND negocio_id = $2', [id, negocioId]);
+        await client.query('COMMIT');
         res.json({ mensaje: 'Venta eliminada correctamente' });
         } catch (innerError) {
-            await db.query('ROLLBACK');
+            await client.query('ROLLBACK');
             throw innerError;
+        } finally {
+            client.release();
         }
     } catch (error) {
         console.error('Error al eliminar venta:', error);

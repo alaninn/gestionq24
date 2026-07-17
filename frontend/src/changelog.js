@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.1';
+export const VERSION_ACTUAL = '2.40.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.2',
+    fecha: '2026-07-17',
+    titulo: 'Mayor solidez al registrar y anular ventas',
+    cambios: [
+      { t: 'Se reforzó la forma en que se guardan las ventas, sus anulaciones y ediciones para que sean operaciones "todo o nada": si algo falla en el medio, no queda ningún cambio a medias (stock, deuda o venta). Esto evita inconsistencias, sobre todo cuando varias cajas venden al mismo tiempo.', super: true },
+    ],
+  },
   {
     version: '2.40.1',
     fecha: '2026-07-17',

@@ -192,12 +192,13 @@ router.post('/reiniciar-datos', soloAdmin, async (req, res) => {
     }
 
     const borrado = {};
+    const client = await db.pool.connect();
     try {
-        await db.query('BEGIN');
+        await client.query('BEGIN');
 
         // Si se borran comprobantes pero NO las ventas, hay que soltar la FK de ventas
         if (borrarComprobantes && !borrarVentas) {
-            await db.query(
+            await client.query(
                 'UPDATE ventas SET comprobante_electronico_id = NULL WHERE negocio_id = $1',
                 [negocio_id]
             );
@@ -205,9 +206,9 @@ router.post('/reiniciar-datos', soloAdmin, async (req, res) => {
 
         // 1) Ventas y estadísticas
         if (borrarVentas) {
-            const vi = await db.query('DELETE FROM venta_items WHERE negocio_id = $1', [negocio_id]);
-            const ve = await db.query('DELETE FROM ventas WHERE negocio_id = $1', [negocio_id]);
-            const hs = await db.query('DELETE FROM historial_stock WHERE negocio_id = $1', [negocio_id]);
+            const vi = await client.query('DELETE FROM venta_items WHERE negocio_id = $1', [negocio_id]);
+            const ve = await client.query('DELETE FROM ventas WHERE negocio_id = $1', [negocio_id]);
+            const hs = await client.query('DELETE FROM historial_stock WHERE negocio_id = $1', [negocio_id]);
             borrado.venta_items = vi.rowCount;
             borrado.ventas = ve.rowCount;
             borrado.historial_stock = hs.rowCount;
@@ -215,16 +216,16 @@ router.post('/reiniciar-datos', soloAdmin, async (req, res) => {
 
         // 2) Gastos y compras (+ saldos de proveedores a 0)
         if (borrarGastos) {
-            const ga = await db.query('DELETE FROM gastos WHERE negocio_id = $1', [negocio_id]);
-            await db.query('UPDATE proveedores SET saldo_deuda = 0, saldo_a_favor = 0 WHERE negocio_id = $1', [negocio_id]);
+            const ga = await client.query('DELETE FROM gastos WHERE negocio_id = $1', [negocio_id]);
+            await client.query('UPDATE proveedores SET saldo_deuda = 0, saldo_a_favor = 0 WHERE negocio_id = $1', [negocio_id]);
             borrado.gastos = ga.rowCount;
         }
 
         // 3) Caja, turnos y retiros
         if (borrarCaja) {
-            const tu = await db.query('DELETE FROM turno_usuarios WHERE negocio_id = $1', [negocio_id]);
-            const tu2 = await db.query('DELETE FROM turnos WHERE negocio_id = $1', [negocio_id]);
-            const re = await db.query('DELETE FROM retiros WHERE negocio_id = $1', [negocio_id]);
+            const tu = await client.query('DELETE FROM turno_usuarios WHERE negocio_id = $1', [negocio_id]);
+            const tu2 = await client.query('DELETE FROM turnos WHERE negocio_id = $1', [negocio_id]);
+            const re = await client.query('DELETE FROM retiros WHERE negocio_id = $1', [negocio_id]);
             borrado.turno_usuarios = tu.rowCount;
             borrado.turnos = tu2.rowCount;
             borrado.retiros = re.rowCount;
@@ -232,34 +233,41 @@ router.post('/reiniciar-datos', soloAdmin, async (req, res) => {
 
         // 4) Fiados / cuentas corrientes (+ saldo de clientes a 0)
         if (borrarFiados) {
-            const pd = await db.query('DELETE FROM pagos_deuda WHERE negocio_id = $1', [negocio_id]);
-            await db.query('UPDATE clientes SET saldo_deuda = 0 WHERE negocio_id = $1', [negocio_id]);
+            const pd = await client.query('DELETE FROM pagos_deuda WHERE negocio_id = $1', [negocio_id]);
+            await client.query('UPDATE clientes SET saldo_deuda = 0 WHERE negocio_id = $1', [negocio_id]);
             borrado.pagos_deuda = pd.rowCount;
         }
 
         // 5) Comprobantes electrónicos AFIP
         if (borrarComprobantes) {
-            const ce = await db.query('DELETE FROM comprobantes_electronicos WHERE negocio_id = $1', [negocio_id]);
+            const ce = await client.query('DELETE FROM comprobantes_electronicos WHERE negocio_id = $1', [negocio_id]);
             borrado.comprobantes_electronicos = ce.rowCount;
         }
 
         // 6) Borrado total de productos (deja categorías y secciones de stock)
         if (borrarProductos) {
-            await db.query('DELETE FROM producto_codigos WHERE negocio_id = $1', [negocio_id]);
-            // producto_combo puede no existir todavía (Feature 2). Borrado defensivo.
+            await client.query('DELETE FROM producto_codigos WHERE negocio_id = $1', [negocio_id]);
+            // producto_combo puede no existir en instalaciones viejas. Borrado defensivo
+            // con SAVEPOINT: si la tabla no existe, el error no aborta toda la transacción.
+            await client.query('SAVEPOINT sp_combo');
             try {
-                await db.query('DELETE FROM producto_combo WHERE negocio_id = $1', [negocio_id]);
-            } catch (e) { /* tabla aún no creada */ }
-            const pr = await db.query('DELETE FROM productos WHERE negocio_id = $1', [negocio_id]);
+                await client.query('DELETE FROM producto_combo WHERE negocio_id = $1', [negocio_id]);
+                await client.query('RELEASE SAVEPOINT sp_combo');
+            } catch (e) {
+                await client.query('ROLLBACK TO SAVEPOINT sp_combo');
+            }
+            const pr = await client.query('DELETE FROM productos WHERE negocio_id = $1', [negocio_id]);
             borrado.productos = pr.rowCount;
         }
 
-        await db.query('COMMIT');
+        await client.query('COMMIT');
         res.json({ ok: true, borrado });
     } catch (error) {
-        await db.query('ROLLBACK');
+        await client.query('ROLLBACK');
         console.error('Error al reiniciar datos:', error);
         res.status(500).json({ error: 'Error al reiniciar los datos: ' + (error.message || '') });
+    } finally {
+        client.release();
     }
 });
 
