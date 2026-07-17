@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.39.1';
+export const VERSION_ACTUAL = '2.40.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.0',
+    fecha: '2026-07-17',
+    titulo: 'Comparativas y tendencias en el Dashboard',
+    cambios: [
+      { t: 'El Dashboard ahora muestra cómo venís respecto a antes: ventas de los últimos 7 días vs los 7 previos, y del mes actual vs el mismo tramo del mes pasado, con el porcentaje de variación.' },
+      { t: 'Nueva proyección de cierre de mes: estima cuánto vas a facturar el mes a este ritmo.' },
+      { t: 'Nuevo gráfico de promedio de venta por día de la semana (últimas 8 semanas), para ver qué días vendés más y organizarte mejor.' },
+    ],
+  },
   {
     version: '2.39.1',
     fecha: '2026-07-16',

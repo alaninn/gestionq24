@@ -206,7 +206,7 @@ if (error) return (
 
   if (!datos) return null;
 
-  const { stats, ventasPorDia, ventasPorMetodo, topProductos, comparacion, dia } = datos;
+  const { stats, ventasPorDia, ventasPorMetodo, topProductos, comparacion, comparativas, dia } = datos;
   const facturacionActiva = datos?.facturacion_activa === true;
   const det = dia?.detalle || {};
   const gastosDia = dia?.gastos || { caja: 0, local: 0, otro: 0, total: 0, cantidad: 0 };
@@ -252,6 +252,22 @@ if (error) return (
   const varPct = comparacion.ayer > 0
     ? ((comparacion.hoy - comparacion.ayer) / comparacion.ayer * 100).toFixed(1)
     : 0;
+
+  // Variación porcentual entre dos valores (evita división por cero).
+  const pctVar = (actual, anterior) => {
+    const a = parseFloat(actual) || 0, b = parseFloat(anterior) || 0;
+    if (b <= 0) return null; // sin base de comparación
+    return ((a - b) / b) * 100;
+  };
+
+  // Promedio por día de la semana (Lun→Dom) para el gráfico de tendencia.
+  const NOMBRE_DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const promedioDia = (() => {
+    const mapa = {};
+    (comparativas?.porDiaSemana || []).forEach(r => { mapa[r.dow] = parseFloat(r.promedio) || 0; });
+    // Orden Lun(1)..Sáb(6) y Dom(0) al final
+    return [1, 2, 3, 4, 5, 6, 0].map(dow => ({ dia: NOMBRE_DOW[dow], promedio: mapa[dow] || 0 }));
+  })();
 
   // Navegación rápida desde las tarjetas (cada una lleva a su módulo)
   const irA = (ruta) => { window.location.href = ruta; };
@@ -530,6 +546,71 @@ if (error) return (
           </p>
         </div>
       </div>
+
+      {/* ══════════ COMPARATIVAS Y TENDENCIAS ══════════ */}
+      {comparativas && (
+        <div className="bg-white rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-shadow duration-300">
+          <h3 className="text-xl font-bold text-gray-800 mb-1 flex items-center gap-2">📊 Comparativas y tendencias</h3>
+          <p className="text-gray-400 text-sm mb-5">Cómo venís respecto a la semana y el mes anterior, y cuánto proyectás cerrar el mes.</p>
+
+          {/* Tarjetas de comparación */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {(() => {
+              const cards = [
+                { titulo: 'Últimos 7 días', actual: comparativas.semana?.actual, anterior: comparativas.semana?.anterior, nota: 'vs los 7 días previos', icono: '📅' },
+                { titulo: 'Este mes (a hoy)', actual: comparativas.mes?.actual, anterior: comparativas.mes?.anterior, nota: 'vs el mismo tramo del mes pasado', icono: '🗓️' },
+              ];
+              return cards.map((c, i) => {
+                const v = pctVar(c.actual, c.anterior);
+                const sube = v !== null && v >= 0;
+                return (
+                  <div key={i} className="rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="text-gray-500 text-sm font-medium">{c.icono} {c.titulo}</p>
+                      {v !== null && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${sube ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                          {sube ? '↑' : '↓'} {Math.abs(v).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-3xl font-bold text-gray-800 mt-2 tabular-nums">{fmt(c.actual)}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {c.nota}: <span className="font-medium text-gray-500">{fmt(c.anterior)}</span>
+                    </p>
+                  </div>
+                );
+              });
+            })()}
+
+            {/* Proyección fin de mes */}
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
+              <p className="text-indigo-500 text-sm font-medium">🔮 Proyección fin de mes</p>
+              <p className="text-3xl font-bold text-indigo-700 mt-2 tabular-nums">{fmt(comparativas.proyeccion_mes)}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                A este ritmo · {comparativas.dias_transcurridos} de {comparativas.dias_mes} días del mes
+              </p>
+            </div>
+          </div>
+
+          {/* Promedio por día de la semana */}
+          <div className="mt-5">
+            <p className="text-gray-600 text-sm font-semibold mb-2">Promedio de venta por día de la semana <span className="font-normal text-gray-400">(últimas 8 semanas)</span></p>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={promedioDia} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                <XAxis dataKey="dia" tick={{ fontSize: 12, fill: '#6b7280' }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+                <YAxis tickFormatter={fmtCorto} tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
+                <Tooltip
+                  formatter={(value) => [fmt(value), '💰 Promedio']}
+                  labelFormatter={(l) => `📅 ${l}`}
+                  contentStyle={{ borderRadius: '14px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.12)', background: 'linear-gradient(135deg,#ffffff 0%,#eef2ff 100%)' }}
+                />
+                <Bar dataKey="promedio" fill="#6366f1" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Gráfico principal de ventas con controles */}
       <div className="bg-white rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-shadow duration-300">

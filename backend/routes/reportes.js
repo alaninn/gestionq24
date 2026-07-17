@@ -599,6 +599,71 @@ router.get('/dashboard', async (req, res) => {
         const cfgFactDash = await db.query('SELECT facturacion_electronica_activa FROM configuracion WHERE negocio_id = $1', [negocio_id]);
         const facturacionActivaDash = cfgFactDash.rows[0]?.facturacion_electronica_activa === true;
 
+        // ---- COMPARATIVAS Y TENDENCIAS ----
+        // Rangos calculados en JS (hora Argentina = TZ del server) y pasados como
+        // parámetros, para no depender del CURRENT_DATE del motor.
+        const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const masDias = (base, n) => { const d = new Date(base); d.setDate(d.getDate() + n); return d; };
+        const hoyStr = ymd(hoy);
+        const hace6 = ymd(masDias(hoy, -6));
+        const hace7 = ymd(masDias(hoy, -7));
+        const hace13 = ymd(masDias(hoy, -13));
+        const hace55 = ymd(masDias(hoy, -55));
+        const diaDelMes = hoy.getDate();
+        const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+        const mesActualDesde = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+        const mesAntDesde = ymd(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1));
+        const ultimoDiaMesAnt = new Date(hoy.getFullYear(), hoy.getMonth(), 0).getDate();
+        const mesAntHasta = ymd(new Date(hoy.getFullYear(), hoy.getMonth() - 1, Math.min(diaDelMes, ultimoDiaMesAnt)));
+
+        const compSemana = await db.query(`
+            SELECT
+                COALESCE(SUM(total) FILTER (WHERE fecha::date >= $2::date), 0) AS semana_actual,
+                COALESCE(SUM(total) FILTER (WHERE fecha::date BETWEEN $3::date AND $4::date), 0) AS semana_anterior
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date >= $3::date
+        `, [negocio_id, hace6, hace13, hace7]);
+
+        const compMes = await db.query(`
+            SELECT
+                COALESCE(SUM(total) FILTER (WHERE fecha::date BETWEEN $2::date AND $3::date), 0) AS mes_actual,
+                COALESCE(SUM(total) FILTER (WHERE fecha::date BETWEEN $4::date AND $5::date), 0) AS mes_anterior
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date >= $4::date
+        `, [negocio_id, mesActualDesde, hoyStr, mesAntDesde, mesAntHasta]);
+
+        const porDow = await db.query(`
+            SELECT EXTRACT(DOW FROM fecha)::int AS dow,
+                   COUNT(DISTINCT fecha::date) AS dias,
+                   COALESCE(SUM(total), 0) AS total
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date >= $2::date
+            GROUP BY 1
+        `, [negocio_id, hace55]);
+
+        const mesActual = parseFloat(compMes.rows[0].mes_actual) || 0;
+        const proyeccionMes = diaDelMes > 0 ? (mesActual / diaDelMes) * diasMes : 0;
+
+        const comparativas = {
+            semana: {
+                actual: parseFloat(compSemana.rows[0].semana_actual) || 0,
+                anterior: parseFloat(compSemana.rows[0].semana_anterior) || 0,
+            },
+            mes: {
+                actual: mesActual,
+                anterior: parseFloat(compMes.rows[0].mes_anterior) || 0,
+                dia_del_mes: diaDelMes,
+            },
+            proyeccion_mes: proyeccionMes,
+            dias_transcurridos: diaDelMes,
+            dias_mes: diasMes,
+            porDiaSemana: porDow.rows.map(r => ({
+                dow: r.dow,
+                total: parseFloat(r.total) || 0,
+                promedio: (parseInt(r.dias) || 0) > 0 ? (parseFloat(r.total) || 0) / parseInt(r.dias) : 0,
+            })),
+        };
+
         res.json({
             stats: stats.rows[0],
             facturacion_activa: facturacionActivaDash,
@@ -606,6 +671,7 @@ router.get('/dashboard', async (req, res) => {
             ventasPorMetodo: ventasPorMetodo.rows,
             topProductos: topProductos.rows,
             comparacion: comparacion.rows[0],
+            comparativas,
             dia: {
                 fecha: fechaDia,
                 detalle: diaDetalle.rows[0],
