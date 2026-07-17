@@ -332,9 +332,8 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
     try {
         const { id } = req.params;
         
-        // Convertir negocio_id a entero válido (maneja formato con punto como separador de miles)
         // Prioriza req.negocio_id para que el superadmin pueda operar sobre el negocio que está viendo.
-        const negocioId = parseInt(String(req.negocio_id || req.usuario?.negocio_id).replace(/\./g, '').replace(',', '.'));
+        const negocioId = parseInt(req.negocio_id || req.usuario?.negocio_id, 10);
         if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
         
         // Validar que el turno esté abierto y la venta pertenezca al turno actual
@@ -358,8 +357,9 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             [id]
         );
         for (const item of itemsVenta.rows) {
-            // Convertir cantidad a número válido (maneja formato con punto como separador de miles)
-            const cantidadItem = parseFloat(String(item.cantidad).replace(/\./g, '').replace(',', '.')) || 0;
+            // La cantidad viene de la base como numérico (ej. "2.000" = 2 unidades);
+            // parseFloat la interpreta bien. NO quitar el punto: es el separador decimal.
+            const cantidadItem = parseFloat(item.cantidad) || 0;
             await ajustarStock(negocioId, item.producto_id, cantidadItem, +1);
         }
 
@@ -369,8 +369,9 @@ router.delete('/:id', verificarPermiso('ventas', 'eliminar'), async (req, res) =
             [id, negocioId]
         );
         if (ventaInfo.rows[0]?.es_fiado && ventaInfo.rows[0]?.cliente_id) {
-            // Convertir total a número válido (maneja formato con punto como separador de miles)
-            const totalVenta = parseFloat(String(ventaInfo.rows[0].total).replace(/\./g, '').replace(',', '.')) || 0;
+            // El total viene de la base como numérico (ej. "1500.00"); parseFloat lo
+            // interpreta bien. NO quitar el punto: es el separador decimal.
+            const totalVenta = parseFloat(ventaInfo.rows[0].total) || 0;
             await db.query(
                 'UPDATE clientes SET saldo_deuda = GREATEST(saldo_deuda - $1, 0) WHERE id = $2',
                 [totalVenta, ventaInfo.rows[0].cliente_id]

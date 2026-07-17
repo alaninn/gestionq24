@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.0';
+export const VERSION_ACTUAL = '2.40.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.1',
+    fecha: '2026-07-17',
+    titulo: 'Arreglo importante al anular ventas',
+    cambios: [
+      { t: 'Se corrigió un error al anular una venta: el stock que se devolvía y, en las ventas fiadas, la deuda que se descontaba, se calculaban mal y quedaban infladas (por ejemplo, devolver 2000 unidades en vez de 2). Ahora se devuelve la cantidad y el monto exactos.' },
+    ],
+  },
   {
     version: '2.40.0',
     fecha: '2026-07-17',
