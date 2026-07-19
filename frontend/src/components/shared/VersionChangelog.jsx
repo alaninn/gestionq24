@@ -38,6 +38,17 @@ export default function VersionChangelog({ variant = 'sidebar' }) {
   // En el panel del usuario ocultamos los cambios marcados como super (solo SuperAdmin).
   // En el panel SuperAdmin se muestra todo.
   const esSuper = variant === 'superadmin';
+
+  // Los usuarios comunes ven solo el número de versión; el detalle de cambios
+  // (novedades) queda reservado para el panel de SuperAdmin.
+  if (!esSuper) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-500" title="Versión del sistema">
+        v{VERSION_ACTUAL}
+      </span>
+    );
+  }
+
   const visibles = (arr) => (arr || []).filter(x => esSuper || !x.super);
 
   // Solo mostramos versiones que tengan al menos un cambio o destacado visible

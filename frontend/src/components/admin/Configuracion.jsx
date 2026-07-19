@@ -886,13 +886,15 @@ function Configuracion() {
                     <span className="text-gray-600">Versión del sistema</span>
                     <span className="font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded text-sm">v{VERSION_ACTUAL}</span>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-gray-600">Última actualización</span>
-                    <span className="font-medium text-gray-800 text-sm text-right">
-                      {CHANGELOG[0]?.fecha}
-                      <span className="block text-xs text-gray-400 font-normal">{CHANGELOG[0]?.titulo}</span>
-                    </span>
-                  </div>
+                  {usuario?.rol === 'superadmin' && (
+                    <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                      <span className="text-gray-600">Última actualización</span>
+                      <span className="font-medium text-gray-800 text-sm text-right">
+                        {CHANGELOG[0]?.fecha}
+                        <span className="block text-xs text-gray-400 font-normal">{CHANGELOG[0]?.titulo}</span>
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center py-2 border-b border-gray-200">
                     <span className="text-gray-600">Negocio configurado</span>
                     <span className="font-medium text-gray-800">{config?.nombre_negocio || '-'}</span>
@@ -906,9 +908,11 @@ function Configuracion() {
                     </span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  💡 Tocá la versión (v{VERSION_ACTUAL}) abajo del menú para ver el historial completo de novedades.
-                </p>
+                {usuario?.rol === 'superadmin' && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    💡 Tocá la versión (v{VERSION_ACTUAL}) abajo del menú para ver el historial completo de novedades.
+                  </p>
+                )}
               </div>
 
               {/* Zona de peligro */}

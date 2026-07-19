@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.2';
+export const VERSION_ACTUAL = '2.40.3';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.3',
+    fecha: '2026-07-19',
+    titulo: 'Historial que no carga de madrugada y detalle de ventas del Dashboard',
+    cambios: [
+      { t: 'Se reforzó la base de datos con límites de tiempo: si una consulta se traba, se corta y libera en vez de quedar colgada indefinidamente. Esto evita que el historial de ventas deje de verse por momentos (se detectó que en ciertos ratos las consultas quedaban esperando).', super: true },
+      { t: 'Se corrigió que al tocar una tarjeta del Dashboard (efectivo, transferencia, etc.) para ver el detalle de ventas, a veces saliera vacío: usaba la fecha en horario equivocado después de las 21 hs.', super: true },
+      { t: 'El historial de novedades del sistema ahora es visible solo desde el panel de administración de la plataforma.', super: true },
+    ],
+  },
   {
     version: '2.40.2',
     fecha: '2026-07-17',

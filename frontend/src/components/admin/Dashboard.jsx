@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../api/axios';
 import useCerrarConAtras from '../../hooks/useCerrarConAtras';
+import { hoyArgentina, fechaArgentina } from '../../utils/fecha';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -76,7 +77,9 @@ function Dashboard() {
 
   const abrirDetalle = async (card) => {
     setDetalleCard(card);
-    const f = fechaDiaRef.current || new Date().toISOString().split('T')[0];
+    // Fecha del día en hora Argentina (no UTC): con toISOString, después de las
+    // 21:00 el día "salta" al siguiente y el detalle salía vacío.
+    const f = fechaDiaRef.current || hoyArgentina();
     if (ventasDiaLista && ventasDiaFecha === f) return; // ya está cacheado para este día
     try {
       setCargandoDetalle(true);
@@ -275,7 +278,7 @@ if (error) return (
   const verAyer = () => {
     const ayer = new Date();
     ayer.setDate(ayer.getDate() - 1);
-    cambiarFechaDia(ayer.toISOString().split('T')[0]);
+    cambiarFechaDia(fechaArgentina(ayer));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -330,7 +333,7 @@ if (error) return (
                     ⚡ Hoy
                   </button>
                 )}
-                <input type="date" value={fechaDia} max={new Date().toISOString().split('T')[0]}
+                <input type="date" value={fechaDia} max={hoyArgentina()}
                   onChange={(e) => cambiarFechaDia(e.target.value)}
                   className="bg-white/10 border border-white/20 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 [color-scheme:dark]" />
               </div>
