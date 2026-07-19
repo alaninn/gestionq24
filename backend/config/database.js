@@ -12,6 +12,11 @@ const pool = new pg.Pool({
     database: process.env.DB_NAME || 'almacenq24',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
+    // Fija la zona horaria de la SESIÓN SQL en Argentina, para no depender del
+    // postgresql.conf del servidor. Así CURRENT_DATE/NOW()::date/fecha::date
+    // trabajan todos sobre hora AR y coinciden entre sí, incluso si se migra la
+    // base a un server con timezone UTC.
+    options: '-c timezone=America/Argentina/Buenos_Aires',
     // Robustez: que nada quede colgado indefinidamente.
     max: 15,                                   // conexiones máximas del pool
     idleTimeoutMillis: 30000,                  // cerrar conexiones ociosas del pool

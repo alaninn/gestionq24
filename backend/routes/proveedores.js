@@ -93,27 +93,25 @@ router.get('/:id', verificarPermiso('proveedores', 'ver'), async (req, res) => {
         // Filtros por período predefinido
         if (periodo) {
             const hoy = new Date();
-            const offset = hoy.getTimezoneOffset() * 60000;
-            const local = new Date(hoy - offset);
+            const local = new Date(hoy - hoy.getTimezoneOffset() * 60000);
             const hoyStr = local.toISOString().split('T')[0];
+            // Base UTC a partir de la fecha AR, para restar días/meses sin ambigüedad.
+            const [ay, am, ad] = hoyStr.split('-').map(Number);
+            const baseUTC = new Date(Date.UTC(ay, am - 1, ad));
 
             if (periodo === 'hoy') {
                 whereClause += ` AND DATE(g.fecha) = $${contador}`;
                 valores.push(hoyStr);
                 contador++;
             } else if (periodo === 'semana') {
-                const semanaAtras = new Date(hoy);
-                semanaAtras.setDate(hoy.getDate() - 7);
-                const semanaStr = semanaAtras.toISOString().split('T')[0];
+                const s = new Date(baseUTC); s.setUTCDate(s.getUTCDate() - 7);
                 whereClause += ` AND DATE(g.fecha) >= $${contador}`;
-                valores.push(semanaStr);
+                valores.push(s.toISOString().split('T')[0]);
                 contador++;
             } else if (periodo === 'mes') {
-                const mesAtras = new Date(hoy);
-                mesAtras.setMonth(hoy.getMonth() - 1);
-                const mesStr = mesAtras.toISOString().split('T')[0];
+                const mm = new Date(baseUTC); mm.setUTCMonth(mm.getUTCMonth() - 1);
                 whereClause += ` AND DATE(g.fecha) >= $${contador}`;
-                valores.push(mesStr);
+                valores.push(mm.toISOString().split('T')[0]);
                 contador++;
             }
         }

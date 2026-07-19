@@ -272,9 +272,11 @@ function ModalDetalleCierre({ turno, onCerrar }) {
 
   const cargarDatos = async () => {
     try {
-      const desde = turno.fecha_apertura.split('T')[0];
+      // Fecha en hora AR (los timestamps del turno llegan en UTC; con .split('T')
+      // un turno de noche quedaría corrido un día).
+      const desde = fechaDiaAR(turno.fecha_apertura);
       const hasta = turno.fecha_cierre
-        ? turno.fecha_cierre.split('T')[0]
+        ? fechaDiaAR(turno.fecha_cierre)
         : hoyArgentina();
 
       const [resVentas, resGastos] = await Promise.all([

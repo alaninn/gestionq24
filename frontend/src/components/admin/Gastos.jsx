@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import { hoyArgentina } from '../../utils/fecha';
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -576,7 +577,7 @@ function Gastos() {
 
   const [compra, setCompra] = useState({
     proveedor_id: '',
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: hoyArgentina(),
     tipo_comprobante: 'sin_factura',
     numero_boleta: '',
     condicion_iva_proveedor: 'responsable_inscripto',
@@ -616,7 +617,7 @@ function Gastos() {
     const hoy = new Date();
     return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
   });
-  const [fechaHastaLibro, setFechaHastaLibro] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaHastaLibro, setFechaHastaLibro] = useState(hoyArgentina());
 
   // ---- FILTROS (como el Dashboard: hoy / por día / por mes / rango / todo) ----
   const [periodoFiltro, setPeriodoFiltro] = useState('hoy');
@@ -857,7 +858,7 @@ function Gastos() {
       setModo('gastos');
       setCompra({
         proveedor_id: '',
-        fecha: new Date().toISOString().split('T')[0],
+        fecha: hoyArgentina(),
         tipo_documento: 'sin_boleta',
         tipo_comprobante: 'sin_factura',
         condicion_iva_proveedor: 'responsable_inscripto',

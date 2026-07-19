@@ -61,8 +61,13 @@ router.get('/historial', async (req, res) => {
             }
             return acc;
         }, {});
+        // Día en hora Argentina (NO usar toISOString, que da UTC y manda las
+        // ventas de 21:00-23:59 al día siguiente).
+        const fmtDiaAR = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
+        });
         const porDia = ventas.rows.reduce((acc, v) => {
-            const dia = new Date(v.fecha).toISOString().split('T')[0];
+            const dia = fmtDiaAR.format(new Date(v.fecha));
             acc[dia] = (acc[dia] || 0) + parseFloat(v.total);
             return acc;
         }, {});

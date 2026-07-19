@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.3';
+export const VERSION_ACTUAL = '2.40.4';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.4',
+    fecha: '2026-07-19',
+    titulo: 'Revisión general de fechas por horario nocturno',
+    cambios: [
+      { t: 'Se corrigieron varios cálculos de fecha que después de las 21 hs tomaban el día siguiente: el gráfico de "ventas por día" del historial, las compras a proveedores (fecha por defecto y Libro IVA), los filtros de "última semana/mes" de proveedores y el detalle de una caja en Control de Cajas. Ahora todo usa la hora de Argentina.', super: true },
+      { t: 'Se fijó la zona horaria de Argentina directamente en la conexión a la base, para que los reportes por día sean siempre correctos aunque cambie el servidor.', super: true },
+    ],
+  },
   {
     version: '2.40.3',
     fecha: '2026-07-19',
