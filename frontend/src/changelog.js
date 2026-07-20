@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.4';
+export const VERSION_ACTUAL = '2.40.5';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.5',
+    fecha: '2026-07-20',
+    titulo: 'Stock: existencias en "Vendidos por sección"',
+    cambios: [
+      { t: 'En el informe "Vendidos por sección" (dentro de Stock), ahora al lado de la cantidad vendida se muestra cuántas unidades quedan en stock de cada producto. Como es una vista para contar mercadería, se quitó el valor en dinero para no mezclar información.' },
+    ],
+  },
   {
     version: '2.40.4',
     fecha: '2026-07-19',

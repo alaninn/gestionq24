@@ -173,7 +173,8 @@ router.get('/vendidos-por-seccion', async (req, res) => {
                    COALESCE(sc.orden, 999999) AS seccion_orden,
                    vi.nombre_producto,
                    SUM(vi.cantidad) AS cantidad,
-                   SUM(vi.subtotal) AS total
+                   SUM(vi.subtotal) AS total,
+                   MAX(p.stock) AS stock_actual
             FROM venta_items vi
             JOIN ventas v ON v.id = vi.venta_id
             LEFT JOIN productos p ON p.id = vi.producto_id

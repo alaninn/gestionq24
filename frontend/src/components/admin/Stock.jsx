@@ -993,13 +993,12 @@ function ModalVendidosPorSeccion({ onClose }) {
     return [...mapa.values()].sort((a, b) => a.orden - b.orden || a.seccion.localeCompare(b.seccion));
   }, [filas]);
 
-  const totalGeneral = filas.reduce((a, f) => a + (Number(f.total) || 0), 0);
   const unidadesGeneral = filas.reduce((a, f) => a + (Number(f.cantidad) || 0), 0);
 
   const exportarExcel = () => {
     const datos = [];
     for (const g of grupos) {
-      for (const it of g.items) datos.push({ Sección: g.seccion, Producto: it.nombre_producto, Cantidad: Number(it.cantidad) || 0, Total: Number(it.total) || 0 });
+      for (const it of g.items) datos.push({ Sección: g.seccion, Producto: it.nombre_producto, Vendidos: Number(it.cantidad) || 0, 'En stock': Number(it.stock_actual) || 0 });
     }
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
@@ -1049,12 +1048,11 @@ function ModalVendidosPorSeccion({ onClose }) {
           ) : (
             <>
               <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-                <span className="text-sm font-semibold text-indigo-800">Total general</span>
-                <span className="text-sm text-indigo-800"><b>{cant(unidadesGeneral)}</b> artículos · <b>{fmtMoneda(totalGeneral)}</b></span>
+                <span className="text-sm font-semibold text-indigo-800">Total vendido</span>
+                <span className="text-sm text-indigo-800"><b>{cant(unidadesGeneral)}</b> artículos</span>
               </div>
               {grupos.map(g => {
                 const uni = g.items.reduce((a, it) => a + (Number(it.cantidad) || 0), 0);
-                const tot = g.items.reduce((a, it) => a + (Number(it.total) || 0), 0);
                 const clave = g.seccion;
                 const abierta = !!abiertas[clave];
                 return (
@@ -1067,15 +1065,17 @@ function ModalVendidosPorSeccion({ onClose }) {
                         <span className="truncate">📦 {g.seccion}</span>
                         <span className="text-[11px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full flex-shrink-0">{g.items.length}</span>
                       </p>
-                      <p className="text-xs text-gray-500 flex-shrink-0"><b>{cant(uni)}</b> art. · {fmtMoneda(tot)}</p>
+                      <p className="text-xs text-gray-500 flex-shrink-0"><b>{cant(uni)}</b> vend.</p>
                     </button>
                     {abierta && (
                       <div className="divide-y divide-gray-100">
                         {g.items.map((it, i) => (
                           <div key={i} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
                             <span className="text-gray-700 min-w-0 truncate">{it.nombre_producto}</span>
-                            <span className="flex-shrink-0 text-gray-500">
-                              <b className="text-gray-800">{cant(it.cantidad)}</b> · {fmtMoneda(it.total)}
+                            <span className="flex-shrink-0 text-gray-500 flex items-center gap-2">
+                              <span className="text-indigo-700"><b>{cant(it.cantidad)}</b> vend.</span>
+                              <span className="text-gray-300">·</span>
+                              <span className="text-gray-600">{it.stock_actual == null ? '—' : cant(it.stock_actual)} en stock</span>
                             </span>
                           </div>
                         ))}
