@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.5';
+export const VERSION_ACTUAL = '2.40.6';
 
 export const CHANGELOG = [
+  {
+    version: '2.40.6',
+    fecha: '2026-07-20',
+    titulo: 'POS: fix al escanear después de sumar unidades a mano',
+    cambios: [
+      { t: 'Se corrigió un problema en el POS: si sumabas unidades a un producto con los botones (o tocando la tarjeta) y después escaneabas otro producto, el lector le sumaba una unidad de más al producto anterior. Ahora el escaneo agrega solo el producto escaneado.' },
+    ],
+  },
   {
     version: '2.40.5',
     fecha: '2026-07-20',

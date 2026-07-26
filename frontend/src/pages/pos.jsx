@@ -2480,7 +2480,15 @@ useEffect(() => {
         const codigo = scannerBuffer.current.trim();
         scannerBuffer.current = '';
         if (scannerTimer.current) clearTimeout(scannerTimer.current);
-        if (codigo.length > 2) buscarPorCodigoScanner(codigo);
+        if (codigo.length > 2) {
+          // El Enter final del scanner no debe activar el botón que tenga el foco
+          // (ej: el "+" de un producto ya cargado), que sumaría una unidad de más.
+          e.preventDefault();
+          if (document.activeElement && document.activeElement !== document.body) {
+            document.activeElement.blur();
+          }
+          buscarPorCodigoScanner(codigo);
+        }
       } else if (e.key.length === 1) {
         scannerBuffer.current += e.key;
         if (scannerTimer.current) clearTimeout(scannerTimer.current);
