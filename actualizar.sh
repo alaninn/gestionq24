@@ -26,11 +26,28 @@ if [ -f /root/.env-gestionq24-backup ]; then
   echo "🔐 .env restaurado"
 fi
 
-# 4) Frontend
+# 4) Frontend (build ATÓMICO y a prueba de fallos)
+# Se compila a una carpeta staging (dist.nuevo) y recién si el build termina OK
+# se reemplaza el dist que se está sirviendo. Si el build falla (por ejemplo por
+# falta de memoria / OOM), se conserva la versión anterior funcionando, NO se
+# reinicia el servidor y se aborta con un error claro. Antes esto dejaba el dist
+# a medias (sin index.html) y el sitio devolvía "error en el servidor".
 echo "📦 Instalando dependencias del frontend..."
 cd frontend && npm install
 echo "🏗️  Compilando frontend..."
-npm run build
+rm -rf dist.nuevo
+if npm run build -- --outDir dist.nuevo --emptyOutDir; then
+  rm -rf dist.viejo
+  [ -d dist ] && mv dist dist.viejo
+  mv dist.nuevo dist
+  rm -rf dist.viejo
+  echo "✅ Frontend compilado"
+else
+  echo "❌ FALLÓ EL BUILD DEL FRONTEND (probable falta de memoria)."
+  echo "   Se mantiene la versión anterior en línea y NO se reinicia. Abortando."
+  rm -rf dist.nuevo
+  exit 1
+fi
 
 # 5) Backend
 echo "📦 Instalando dependencias del backend..."
