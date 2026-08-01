@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ModalEditarProducto from './ModalEditarProducto';
 
 const SIN_UBICACION = 'sin';
 
@@ -194,15 +195,13 @@ function Stock() {
   // Modal de edición rápida del producto (sin salir del inventario)
   const [mostrarEditar, setMostrarEditar] = useState(false);
   const [productoEditar, setProductoEditar] = useState(null);
-  const [formEditar, setFormEditar] = useState({});
-  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const alturaTeclado = useAlturaTeclado();
 
-  // El botón "atrás" del celular cierra el modal abierto (no sale de la página)
+  // El botón "atrás" del celular cierra el modal abierto (no sale de la página).
+  // El modal de editar producto maneja su propio "atrás" adentro (ModalEditarProducto).
   useCerrarConAtras(mostrarAjustar, () => cerrarAjustar());
-  useCerrarConAtras(mostrarEditar, () => setMostrarEditar(false));
   useCerrarConAtras(mostrarHistorial, () => setMostrarHistorial(false));
 
   const cargarTodo = async () => {
@@ -368,57 +367,21 @@ function Stock() {
     }
   };
 
-  // ---- Edición rápida en el lugar (sin ir a la pantalla de Productos) ----
+  // ---- Editar producto: abre el MISMO modal completo de la sección Productos ----
   const modificarProducto = (producto) => {
     setProductoEditar(producto);
-    setFormEditar({
-      nombre: producto.nombre || '',
-      codigo: producto.codigo || '',
-      categoria_id: producto.categoria_id || '',
-      precio_costo: producto.precio_costo ?? '',
-      precio_venta: producto.precio_venta ?? '',
-      stock_minimo: producto.stock_minimo ?? 0,
-      unidad: producto.unidad || 'Uni',
-    });
     setMostrarEditar(true);
   };
 
-  const guardarEdicion = async (e) => {
-    e.preventDefault();
-    if (!formEditar.nombre.trim() || !formEditar.precio_venta) {
-      avisoError('Nombre y precio de venta son obligatorios');
-      return;
-    }
+  // Refrescar solo el listado de productos (sin recargar todo, evita parpadeo).
+  const recargarProductos = async () => {
     try {
-      setGuardandoEdicion(true);
-      // Se envían TODOS los campos del producto: los editados desde el form
-      // y el resto tal como estaban (el PUT del backend actualiza todo).
-      const datos = {
-        codigo: formEditar.codigo,
-        nombre: formEditar.nombre,
-        categoria_id: formEditar.categoria_id || null,
-        precio_costo: formEditar.precio_costo || 0,
-        precio_venta: formEditar.precio_venta,
-        precio_mayorista: productoEditar.precio_mayorista || null,
-        stock: productoEditar.stock ?? 0,
-        stock_minimo: formEditar.stock_minimo || 0,
-        unidad: formEditar.unidad,
-        alicuota_iva: productoEditar.alicuota_iva ?? 0,
-        margen_ganancia: productoEditar.margen_ganancia || 0,
-      };
-      const res = await api.put(`/api/productos/${productoEditar.id}`, datos);
-      const catNombre = categorias.find(c => String(c.id) === String(formEditar.categoria_id))?.nombre || null;
-      setProductos(prev => prev.map(p => p.id === productoEditar.id
-        ? { ...p, ...res.data, categoria_nombre: catNombre }
-        : p));
-      setMostrarEditar(false);
-      setProductoEditar(null);
-      avisoOk(`✅ ${formEditar.nombre} actualizado`);
-    } catch (err) {
-      avisoError(err.response?.data?.error || 'Error al guardar el producto');
-    } finally {
-      setGuardandoEdicion(false);
-    }
+      const r = await api.get('/api/productos');
+      setProductos(Array.isArray(r.data) ? r.data : (r.data.productos || []));
+    } catch { /* noop */ }
+  };
+  const recargarCategorias = async () => {
+    try { const r = await api.get('/api/categorias'); setCategorias(r.data || []); } catch { /* noop */ }
   };
 
   const abrirHistorial = async (producto) => {
@@ -802,98 +765,14 @@ function Stock() {
       )}
 
       {/* Modal edición rápida del producto */}
-      {mostrarEditar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
-              <h3 className="font-bold text-gray-800">✏️ Editar producto</h3>
-              <button onClick={() => setMostrarEditar(false)} className="text-2xl text-gray-400 hover:text-gray-600">×</button>
-            </div>
-
-            <form onSubmit={guardarEdicion} className="p-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-                <input type="text" value={formEditar.nombre} required
-                  onChange={(e) => setFormEditar(p => ({ ...p, nombre: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
-                  <input type="text" value={formEditar.codigo}
-                    onChange={(e) => setFormEditar(p => ({ ...p, codigo: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                  <select value={formEditar.categoria_id || ''}
-                    onChange={(e) => setFormEditar(p => ({ ...p, categoria_id: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
-                    <option value="">Sin categoría</option>
-                    {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio costo</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                    <input type="number" min="0" step="0.01" value={formEditar.precio_costo}
-                      onChange={(e) => setFormEditar(p => ({ ...p, precio_costo: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                    <input type="number" min="0" step="0.01" required value={formEditar.precio_venta}
-                      onChange={(e) => setFormEditar(p => ({ ...p, precio_venta: e.target.value }))}
-                      className="w-full border-2 border-green-300 bg-green-50 rounded-xl pl-7 pr-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-green-500" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo (alerta)</label>
-                  <input type="number" min="0" value={formEditar.stock_minimo}
-                    onChange={(e) => setFormEditar(p => ({ ...p, stock_minimo: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
-                  <select value={formEditar.unidad}
-                    onChange={(e) => setFormEditar(p => ({ ...p, unidad: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
-                    <option value="Uni">Unidad</option>
-                    <option value="Kg">Kilogramo</option>
-                    <option value="Lt">Litro</option>
-                    <option value="Mt">Metro</option>
-                  </select>
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-400">
-                Para márgenes, IVA, mayorista o códigos alternativos, usá la pantalla Productos.
-              </p>
-
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setMostrarEditar(false)}
-                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={guardandoEdicion}
-                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50">
-                  {guardandoEdicion ? 'Guardando...' : '💾 Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {mostrarEditar && productoEditar && (
+        <ModalEditarProducto
+          producto={productoEditar}
+          categorias={categorias}
+          onClose={() => { setMostrarEditar(false); setProductoEditar(null); }}
+          onGuardado={(msg) => { avisoOk(`✅ ${msg}`); recargarProductos(); }}
+          onCategoriasActualizadas={recargarCategorias}
+        />
       )}
 
       {/* Modal historial */}
