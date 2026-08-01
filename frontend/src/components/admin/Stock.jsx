@@ -26,6 +26,15 @@ const fmtMoneda = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', cur
 // Fecha local Argentina (YYYY-MM-DD) para los rangos por defecto.
 const hoyAR = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 
+// Búsqueda por palabras (igual criterio que el buscador de Productos): parte el
+// texto buscado en palabras y exige que TODAS aparezcan en el nombre/código.
+// Así "coca 2.25" encuentra "Gaseosa Coca Cola 2.25".
+const coincideBusqueda = (texto, query) => {
+  const t = String(texto || '').toLowerCase();
+  const palabras = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return palabras.every(p => t.includes(p));
+};
+
 // Detecta cuánto espacio tapa el teclado del celular (Visual Viewport API).
 // Sirve para posicionar el panel de conteo PEGADO ENCIMA del teclado,
 // con los botones siempre visibles sin tener que cerrarlo.
@@ -273,13 +282,12 @@ function Stock() {
     return mapa;
   }, [productosFiltrados]);
 
-  // Búsqueda: lista plana
+  // Búsqueda: lista plana (por palabras, igual que el buscador de Productos)
   const resultadosBusqueda = useMemo(() => {
-    const q = buscar.trim().toLowerCase();
+    const q = buscar.trim();
     if (!q) return null;
     return productosFiltrados.filter(p =>
-      String(p.nombre || '').toLowerCase().includes(q) ||
-      String(p.codigo || '').toLowerCase().includes(q)
+      coincideBusqueda(`${p.nombre || ''} ${p.codigo || ''}`, q)
     ).slice(0, 80);
   }, [buscar, productosFiltrados]);
 
@@ -1105,11 +1113,7 @@ function ModalAgregarStock({ productos, categorias, onClose, onGuardado }) {
 
   const lista = productos.filter(p => {
     if (categoriaFiltro && String(p.categoria_id) !== String(categoriaFiltro)) return false;
-    if (buscar.trim()) {
-      const t = buscar.trim().toLowerCase();
-      const txt = `${p.nombre || ''} ${p.codigo || ''}`.toLowerCase();
-      if (!txt.includes(t)) return false;
-    }
+    if (buscar.trim() && !coincideBusqueda(`${p.nombre || ''} ${p.codigo || ''}`, buscar)) return false;
     return true;
   });
 
