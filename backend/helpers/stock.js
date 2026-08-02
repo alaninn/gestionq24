@@ -5,6 +5,8 @@ const db = require('../config/database');
 // tiene stock propio: descuenta/repone el stock de cada componente segun su
 // cantidad en el combo. Si es normal, ajusta el producto directo.
 // signo: -1 al vender/enviar, +1 al restaurar/recibir.
+// El stock nunca queda negativo: GREATEST(0, ...) lo frena en cero (asi, con
+// "Vender sin stock" activo, se puede vender de mas pero el stock queda en 0).
 // exec: conexion a usar (un client dentro de una transaccion, o el pool por defecto).
 async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo, exec = db) {
     const combo = await exec.query(
@@ -15,14 +17,14 @@ async function ajustarStock(negocio_id, producto_id, cantidadVenta, signo, exec 
         for (const comp of combo.rows) {
             const delta = signo * (parseFloat(comp.cantidad) || 0) * (parseFloat(cantidadVenta) || 0);
             await exec.query(
-                'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
+                'UPDATE productos SET stock = GREATEST(0, stock + $1::numeric) WHERE id = $2 AND negocio_id = $3',
                 [delta, comp.producto_id, negocio_id]
             );
         }
     } else {
         const delta = signo * (parseFloat(cantidadVenta) || 0);
         await exec.query(
-            'UPDATE productos SET stock = stock + $1::numeric WHERE id = $2 AND negocio_id = $3',
+            'UPDATE productos SET stock = GREATEST(0, stock + $1::numeric) WHERE id = $2 AND negocio_id = $3',
             [delta, producto_id, negocio_id]
         );
     }

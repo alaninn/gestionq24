@@ -321,8 +321,8 @@ function Configuracion() {
                   </h3>
                   <div className="space-y-2">
                     <FilaToggle
-                      titulo="Stock Negativo"
-                      descripcion="Permitir vender aunque no haya stock suficiente"
+                      titulo="Vender sin stock"
+                      descripcion="Permite vender aunque no haya stock. El stock nunca queda en negativo: se frena en cero."
                       valor={config?.permite_stock_negativo}
                       onChange={(v) => set('permite_stock_negativo', v)}
                     />
