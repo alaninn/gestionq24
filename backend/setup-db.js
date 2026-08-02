@@ -96,7 +96,11 @@ ADD COLUMN IF NOT EXISTS ultima_actividad TIMESTAMP,
 ADD COLUMN IF NOT EXISTS sin_actividad_dias INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS errores_24h INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS pagado BOOLEAN DEFAULT true,
-ADD COLUMN IF NOT EXISTS dias_uso INTEGER DEFAULT 30;
+ADD COLUMN IF NOT EXISTS dias_uso INTEGER DEFAULT 30,
+-- Grupo de negocios vinculados por un mismo dueño (multinegocio premium): los
+-- negocios que comparten este valor son administrados por la misma persona.
+ADD COLUMN IF NOT EXISTS grupo_multinegocio INTEGER;
+CREATE INDEX IF NOT EXISTS idx_negocios_grupo_multi ON negocios(grupo_multinegocio);
 
 -- Columnas de configuracion que pueden faltar en instalaciones viejas
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tamanio_ticket VARCHAR(20) DEFAULT '80';
@@ -119,6 +123,55 @@ ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS cajas_corte_hora INTEGER DEFA
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS alerta_cierre_activa BOOLEAN DEFAULT FALSE;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS alerta_cierre_minutos INTEGER DEFAULT 30;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS cierre_politica VARCHAR(20) DEFAULT 'seguir';
+-- Multinegocio (premium): habilita el boton de movimientos de mercaderia en el POS.
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS multinegocio_activo BOOLEAN DEFAULT FALSE;
+
+-- =============================================
+-- Movimientos de mercaderia entre negocios vinculados (multinegocio premium).
+-- Solo mueven stock, sin tocar caja ni ventas. Guardan el valor de costo para
+-- el remito y el historial de envios.
+-- =============================================
+CREATE TABLE IF NOT EXISTS movimientos_mercaderia (
+    id SERIAL PRIMARY KEY,
+    grupo_multinegocio INTEGER,
+    negocio_origen_id INTEGER NOT NULL,
+    negocio_destino_id INTEGER NOT NULL,
+    usuario_id INTEGER,
+    total_costo NUMERIC(12,2) DEFAULT 0,
+    cantidad_items INTEGER DEFAULT 0,
+    estado VARCHAR(20) DEFAULT 'confirmado',
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_movmerc_origen ON movimientos_mercaderia(negocio_origen_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_movmerc_destino ON movimientos_mercaderia(negocio_destino_id, fecha DESC);
+
+CREATE TABLE IF NOT EXISTS movimientos_mercaderia_items (
+    id SERIAL PRIMARY KEY,
+    movimiento_id INTEGER NOT NULL REFERENCES movimientos_mercaderia(id) ON DELETE CASCADE,
+    producto_origen_id INTEGER,
+    producto_destino_id INTEGER,
+    nombre_producto VARCHAR(255),
+    codigo VARCHAR(100),
+    cantidad NUMERIC(12,3) DEFAULT 0,
+    costo_unitario NUMERIC(12,2) DEFAULT 0,
+    subtotal_costo NUMERIC(12,2) DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_movmerc_items_mov ON movimientos_mercaderia_items(movimiento_id);
+-- Flujo de recepcion: el envio queda "en_proceso" hasta que el destino confirma
+-- fisicamente. Notas del que envia y del que recibe. Tilde de recibido por item.
+ALTER TABLE movimientos_mercaderia ADD COLUMN IF NOT EXISTS comentario_envio TEXT;
+ALTER TABLE movimientos_mercaderia ADD COLUMN IF NOT EXISTS comentario_recepcion TEXT;
+ALTER TABLE movimientos_mercaderia ADD COLUMN IF NOT EXISTS fecha_recepcion TIMESTAMP;
+ALTER TABLE movimientos_mercaderia ADD COLUMN IF NOT EXISTS usuario_recepcion_id INTEGER;
+ALTER TABLE movimientos_mercaderia_items ADD COLUMN IF NOT EXISTS recibido BOOLEAN;
+-- Capacidad multinegocio: se define por plan (editable desde el superadmin) y
+-- ademas se puede habilitar puntualmente a un negocio (override).
+-- Arranca APAGADO en todos los planes: solo se activa cuando el superadmin lo
+-- marca (por plan o por negocio). Se inicializa una sola vez (WHERE IS NULL) para
+-- no pisar despues los cambios que haga el superadmin.
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS multinegocio BOOLEAN;
+UPDATE planes_config SET multinegocio = FALSE WHERE multinegocio IS NULL;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS multinegocio_habilitado BOOLEAN DEFAULT FALSE;
 
 -- Tabla de codigos alternativos de productos (si no existe)
 CREATE TABLE IF NOT EXISTS producto_codigos (

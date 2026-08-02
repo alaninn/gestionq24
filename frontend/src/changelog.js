@@ -14,9 +14,30 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.40.6';
+export const VERSION_ACTUAL = '2.42.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.42.0',
+    fecha: '2026-07-27',
+    titulo: 'Multinegocio: recepción con confirmación, reportes y control desde el superadmin',
+    cambios: [
+      { t: 'Los envíos de mercadería ahora tienen confirmación de recepción: el que recibe tilda qué productos llegaron. Lo que llega mueve el stock; lo que falta no se descuenta ni se suma. Cada envío muestra su estado (en proceso, recibido, recibido parcial).' },
+      { t: 'El que envía y el que recibe pueden dejar una nota/comentario en cada movimiento.' },
+      { t: 'Nueva sección de reportes de movimientos en "Mis negocios": historial con filtros, productos movidos, balance por negocio, gráfico de tendencia, reimpresión de remito, anulación y exportación a Excel y PDF.' },
+      { t: 'Se puede activar o desactivar la función Multinegocio por plan y también para un negocio en particular.', super: true },
+    ],
+  },
+  {
+    version: '2.41.0',
+    fecha: '2026-07-20',
+    titulo: 'Multinegocio: administrá tus negocios y mové mercadería (Premium)',
+    cambios: [
+      { t: 'Nuevo panel "🏢 Mis negocios" (en Centro de Control): si tenés varios negocios, vinculalos con sus claves de acceso y vas a ver de cada uno su vencimiento y estadísticas, con un botón para entrar directo a cualquiera.' },
+      { t: 'Nuevo botón "🔁 Movimientos" en el Punto de Venta para enviar mercadería de un negocio a otro (ideal si usás uno como depósito). Cargás los productos mostrando el precio de costo, confirmás y se descuenta del stock de origen y se suma al de destino, con un remito del envío.' },
+      { t: 'Para activarlo, andá a Configuración y prendé el toggle "Multinegocio". Estas funciones son parte del Plan Premium.' },
+    ],
+  },
   {
     version: '2.40.6',
     fecha: '2026-07-20',

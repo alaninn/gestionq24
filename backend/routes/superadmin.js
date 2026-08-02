@@ -18,6 +18,9 @@ router.get('/negocios', async (req, res) => {
         const resultado = await db.query(`
             SELECT
                 n.*,
+                -- Email real del administrador (el mismo que muestra "Editar administrador").
+                (SELECT email FROM usuarios WHERE negocio_id = n.id AND rol = 'admin' AND activo = TRUE
+                   ORDER BY created_at ASC LIMIT 1) AS admin_email,
                 (SELECT COUNT(*) FROM usuarios WHERE negocio_id = n.id AND activo = TRUE) AS total_usuarios,
                 (SELECT COUNT(*) FROM productos WHERE negocio_id = n.id AND activo = TRUE) AS total_productos,
                 (SELECT COUNT(*) FROM ventas WHERE negocio_id = n.id) AS total_ventas,
@@ -76,8 +79,10 @@ router.post('/negocios', async (req, res) => {
 router.put('/negocios/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { estado, dias_uso, plan, nombre, telefono, direccion } = req.body;
+        const { estado, dias_uso, plan, nombre, telefono, direccion, multinegocio_habilitado } = req.body;
         const diasNum = dias_uso ? parseInt(dias_uso) : null;
+        // multinegocio_habilitado: override por negocio (true/false). Si no viene, no se toca.
+        const multiOverride = typeof multinegocio_habilitado === 'boolean' ? multinegocio_habilitado : null;
 
         const resultado = await db.query(`
             UPDATE negocios SET
@@ -90,10 +95,11 @@ router.put('/negocios/:id', async (req, res) => {
                     WHEN $6::integer IS NOT NULL THEN NOW() + ($6::integer * INTERVAL '1 day')
                     ELSE fecha_vencimiento
                 END,
-                dias_uso = COALESCE($6::integer, dias_uso)
+                dias_uso = COALESCE($6::integer, dias_uso),
+                multinegocio_habilitado = COALESCE($8::boolean, multinegocio_habilitado)
             WHERE id = $7
             RETURNING *
-        `, [nombre, telefono, direccion, plan, estado, diasNum, id]);
+        `, [nombre, telefono, direccion, plan, estado, diasNum, id, multiOverride]);
 
         res.json(resultado.rows[0]);
     } catch (error) {
@@ -559,91 +565,8 @@ router.put('/tickets/:id', async (req, res) => {
 // POST /api/superadmin/generar-alertas (endpoint para cron job)
 router.post('/generar-alertas', async (req, res) => {
     try {
-        // Alertas de vencimiento
-        const vencimientos = await db.query(`
-            SELECT id, nombre, fecha_vencimiento FROM negocios
-            WHERE estado = 'activo'
-            AND fecha_vencimiento < NOW() + INTERVAL '5 days'
-            AND fecha_vencimiento > NOW()
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas 
-                WHERE negocio_id = negocios.id 
-                AND tipo = 'vencimiento'
-                AND resuelta = false
-                AND DATE(fecha) = CURRENT_DATE
-            )
-        `);
-
-        for (const neg of vencimientos.rows) {
-            const diasFaltantes = Math.ceil((new Date(neg.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24));
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'vencimiento', $2, $3, $4)
-            `, [
-                neg.id,
-                `⏰ Vencimiento próximo`,
-                `${neg.nombre} vence en ${diasFaltantes} días. Renova la suscripción.`,
-                diasFaltantes <= 2 ? 'crítica' : 'alta'
-            ]);
-        }
-
-        // Alertas de vencimiento ya pasado
-        const vencidos = await db.query(`
-            SELECT id, nombre FROM negocios 
-            WHERE estado = 'activo'
-            AND fecha_vencimiento < NOW()
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas 
-                WHERE negocio_id = negocios.id 
-                AND tipo = 'vencimiento_vencido'
-                AND resuelta = false
-            )
-        `);
-
-        for (const neg of vencidos.rows) {
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'vencimiento_vencido', $2, $3, 'crítica')
-            `, [
-                neg.id,
-                `🚨 Suscripción VENCIDA`,
-                `${neg.nombre} está vencido. El negocio debería estar bloqueado.`
-            ]);
-        }
-
-        // Alertas de sin actividad
-        const inactivos = await db.query(`
-            SELECT id, nombre, ultima_actividad FROM negocios 
-            WHERE estado = 'activo'
-            AND (ultima_actividad IS NULL OR ultima_actividad < NOW() - INTERVAL '7 days')
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas 
-                WHERE negocio_id = negocios.id 
-                AND tipo = 'sin_actividad'
-                AND resuelta = false
-                AND DATE(fecha) = CURRENT_DATE
-            )
-        `);
-
-        for (const neg of inactivos.rows) {
-            const dias = neg.ultima_actividad 
-                ? Math.floor((new Date() - new Date(neg.ultima_actividad)) / (1000 * 60 * 60 * 24))
-                : '∞';
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'sin_actividad', $2, $3, 'media')
-            `, [
-                neg.id,
-                `💾 Sin actividad por ${dias} días`,
-                `${neg.nombre} no ha registrado ventas en ${dias} días. ¿Error o abandono?`
-            ]);
-        }
-
-        res.json({ 
-            mensaje: 'Alertas generadas correctamente',
-            vencimientos: vencimientos.rows.length,
-            inactivos: inactivos.rows.length
-        });
+        const r = await require('../services/alertas').generarAlertas();
+        res.json({ mensaje: 'Alertas generadas correctamente', ...r });
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al generar alertas' });
@@ -1212,7 +1135,7 @@ router.get('/planes', async (req, res) => {
 router.put('/planes/:plan', async (req, res) => {
     try {
         const { plan } = req.params;
-        const { max_productos, max_usuarios, facturacion_electronica, reportes_avanzados, precio, modulos } = req.body;
+        const { max_productos, max_usuarios, facturacion_electronica, reportes_avanzados, multinegocio, precio, modulos } = req.body;
 
         const maxProd = parseInt(max_productos);
         const maxUsu = parseInt(max_usuarios);
@@ -1232,10 +1155,11 @@ router.put('/planes/:plan', async (req, res) => {
                 reportes_avanzados = $4,
                 precio = $5,
                 modulos = $6::jsonb,
+                multinegocio = $8,
                 updated_at = NOW()
             WHERE plan = $7
             RETURNING *
-        `, [maxProd, maxUsu, !!facturacion_electronica, !!reportes_avanzados, precioNum, modulosJson, plan]);
+        `, [maxProd, maxUsu, !!facturacion_electronica, !!reportes_avanzados, precioNum, modulosJson, plan, !!multinegocio]);
 
         if (r.rows.length === 0) {
             return res.status(404).json({ error: 'Plan no encontrado' });

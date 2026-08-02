@@ -13,6 +13,7 @@ const LIMITES_DEFAULT = {
     max_usuarios: 3,
     facturacion_electronica: false,
     reportes_avanzados: false,
+    multinegocio: false,
     precio: 10000,
     modulos: null   // null = todos los módulos habilitados
   },
@@ -21,6 +22,8 @@ const LIMITES_DEFAULT = {
     max_usuarios: 99999,
     facturacion_electronica: true,
     reportes_avanzados: true,
+    // Multinegocio arranca APAGADO por defecto: se activa desde el superadmin.
+    multinegocio: false,
     precio: 30000,
     modulos: null
   }
@@ -44,6 +47,9 @@ async function obtenerConfigPlanes() {
           max_usuarios: row.max_usuarios,
           facturacion_electronica: row.facturacion_electronica,
           reportes_avanzados: row.reportes_avanzados,
+          // multinegocio: configurable por el superadmin. Si la columna es NULL
+          // (base vieja), se cae al default por nombre de plan.
+          multinegocio: row.multinegocio == null ? (row.plan === 'premium') : !!row.multinegocio,
           precio: row.precio ?? 0,
           // row.modulos es JSONB (array) o null (= todos habilitados)
           modulos: Array.isArray(row.modulos) ? row.modulos : null

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConectividad } from '../context/ConectividadContext';
 import { ModalGasto } from '../components/admin/Gastos';
 import ModalDetalleVenta from '../components/admin/DetalleVenta';
-import { imprimirTicket } from '../components/ticket';
+import { imprimirTicket, imprimirRemito } from '../components/ticket';
 import ComprobanteElectronico from '../components/ComprobanteElectronico';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import VentaProductoModal from '../components/admin/VentaProductoModal';
@@ -282,6 +282,238 @@ function ModalVentaRapida({ onAgregar, onCerrar }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// =============================================
+// MODAL: MOVIMIENTO DE MERCADERÍA ENTRE NEGOCIOS (multinegocio premium)
+// Envía productos del negocio actual (origen) a otro negocio del grupo (destino).
+// Muestra el PRECIO DE COSTO (es una vista de mercadería, no de venta). Los
+// productos que no existen en el destino se marcan y bloquean el envío.
+// =============================================
+const UNIDADES_DECIMAL = ['kg', 'lt', 'mt'];
+
+function ModalMovimientoMercaderia({ config, onCerrar, onEnviado }) {
+  const [negocios, setNegocios] = useState([]);
+  const [destinoId, setDestinoId] = useState('');
+  const [buscar, setBuscar] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [carrito, setCarrito] = useState([]); // {producto_id, nombre, codigo, precio_costo, cantidad, unidad}
+  const [matches, setMatches] = useState({});  // producto_id -> {destino_producto_id, match_por}
+  const [comentario, setComentario] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+
+  useCerrarConAtras(true, onCerrar);
+
+  // Cargar los negocios del grupo (excluyo el actual como posible destino).
+  useEffect(() => {
+    api.get('/api/multinegocio/mis-negocios')
+      .then(res => {
+        const otros = (res.data.negocios || []).filter(n => !n.es_actual);
+        setNegocios(otros);
+        if (otros.length === 1) setDestinoId(String(otros[0].id));
+      })
+      .catch(() => setError('No se pudieron cargar tus negocios'));
+  }, []);
+
+  // Buscador de productos del negocio actual (origen).
+  useEffect(() => {
+    if (buscar.trim().length === 0) { setResultados([]); return; }
+    const termino = buscar.trim();
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/productos?buscar=${encodeURIComponent(termino)}&rapida=1`);
+        if (termino === buscar.trim()) setResultados(res.data || []);
+      } catch { /* noop */ }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [buscar]);
+
+  // Revalidar el emparejamiento cuando cambia el destino o el carrito.
+  useEffect(() => {
+    if (!destinoId || carrito.length === 0) { setMatches({}); return; }
+    let vigente = true;
+    api.post('/api/multinegocio/movimiento/validar', {
+      destino_id: Number(destinoId),
+      items: carrito.map(it => ({ producto_id: it.producto_id })),
+    }).then(res => {
+      if (!vigente) return;
+      const mapa = {};
+      for (const r of (res.data.items || [])) mapa[r.producto_id] = r;
+      setMatches(mapa);
+    }).catch(() => { if (vigente) setMatches({}); });
+    return () => { vigente = false; };
+  }, [destinoId, carrito]);
+
+  const agregar = (prod) => {
+    setBuscar('');
+    setResultados([]);
+    setCarrito(prev => {
+      const existe = prev.find(x => x.producto_id === prod.id);
+      if (existe) return prev.map(x => x.producto_id === prod.id ? { ...x, cantidad: (Number(x.cantidad) || 0) + 1 } : x);
+      return [...prev, {
+        producto_id: prod.id,
+        nombre: prod.nombre,
+        codigo: prod.codigo,
+        precio_costo: parseFloat(prod.precio_costo) || 0,
+        unidad: prod.unidad || 'Uni',
+        cantidad: 1,
+      }];
+    });
+  };
+
+  const cambiarCant = (id, valor) => {
+    const v = parseFloat(valor);
+    setCarrito(prev => prev.map(x => x.producto_id === id ? { ...x, cantidad: isNaN(v) ? '' : v } : x));
+  };
+  const quitar = (id) => setCarrito(prev => prev.filter(x => x.producto_id !== id));
+
+  const totalCosto = carrito.reduce((a, it) => a + (Number(it.precio_costo) || 0) * (Number(it.cantidad) || 0), 0);
+  const hayBloqueados = carrito.some(it => matches[it.producto_id] && matches[it.producto_id].destino_producto_id == null);
+  const hayCantInvalida = carrito.some(it => !(Number(it.cantidad) > 0));
+  const puedeEnviar = destinoId && carrito.length > 0 && !hayBloqueados && !hayCantInvalida && !enviando;
+
+  const enviar = async () => {
+    if (!puedeEnviar) return;
+    try {
+      setEnviando(true);
+      setError('');
+      const res = await api.post('/api/multinegocio/movimiento', {
+        destino_id: Number(destinoId),
+        items: carrito.map(it => ({ producto_origen_id: it.producto_id, cantidad: Number(it.cantidad) })),
+        comentario: comentario.trim() || null,
+      });
+      try {
+        imprimirRemito({ movimiento: res.data.movimiento, items: res.data.items, config });
+      } catch { /* la impresión no debe frenar el flujo */ }
+      onEnviado?.(res.data);
+      onCerrar();
+    } catch (e) {
+      if (e.response?.data?.faltantes) {
+        setError(`${e.response.data.error}\n• ${e.response.data.faltantes.join('\n• ')}`);
+      } else {
+        setError(e.response?.data?.error || 'No se pudo enviar la mercadería');
+      }
+      setEnviando(false);
+    }
+  };
+
+  const destinoNombre = negocios.find(n => String(n.id) === String(destinoId))?.nombre;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b bg-indigo-600 text-white flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🔁</span>
+            <div>
+              <h3 className="text-lg font-bold">Movimiento de mercadería</h3>
+              <p className="text-indigo-200 text-xs">Enviá stock a otro de tus negocios (con valor de costo)</p>
+            </div>
+          </div>
+          <button onClick={onCerrar} className="text-indigo-200 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        <div className="p-4 border-b flex-shrink-0 space-y-3">
+          {negocios.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No tenés otros negocios vinculados. Vinculá uno desde <b>Centro de Control → Mis negocios</b>.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-[11px] text-gray-500 mb-1">Enviar a</label>
+                <select value={destinoId} onChange={e => setDestinoId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Elegí el negocio destino…</option>
+                  {negocios.map(n => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+          {negocios.length > 0 && (
+            <div className="relative">
+              <input type="text" value={buscar} onChange={e => setBuscar(e.target.value)}
+                placeholder="Buscá un producto para enviar (nombre o código)…"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              {resultados.length > 0 && (
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {resultados.map(p => (
+                    <button key={p.id} onClick={() => agregar(p)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center justify-between gap-3">
+                      <span className="truncate">{p.nombre}</span>
+                      <span className="text-gray-400 text-xs flex-shrink-0">costo {fmt(p.precio_costo)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {carrito.length === 0 ? (
+            <div className="text-center text-gray-400 py-10">
+              <p className="text-4xl mb-2">📦</p>
+              <p>Agregá los productos que querés enviar</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {carrito.map(it => {
+                const m = matches[it.producto_id];
+                const sinMatch = m && m.destino_producto_id == null;
+                const esDecimal = UNIDADES_DECIMAL.includes((it.unidad || '').toLowerCase());
+                return (
+                  <div key={it.producto_id}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${sinMatch ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{it.nombre}</p>
+                      {sinMatch ? (
+                        <p className="text-[11px] text-red-600">No existe en {destinoNombre || 'el destino'} — crealo o emparejalo primero</p>
+                      ) : (
+                        <p className="text-[11px] text-gray-500">costo {fmt(it.precio_costo)} c/u{m?.match_por ? ` · por ${m.match_por}` : ''}</p>
+                      )}
+                    </div>
+                    <input type="number" min={esDecimal ? '0' : '1'} step={esDecimal ? '0.001' : '1'}
+                      value={it.cantidad}
+                      onChange={e => cambiarCant(it.producto_id, e.target.value)}
+                      className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <span className="text-sm font-semibold text-gray-700 w-24 text-right">
+                      {fmt((Number(it.precio_costo) || 0) * (Number(it.cantidad) || 0))}
+                    </span>
+                    <button onClick={() => quitar(it.producto_id)} className="text-gray-400 hover:text-red-500 text-lg">×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex-shrink-0 space-y-3">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 whitespace-pre-line">{error}</p>}
+          {hayBloqueados && !error && (
+            <p className="text-xs text-red-600">Hay productos que no existen en el destino. Quitalos o creálos allá para poder enviar.</p>
+          )}
+          <textarea value={comentario} onChange={e => setComentario(e.target.value)} rows={2}
+            placeholder="Comentario para el envío (opcional): ej. 'van 2 cajas, revisar vencimientos'"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Valor de costo del envío</span>
+            <span className="text-xl font-bold text-gray-800">{fmt(totalCosto)}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onCerrar} className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-medium">
+              Cancelar
+            </button>
+            <button onClick={enviar} disabled={!puedeEnviar}
+              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold">
+              {enviando ? 'Enviando…' : '🔁 Confirmar envío'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2217,6 +2449,7 @@ function POS() {
   const [mostrarModalRapida, setMostrarModalRapida] = useState(false);
   const [mostrarModalProductoRapido, setMostrarModalProductoRapido] = useState(false);
   const [mostrarModalHistorial, setMostrarModalHistorial] = useState(false);
+  const [mostrarModalMovimiento, setMostrarModalMovimiento] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [mensajeScanner, setMensajeScanner] = useState(null);
   const [ultimaVenta, setUltimaVenta] = useState(null);
@@ -3309,6 +3542,10 @@ const imprimirTicketDesdeModal = () => {
                 )}
                 <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalProductoRapido(true); }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">🏷️ Alta rápida</button>
+                {config?.multinegocio_activo && (
+                  <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalMovimiento(true); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">🔁 Movimientos de mercadería</button>
+                )}
                 <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalFiados(true); }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">👥 Fiados</button>
                 <button onClick={() => { setMenuMobilAbierto(false); setMostrarModalHistorial(true); }}
@@ -3342,6 +3579,14 @@ const imprimirTicketDesdeModal = () => {
           🏷️ <span className="hidden sm:inline">Alta rápida</span>
           <span className="text-teal-200 text-xs hidden lg:inline">[F7]</span>
         </button>
+
+        {config?.multinegocio_activo && (
+          <button onClick={() => setMostrarModalMovimiento(true)}
+            title="Enviar mercadería a otro de tus negocios"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+            🔁 <span className="hidden sm:inline">Movimientos</span>
+          </button>
+        )}
 
         <button onClick={() => setMostrarModalFiados(true)}
           style={{ backgroundColor: 'var(--color-primario)' }}
@@ -3944,6 +4189,16 @@ const imprimirTicketDesdeModal = () => {
       )}
       {mostrarModalFiados && (
         <ModalFiados onCerrar={() => { setMostrarModalFiados(false); inputBuscarRef.current?.focus(); }} />
+      )}
+      {mostrarModalMovimiento && (
+        <ModalMovimientoMercaderia
+          config={config}
+          onCerrar={() => { setMostrarModalMovimiento(false); inputBuscarRef.current?.focus(); }}
+          onEnviado={(mov) => {
+            setMensajeScanner({ tipo: 'exito', texto: `🔁 Envío #${mov?.movimiento?.id} a ${mov?.movimiento?.negocio_destino} confirmado` });
+            setTimeout(() => setMensajeScanner(null), 3500);
+          }}
+        />
       )}
       {mostrarModalHistorial && turno && (
         <ModalHistorial

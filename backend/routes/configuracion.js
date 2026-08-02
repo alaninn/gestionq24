@@ -35,7 +35,8 @@ router.put('/', soloAdmin, async (req, res) => {
             facturacion_electronica_activa, regimen_fiscal, punto_venta_arca,
             tipo_comprobante_default, entorno_arca,
             ingresos_brutos, inicio_actividades, condicion_iva,
-            recargo_general, limite_aviso_pago_virtual, cajas_corte_hora
+            recargo_general, limite_aviso_pago_virtual, cajas_corte_hora,
+            multinegocio_activo
         } = req.body;
 
         const resultado = await db.query(`
@@ -53,12 +54,14 @@ router.put('/', soloAdmin, async (req, res) => {
                 tipo_comprobante_default, entorno_arca,
                 ingresos_brutos, inicio_actividades, condicion_iva,
                 recargo_general, limite_aviso_pago_virtual, cajas_corte_hora,
+                multinegocio_activo,
                 updated_at
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
                 $30, $31, $32, $33, $34,
                 $35, $36, $37,
                 $38, $39, $40,
+                $41,
                 NOW()
             )
             ON CONFLICT (negocio_id) DO UPDATE SET
@@ -82,6 +85,7 @@ router.put('/', soloAdmin, async (req, res) => {
                 recargo_general=EXCLUDED.recargo_general,
                 limite_aviso_pago_virtual=EXCLUDED.limite_aviso_pago_virtual,
                 cajas_corte_hora=EXCLUDED.cajas_corte_hora,
+                multinegocio_activo=EXCLUDED.multinegocio_activo,
                 updated_at=NOW()
             RETURNING *
         `, [
@@ -106,7 +110,8 @@ router.put('/', soloAdmin, async (req, res) => {
             recargo_general || 0,
             (limite_aviso_pago_virtual === '' || limite_aviso_pago_virtual == null) ? 100000 : parseFloat(limite_aviso_pago_virtual),
             // 0 = dia calendario; 1..23 = hora de corte del turno noche. Se acota al rango valido.
-            Math.min(23, Math.max(0, parseInt(cajas_corte_hora) || 0))
+            Math.min(23, Math.max(0, parseInt(cajas_corte_hora) || 0)),
+            multinegocio_activo ?? false
         ]);
 
         if (color_primario) {

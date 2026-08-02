@@ -412,6 +412,10 @@ router.get('/plan-info', async (req, res) => {
         const countUsuarios = await db.query('SELECT COUNT(*) FROM usuarios WHERE negocio_id = $1 AND activo = TRUE', [negocio_id]);
         const countProductos = await db.query('SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE', [negocio_id]);
 
+        // Multinegocio: capacidad del plan O habilitado puntualmente al negocio.
+        const ovr = await db.query('SELECT multinegocio_habilitado FROM negocios WHERE id = $1', [negocio_id]);
+        const multinegocio = limites.multinegocio === true || ovr.rows[0]?.multinegocio_habilitado === true;
+
         res.json({
             plan_actual: plan,
             limites: limites,
@@ -422,6 +426,7 @@ router.get('/plan-info', async (req, res) => {
             caracteristicas: {
                 facturacion_electronica: limites.facturacion_electronica,
                 reportes_avanzados: limites.reportes_avanzados,
+                multinegocio: multinegocio,
                 // Módulos del menú admin habilitados para este plan.
                 // null = todos habilitados (sin restricción configurada).
                 modulos: Array.isArray(limites.modulos) ? limites.modulos : null

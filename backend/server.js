@@ -106,6 +106,11 @@ app.use('/api/soporte', rutasSoporte);
 // Facturación Electrónica ARCA — solo plan premium
 app.use('/api/arca', verificarToken, validarLimitePlan, puedeUsarFuncion('facturacion_electronica'), rutasArca);
 
+// Multinegocio: vincular negocios propios y mover mercadería entre ellos.
+// La capacidad la define el plan (configurable por superadmin) o un override por
+// negocio; el chequeo vive dentro del router (verificarMultinegocio).
+app.use('/api/multinegocio', verificarToken, validarLimitePlan, require('./routes/multinegocio'));
+
 // Usuarios y superadmin
 app.use('/api/usuarios', verificarToken, validarLimitePlan, rutasUsuarios);
 app.use('/api/superadmin', verificarToken, soloSuperadmin, rutasSuperadmin);
@@ -159,67 +164,8 @@ require('./services/backupService').iniciarBackupsAutomaticos();
 
 schedule.scheduleJob('0 * * * *', async () => { // cada hora
     try {
-        const db = require('./config/database');
-
-        // Alertas de vencimiento próximo (menos de 5 días)
-        const vencimientos = await db.query(`
-            SELECT id, nombre, fecha_vencimiento FROM negocios 
-            WHERE estado = 'activo'
-            AND fecha_vencimiento < NOW() + INTERVAL '5 days'
-            AND fecha_vencimiento > NOW()
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas 
-                WHERE negocio_id = negocios.id 
-                AND tipo = 'vencimiento'
-                AND resuelta = false
-                AND DATE(fecha) = CURRENT_DATE
-            )
-        `);
-        for (const neg of vencimientos.rows) {
-            const diasFaltantes = Math.ceil((new Date(neg.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24));
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'vencimiento', $2, $3, $4)
-            `, [neg.id, `⏰ Vencimiento próximo`, `${neg.nombre} vence en ${diasFaltantes} días.`, diasFaltantes <= 2 ? 'crítica' : 'alta']);
-        }
-
-        // Alertas de vencidos
-        const vencidos = await db.query(`
-            SELECT id, nombre FROM negocios 
-            WHERE estado = 'activo' AND fecha_vencimiento < NOW()
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas WHERE negocio_id = negocios.id 
-                AND tipo = 'vencimiento_vencido' AND resuelta = false
-            )
-        `);
-        for (const neg of vencidos.rows) {
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'vencimiento_vencido', '🚨 Suscripción VENCIDA', $2, 'crítica')
-            `, [neg.id, `${neg.nombre} está vencido.`]);
-        }
-
-        // Alertas de inactividad
-        const inactivos = await db.query(`
-            SELECT id, nombre, ultima_actividad FROM negocios 
-            WHERE estado = 'activo'
-            AND (ultima_actividad IS NULL OR ultima_actividad < NOW() - INTERVAL '7 days')
-            AND NOT EXISTS (
-                SELECT 1 FROM alertas WHERE negocio_id = negocios.id 
-                AND tipo = 'sin_actividad' AND resuelta = false
-                AND DATE(fecha) = CURRENT_DATE
-            )
-        `);
-        for (const neg of inactivos.rows) {
-            const dias = neg.ultima_actividad
-                ? Math.floor((new Date() - new Date(neg.ultima_actividad)) / (1000 * 60 * 60 * 24))
-                : '∞';
-            await db.query(`
-                INSERT INTO alertas (negocio_id, tipo, titulo, descripcion, severidad)
-                VALUES ($1, 'sin_actividad', $2, $3, 'media')
-            `, [neg.id, `💾 Sin actividad por ${dias} días`, `${neg.nombre} no registró ventas.`]);
-        }
-
+        // Genera/actualiza/auto-resuelve alertas sin acumular duplicados.
+        await require('./services/alertas').generarAlertas();
     } catch (err) {
         console.error('Error generando alertas automáticas:', err.message);
     }

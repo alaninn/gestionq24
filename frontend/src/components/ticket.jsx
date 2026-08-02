@@ -305,6 +305,119 @@ export function imprimirTicket({ venta, items, config, negocio, modo = 'automati
   }
 }
 
+// ---- REMITO: movimiento de mercadería entre negocios ----
+// Comprobante de envío de stock de un negocio a otro. Muestra valor de COSTO,
+// sin totales de venta ni métodos de pago.
+export function imprimirRemito({ movimiento, items, config }) {
+  const tamanioTicket = config?.tamanio_ticket || '80';
+  const tamanioPersonalizado = parseInt(config?.tamanio_ticket_personalizado || 0, 10);
+  const anchoTicket = tamanioTicket === 'personalizado' && tamanioPersonalizado > 0 ? tamanioPersonalizado : parseInt(tamanioTicket, 10) || 80;
+
+  const origen = movimiento?.negocio_origen || config?.nombre_negocio || 'Mi Negocio';
+  const destino = movimiento?.negocio_destino || '';
+  const nroMov = String(movimiento?.id ?? '').padStart(6, '0');
+  const estadoTxt = {
+    en_proceso: 'ENVÍO EN PROCESO', recibido: 'RECIBIDO',
+    recibido_parcial: 'RECIBIDO PARCIAL', rechazado: 'RECHAZADO', anulado: 'ANULADO',
+  }[movimiento?.estado] || '';
+  const comentario = movimiento?.comentario_envio || '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Remito #${nroMov}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 15px; font-weight: bold;
+          width: ${anchoTicket}mm; max-width: ${anchoTicket}mm;
+          padding: 4mm; color: #000; background: #fff;
+        }
+        .center { text-align: center; }
+        .small { font-size: 12px; font-weight: bold; }
+        .grande { font-size: 20px; font-weight: 900; }
+        .separador { border-top: 1px dashed #000; margin: 4px 0; }
+        .separador-doble { border-top: 2px solid #000; margin: 4px 0; }
+        .fila { display: flex; justify-content: space-between; align-items: flex-start; margin: 2px 0; }
+        .fila-item { display: flex; justify-content: space-between; margin: 3px 0; }
+        .nombre-item { flex: 1; margin-right: 4px; word-break: break-word; }
+        .cant-item { min-width: 30px; text-align: right; margin-right: 6px; }
+        .precio-item { text-align: right; white-space: nowrap; min-width: 60px; }
+        .total-grande { font-size: 22px; font-weight: 900; text-align: right; }
+        .controles-vista-previa {
+          position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+          background: white; border: 1px solid #ddd; border-radius: 8px; padding: 10px 20px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 10px; z-index: 1000;
+        }
+        .btn-imprimir { background: #4f46e5; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-cancelar { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        @media print {
+          body { width: ${anchoTicket}mm; }
+          @page { size: ${anchoTicket}mm auto; margin: 0; }
+          .controles-vista-previa { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="center bold grande">REMITO</div>
+      <div class="center small">MOVIMIENTO DE MERCADERÍA</div>
+      ${estadoTxt ? `<div class="center bold" style="margin-top:3px;">« ${esc(estadoTxt)} »</div>` : ''}
+      <div class="separador-doble"></div>
+
+      <div class="fila small"><span>N°</span><span>${nroMov}</span></div>
+      <div class="fila small"><span>Fecha</span><span>${fmtFecha(movimiento?.fecha || new Date())}</span></div>
+      <div class="separador"></div>
+      <div class="small">DESDE: ${esc(origen)}</div>
+      <div class="small">HACIA: ${esc(destino)}</div>
+      ${comentario ? `<div class="separador"></div><div class="small">NOTA: ${esc(comentario)}</div>` : ''}
+      <div class="separador"></div>
+
+      <div class="fila bold small">
+        <span class="nombre-item">PRODUCTO</span>
+        <span class="cant-item">CANT</span>
+        <span class="precio-item">COSTO</span>
+      </div>
+      <div class="separador"></div>
+
+      ${(items || []).map(item => `
+        <div class="fila-item">
+          <span class="nombre-item">${esc(item.nombre_producto)}</span>
+          <span class="cant-item">${item.cantidad}</span>
+          <span class="precio-item">${fmt(item.subtotal_costo)}</span>
+        </div>
+        <div class="small" style="color:#555; margin-left:2px; margin-bottom:2px;">
+          ${fmt(item.costo_unitario)} c/u
+        </div>
+      `).join('')}
+
+      <div class="separador-doble"></div>
+      <div class="fila">
+        <span class="bold grande">VALOR COSTO</span>
+        <span class="total-grande">${fmt(movimiento?.total_costo)}</span>
+      </div>
+      <div class="separador"></div>
+      <div class="center small">Este comprobante no es una venta.</div>
+      <div class="center small">Solo registra el traslado de mercadería.</div>
+      <div style="margin-top: 8px;"></div>
+
+      <div class="controles-vista-previa">
+        <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Remito</button>
+        <button class="btn-cancelar" onclick="window.close()">Cerrar</button>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const ventana = window.open('', '_blank', 'width=400,height=600');
+  if (!ventana) return;
+  ventana.document.write(html);
+  ventana.document.close();
+  ventana.onload = () => ventana.focus();
+}
+
 // Formatea el nombre del método de pago
 function formatearMetodo(metodo) {
   const metodos = {

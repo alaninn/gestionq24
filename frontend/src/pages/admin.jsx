@@ -17,6 +17,7 @@ import Soporte from '../components/admin/Soporte';
 import Proveedores from '../components/admin/Proveedores';
 import Stock from '../components/admin/Stock';
 import ResumenFiscal from '../components/admin/ResumenFiscal';
+import MisNegocios from '../components/admin/MisNegocios';
 import VersionChangelog from '../components/shared/VersionChangelog';
 
 function NombreNegocio() {
@@ -313,6 +314,7 @@ function Admin() {
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/soporte" element={<Soporte />} />
             <Route path="/resumen-fiscal" element={<ResumenFiscal />} />
+            <Route path="/mis-negocios" element={<MisNegocios />} />
           </Routes>
         </main>
       </div>

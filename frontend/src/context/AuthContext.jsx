@@ -48,8 +48,11 @@ export function AuthProvider({ children }) {
       // Mantener el caché del usuario fresco (se usa para restaurar la sesión offline)
       localStorage.setItem('usuario', JSON.stringify(res.data));
 
-      // Cargar informacion del plan si no es superadmin
-      if (res.data.rol !== 'superadmin') {
+      // Cargar informacion del plan para usuarios de negocio, y tambien cuando el
+      // superadmin esta operando un negocio (impersonando): asi las funciones por
+      // plan (ej. multinegocio) se ven segun ese negocio y no quedan ocultas.
+      const impersonando = !!localStorage.getItem('acceso_superadmin_negocio');
+      if (res.data.rol !== 'superadmin' || impersonando) {
         try {
           const planRes = await api.get('/api/usuarios/plan-info');
           setPlanInfo(planRes.data);

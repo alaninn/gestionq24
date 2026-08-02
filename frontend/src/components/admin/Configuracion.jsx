@@ -56,7 +56,7 @@ function Configuracion() {
   const [mostrarPin, setMostrarPin] = useState(false);
   const [mostrarReinicioDatos, setMostrarReinicioDatos] = useState(false);
   const { cambiarColor } = useTema();
-  const { usuario, esPremium } = useAuth();
+  const { usuario, esPremium, puedeUsarFuncion } = useAuth();
 
   useEffect(() => {
     cargarConfig();
@@ -344,6 +344,14 @@ function Configuracion() {
                       valor={config?.validar_monto_efectivo}
                       onChange={(v) => set('validar_monto_efectivo', v)}
                     />
+                    {puedeUsarFuncion('multinegocio') && (
+                      <FilaToggle
+                        titulo="Movimientos de mercadería en el POS 🔁"
+                        descripcion="Activá esto para que aparezca el botón de enviar mercadería a otro de tus negocios desde el Punto de Venta. (El panel “Mis negocios” ya está disponible en Centro de Control)."
+                        valor={config?.multinegocio_activo}
+                        onChange={(v) => set('multinegocio_activo', v)}
+                      />
+                    )}
                   </div>
                 </div>
 

@@ -182,6 +182,7 @@ function Superadmin() {
         max_usuarios: p.max_usuarios,
         facturacion_electronica: p.facturacion_electronica,
         reportes_avanzados: p.reportes_avanzados,
+        multinegocio: p.multinegocio,
         precio: p.precio,
         modulos: Array.isArray(p.modulos) ? p.modulos : null,
       });
@@ -261,6 +262,22 @@ function Superadmin() {
       setExito(`Plan cambiado a ${nuevoPlan.toUpperCase()} correctamente`);
     } catch (err) {
       setError('Error al cambiar el plan');
+    }
+  };
+
+  const cambiarMultinegocioNegocio = async (negocioId, valor) => {
+    // Actualización optimista: reflejamos el cambio en el modal al instante.
+    setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, multinegocio_habilitado: valor } : prev);
+    try {
+      await api.put(`/api/superadmin/negocios/${negocioId}`, { multinegocio_habilitado: valor });
+      // Actualizamos solo esa fila en la lista, sin recargar todo el panel.
+      setNegocios(prev => prev.map(n => n.id === negocioId ? { ...n, multinegocio_habilitado: valor } : n));
+      setExito(`Multinegocio ${valor ? 'habilitado' : 'deshabilitado'} para este negocio`);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      // Revertir si falló.
+      setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, multinegocio_habilitado: !valor } : prev);
+      setError('Error al cambiar Multinegocio');
     }
   };
 
@@ -377,15 +394,15 @@ function Superadmin() {
       // Reflejar el mail nuevo al instante en la lista, además de recargar del servidor.
       const idEditado = mostrarModalAdminNegocio.id;
       const mailNuevo = (formAdminNegocio.email || '').trim();
-      setNegocios(prev => prev.map(n => n.id === idEditado ? { ...n, email: mailNuevo } : n));
+      setNegocios(prev => prev.map(n => n.id === idEditado ? { ...n, email: mailNuevo, admin_email: mailNuevo } : n));
       setMostrarModalAdminNegocio(null);
       // Si veníamos del detalle del negocio, reabrirlo mostrando el mail actualizado
       // (así el cambio se ve al instante). Si no, actualizar el detalle si estuviera abierto.
       if (negocioDetalleGuardado && negocioDetalleGuardado.id === idEditado) {
-        setMostrarModalDetalleNegocio({ ...negocioDetalleGuardado, email: mailNuevo });
+        setMostrarModalDetalleNegocio({ ...negocioDetalleGuardado, email: mailNuevo, admin_email: mailNuevo });
         setNegocioDetalleGuardado(null);
       } else {
-        setMostrarModalDetalleNegocio(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo } : prev));
+        setMostrarModalDetalleNegocio(prev => (prev && prev.id === idEditado ? { ...prev, email: mailNuevo, admin_email: mailNuevo } : prev));
       }
       cargarDatos();
       setTimeout(() => setExito(''), 3000);
@@ -778,7 +795,7 @@ function Superadmin() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-600 text-sm">{negocio.email}</td>
+                      <td className="px-6 py-4 text-gray-600 text-sm">{negocio.admin_email || negocio.email}</td>
                       <td className="px-6 py-4 text-center">
                         <span className={`text-xs px-3 py-1.5 rounded-full font-semibold ${
                           negocio.estado === 'activo' ? 'bg-green-100 text-green-700' :
@@ -842,7 +859,7 @@ function Superadmin() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold">{mostrarModalDetalleNegocio.nombre}</h2>
-                    <p className="text-white/80 text-sm mt-1">{mostrarModalDetalleNegocio.email}</p>
+                    <p className="text-white/80 text-sm mt-1">{mostrarModalDetalleNegocio.admin_email || mostrarModalDetalleNegocio.email}</p>
                   </div>
                 </div>
                 <button onClick={() => setMostrarModalDetalleNegocio(null)} 
@@ -886,6 +903,15 @@ function Superadmin() {
                     <p className="font-medium text-gray-800">{mostrarModalDetalleNegocio.direccion || 'No especificada'}</p>
                   </div>
                 </div>
+                {/* Override de Multinegocio para este negocio en particular */}
+                <label className="mt-3 flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-indigo-300 transition-colors">
+                  <span className="text-sm text-gray-700">🔁 Multinegocio para este negocio
+                    <span className="block text-[11px] text-gray-400">Habilitalo aunque su plan no lo incluya (o dejalo según el plan)</span>
+                  </span>
+                  <input type="checkbox" checked={!!mostrarModalDetalleNegocio.multinegocio_habilitado}
+                    onChange={(e) => cambiarMultinegocioNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
+                    className="w-5 h-5 accent-indigo-600 flex-shrink-0" />
+                </label>
               </div>
 
               {/* Botones de Acción Grandes */}
@@ -1824,6 +1850,12 @@ function Superadmin() {
                             <span className="text-sm text-gray-700">📊 Reportes avanzados</span>
                             <input type="checkbox" checked={!!p.reportes_avanzados}
                               onChange={(e) => cambiarCampoPlan(p.plan, 'reportes_avanzados', e.target.checked)}
+                              className="w-5 h-5 accent-purple-600" />
+                          </label>
+                          <label className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-purple-300 transition-colors">
+                            <span className="text-sm text-gray-700">🔁 Multinegocio (mover mercadería entre negocios)</span>
+                            <input type="checkbox" checked={!!p.multinegocio}
+                              onChange={(e) => cambiarCampoPlan(p.plan, 'multinegocio', e.target.checked)}
                               className="w-5 h-5 accent-purple-600" />
                           </label>
                         </div>
