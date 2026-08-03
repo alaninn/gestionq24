@@ -183,6 +183,7 @@ function Superadmin() {
         facturacion_electronica: p.facturacion_electronica,
         reportes_avanzados: p.reportes_avanzados,
         multinegocio: p.multinegocio,
+        prediccion_compras: p.prediccion_compras,
         precio: p.precio,
         modulos: Array.isArray(p.modulos) ? p.modulos : null,
       });
@@ -278,6 +279,19 @@ function Superadmin() {
       // Revertir si falló.
       setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, multinegocio_habilitado: !valor } : prev);
       setError('Error al cambiar Multinegocio');
+    }
+  };
+
+  const cambiarPrediccionNegocio = async (negocioId, valor) => {
+    setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, prediccion_compras_habilitado: valor } : prev);
+    try {
+      await api.put(`/api/superadmin/negocios/${negocioId}`, { prediccion_compras_habilitado: valor });
+      setNegocios(prev => prev.map(n => n.id === negocioId ? { ...n, prediccion_compras_habilitado: valor } : n));
+      setExito(`Predicción de compras ${valor ? 'habilitada' : 'deshabilitada'} para este negocio`);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, prediccion_compras_habilitado: !valor } : prev);
+      setError('Error al cambiar Predicción de compras');
     }
   };
 
@@ -911,6 +925,14 @@ function Superadmin() {
                   <input type="checkbox" checked={!!mostrarModalDetalleNegocio.multinegocio_habilitado}
                     onChange={(e) => cambiarMultinegocioNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
                     className="w-5 h-5 accent-indigo-600 flex-shrink-0" />
+                </label>
+                <label className="mt-2 flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-green-300 transition-colors">
+                  <span className="text-sm text-gray-700">🛒 Predicción de compras para este negocio
+                    <span className="block text-[11px] text-gray-400">Habilitala aunque su plan no la incluya (o dejala según el plan)</span>
+                  </span>
+                  <input type="checkbox" checked={!!mostrarModalDetalleNegocio.prediccion_compras_habilitado}
+                    onChange={(e) => cambiarPrediccionNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
+                    className="w-5 h-5 accent-green-600 flex-shrink-0" />
                 </label>
               </div>
 
@@ -1856,6 +1878,12 @@ function Superadmin() {
                             <span className="text-sm text-gray-700">🔁 Multinegocio (mover mercadería entre negocios)</span>
                             <input type="checkbox" checked={!!p.multinegocio}
                               onChange={(e) => cambiarCampoPlan(p.plan, 'multinegocio', e.target.checked)}
+                              className="w-5 h-5 accent-purple-600" />
+                          </label>
+                          <label className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-purple-300 transition-colors">
+                            <span className="text-sm text-gray-700">🛒 Predicción de compras</span>
+                            <input type="checkbox" checked={!!p.prediccion_compras}
+                              onChange={(e) => cambiarCampoPlan(p.plan, 'prediccion_compras', e.target.checked)}
                               className="w-5 h-5 accent-purple-600" />
                           </label>
                         </div>

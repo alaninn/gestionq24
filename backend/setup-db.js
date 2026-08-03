@@ -173,6 +173,13 @@ ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS multinegocio BOOLEAN;
 UPDATE planes_config SET multinegocio = FALSE WHERE multinegocio IS NULL;
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS multinegocio_habilitado BOOLEAN DEFAULT FALSE;
 
+-- Capacidad "prediccion de compras" (premium): mismo esquema que multinegocio.
+-- Arranca APAGADO en todos los planes. Se activa desde el superadmin (por plan o
+-- por negocio). Init una sola vez con WHERE IS NULL.
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS prediccion_compras BOOLEAN;
+UPDATE planes_config SET prediccion_compras = FALSE WHERE prediccion_compras IS NULL;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS prediccion_compras_habilitado BOOLEAN DEFAULT FALSE;
+
 -- Tabla de codigos alternativos de productos (si no existe)
 CREATE TABLE IF NOT EXISTS producto_codigos (
     id SERIAL PRIMARY KEY,

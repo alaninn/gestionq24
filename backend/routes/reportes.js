@@ -1093,4 +1093,148 @@ router.put('/disponible-config', async (req, res) => {
     }
 });
 
+// =============================================
+// GET /prediccion-compras (PREMIUM) — cuánto reponer para el/los próximos día(s)
+// Se basa en lo VENDIDO por día de la semana (no en el stock). Sugerido = demanda
+// prevista + colchón por variabilidad (desvío). El stock es referencia opcional.
+// =============================================
+router.get('/prediccion-compras', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+
+        // Gate premium: superadmin bypassa; si no, plan O override del negocio.
+        const esSuper = req.esSuperadmin || req.usuario?.rol === 'superadmin';
+        if (!esSuper) {
+            let ok = req.limitesPlan?.prediccion_compras === true;
+            if (!ok) {
+                const r = await db.query('SELECT prediccion_compras_habilitado FROM negocios WHERE id = $1', [negocio_id]);
+                ok = r.rows[0]?.prediccion_compras_habilitado === true;
+            }
+            if (!ok) return res.status(403).json({ error: 'La predicción de compras no está habilitada para este negocio.', requierePremium: true });
+        }
+
+        // Parámetros
+        const semanas = Math.min(52, Math.max(1, parseInt(req.query.semanas) || 8));
+        const dias = Math.min(14, Math.max(1, parseInt(req.query.dias) || 1));
+        const nivel = req.query.nivel || 'normal';
+        const k = nivel === 'muy_alto' ? 2.33 : nivel === 'alto' ? 1.65 : 1.0;
+        const descontarStock = req.query.descontar_stock === '1' || req.query.descontar_stock === 'true';
+        const ocultarCero = req.query.ocultar_cero === '1' || req.query.ocultar_cero === 'true';
+        const categoria = parseInt(req.query.categoria) || null;
+
+        // Días objetivo (hora AR; el proceso corre con TZ AR). getDay(): 0=Dom..6=Sáb
+        // = mismo criterio que PostgreSQL EXTRACT(DOW).
+        const hoy = new Date();
+        const cntDow = {};
+        const nombresDow = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        for (let i = 1; i <= dias; i++) {
+            const d = new Date(hoy); d.setDate(d.getDate() + i);
+            const dw = d.getDay();
+            cntDow[dw] = (cntDow[dw] || 0) + 1;
+        }
+        const dowsObjetivo = Object.keys(cntDow).map(Number);
+        const etiquetaObjetivo = dias === 1 ? nombresDow[dowsObjetivo[0]] : `próximos ${dias} días`;
+
+        // 1) Días abiertos por DOW objetivo (para promediar sobre TODOS, no solo los que vendió)
+        const nDowRes = await db.query(`
+            SELECT EXTRACT(DOW FROM fecha)::int AS dow, COUNT(DISTINCT fecha::date) AS dias
+            FROM ventas
+            WHERE negocio_id = $1 AND fecha::date >= (CURRENT_DATE - ($2::int * 7))
+              AND EXTRACT(DOW FROM fecha)::int = ANY($3::int[])
+            GROUP BY 1
+        `, [negocio_id, semanas, dowsObjetivo]);
+        const nDow = {};
+        for (const r of nDowRes.rows) nDow[r.dow] = parseInt(r.dias) || 0;
+
+        // 2) Por producto y DOW objetivo: primero por día (para el desvío), luego sum_q/sum_q2
+        const aggRes = await db.query(`
+            WITH diario AS (
+                SELECT vi.producto_id, v.fecha::date AS dia, EXTRACT(DOW FROM v.fecha)::int AS dow, SUM(vi.cantidad) AS q
+                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+                WHERE v.negocio_id = $1 AND vi.producto_id IS NOT NULL
+                  AND v.fecha::date >= (CURRENT_DATE - ($2::int * 7))
+                  AND EXTRACT(DOW FROM v.fecha)::int = ANY($3::int[])
+                GROUP BY 1, 2, 3
+            )
+            SELECT producto_id, dow, SUM(q) AS sum_q, SUM(q * q) AS sum_q2, COUNT(*) AS dias_con_venta
+            FROM diario GROUP BY 1, 2
+        `, [negocio_id, semanas, dowsObjetivo]);
+
+        // 3) Contexto: vendido últimos 7 / 30 días
+        const ctxRes = await db.query(`
+            SELECT vi.producto_id,
+                   COALESCE(SUM(vi.cantidad) FILTER (WHERE v.fecha::date >= CURRENT_DATE - 7), 0) AS vendido_7d,
+                   COALESCE(SUM(vi.cantidad) FILTER (WHERE v.fecha::date >= CURRENT_DATE - 30), 0) AS vendido_30d
+            FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+            WHERE v.negocio_id = $1 AND vi.producto_id IS NOT NULL AND v.fecha::date >= CURRENT_DATE - 30
+            GROUP BY 1
+        `, [negocio_id]);
+        const ctx = {};
+        for (const r of ctxRes.rows) ctx[r.producto_id] = r;
+
+        // 4) Maestro de productos (no combos, activos)
+        const params = [negocio_id];
+        let filtroCat = '';
+        if (categoria) { params.push(categoria); filtroCat = ` AND p.categoria_id = $${params.length}`; }
+        const prodRes = await db.query(`
+            SELECT p.id, p.nombre, p.codigo, p.unidad, p.stock, p.stock_minimo, p.precio_costo,
+                   c.nombre AS categoria
+            FROM productos p
+            LEFT JOIN categorias c ON c.id = p.categoria_id
+            WHERE p.negocio_id = $1 AND p.activo = TRUE AND COALESCE(p.es_combinado, FALSE) = FALSE${filtroCat}
+        `, params);
+
+        // Armar por producto la demanda/varianza sobre los DOW objetivo
+        const porProducto = {};
+        for (const r of aggRes.rows) {
+            const dw = r.dow;
+            const nd = nDow[dw] || 0;
+            if (nd <= 0) continue;
+            const sumQ = parseFloat(r.sum_q) || 0;
+            const sumQ2 = parseFloat(r.sum_q2) || 0;
+            const media = sumQ / nd;
+            const varr = Math.max(0, sumQ2 / nd - media * media);
+            const veces = cntDow[dw] || 0; // cuántas veces aparece ese DOW en el objetivo
+            const acc = porProducto[r.producto_id] || { demanda: 0, varianza: 0, diasDato: 0 };
+            acc.demanda += media * veces;
+            acc.varianza += varr * veces;
+            acc.diasDato += parseInt(r.dias_con_venta) || 0;
+            porProducto[r.producto_id] = acc;
+        }
+
+        const filas = prodRes.rows.map(p => {
+            const a = porProducto[p.id] || { demanda: 0, varianza: 0, diasDato: 0 };
+            const desvio = Math.sqrt(a.varianza);
+            let cobertura = a.demanda + k * desvio;
+            if (descontarStock) cobertura = cobertura - (parseFloat(p.stock) || 0);
+            const sugerido = Math.max(0, Math.ceil(cobertura - 1e-9));
+            const costo = parseFloat(p.precio_costo) || 0;
+            return {
+                producto_id: p.id, nombre: p.nombre, codigo: p.codigo, categoria: p.categoria,
+                unidad: p.unidad, stock_actual: p.stock, stock_minimo: p.stock_minimo,
+                prom_dia_objetivo: dias === 1 ? a.demanda : (a.demanda / dias),
+                demanda_prevista: a.demanda,
+                sugerido,
+                costo_estimado: sugerido * costo,
+                vendido_7d: parseFloat(ctx[p.id]?.vendido_7d) || 0,
+                vendido_30d: parseFloat(ctx[p.id]?.vendido_30d) || 0,
+                baja_confianza: a.demanda > 0 && a.diasDato < 2,
+            };
+        }).filter(f => !ocultarCero || f.sugerido > 0)
+          .sort((x, y) => y.sugerido - x.sugerido || y.demanda_prevista - x.demanda_prevista);
+
+        res.json({
+            objetivo: etiquetaObjetivo,
+            dias, semanas, nivel,
+            costo_total_estimado: filas.reduce((s, f) => s + f.costo_estimado, 0),
+            productos_a_reponer: filas.filter(f => f.sugerido > 0).length,
+            items: filas,
+        });
+    } catch (error) {
+        console.error('Error en prediccion-compras:', error);
+        res.status(500).json({ error: 'Error al generar la predicción de compras' });
+    }
+});
+
 module.exports = router

@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.42.0';
+export const VERSION_ACTUAL = '2.43.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.43.0',
+    fecha: '2026-08-03',
+    titulo: 'Predicción de compras (Premium)',
+    cambios: [
+      { t: 'Nueva pantalla "🛒 Predicción de compras" (Inventario): te dice cuánto comprar de cada producto para reponer lo que se vende. Usa el patrón por día de la semana (si mañana es martes, mira los martes) y suma un colchón según cuánto varían las ventas. Se basa en el historial de ventas, no en el stock. Filtros por categoría y exportación a Excel/PDF.' },
+      { t: 'Es una función Premium: se habilita desde el superadmin, por plan o por negocio en particular.', super: true },
+    ],
+  },
   {
     version: '2.42.0',
     fecha: '2026-07-27',

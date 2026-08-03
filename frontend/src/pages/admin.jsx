@@ -18,6 +18,7 @@ import Proveedores from '../components/admin/Proveedores';
 import Stock from '../components/admin/Stock';
 import ResumenFiscal from '../components/admin/ResumenFiscal';
 import MisNegocios from '../components/admin/MisNegocios';
+import PrediccionCompras from '../components/admin/PrediccionCompras';
 import VersionChangelog from '../components/shared/VersionChangelog';
 
 function NombreNegocio() {
@@ -84,7 +85,7 @@ function NavLinkPremium({ icon, label }) {
 
 function Admin() {
   const navigate = useNavigate();
-  const { usuario, logout, tienePermiso, moduloPermitidoPlan } = useAuth();
+  const { usuario, logout, tienePermiso, moduloPermitidoPlan, puedeUsarFuncion } = useAuth();
   const { colorPrimario } = useTema();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esPremium = usuario?.plan === 'premium' || usuario?.rol === 'superadmin';
@@ -184,6 +185,9 @@ function Admin() {
           )}
           {puedeVer('stock') && (
             <NavLink to="/admin/stock" icon="📉" label="Stock" />
+          )}
+          {puedeVer('stock') && puedeUsarFuncion('prediccion_compras') && (
+            <NavLink to="/admin/prediccion-compras" icon="🛒" label="Predicción de compras" />
           )}
 
           {(puedeVer('caja') || puedeVer('clientes') || puedeVer('proveedores') || puedeVer('gastos') || puedeVer('resumen_fiscal')) && (
@@ -315,6 +319,7 @@ function Admin() {
             <Route path="/soporte" element={<Soporte />} />
             <Route path="/resumen-fiscal" element={<ResumenFiscal />} />
             <Route path="/mis-negocios" element={<MisNegocios />} />
+            <Route path="/prediccion-compras" element={<PrediccionCompras />} />
           </Routes>
         </main>
       </div>
