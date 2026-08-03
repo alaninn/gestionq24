@@ -269,6 +269,7 @@ function ReportesMovimientos({ negocios }) {
   const [expandido, setExpandido] = useState(null);
   const [detalles, setDetalles] = useState({}); // id -> {movimiento, items}
   const [recepcion, setRecepcion] = useState(null); // movimiento a recepcionar
+  const [editando, setEditando] = useState(null);   // envío en proceso a editar
 
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'admin' || usuario?.rol === 'superadmin';
@@ -555,6 +556,7 @@ function ReportesMovimientos({ negocios }) {
               const est = estadoInfo(m.estado);
               const det = detalles[m.id];
               const puedeRecibir = !m.enviado && m.estado === 'en_proceso';
+              const puedeEditar = m.enviado && m.estado === 'en_proceso' && esAdmin;
               return (
               <div key={m.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 <button onClick={() => toggleDetalle(m.id)} className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50">
@@ -602,11 +604,19 @@ function ReportesMovimientos({ negocios }) {
                             ✅ Confirmar recepción
                           </button>
                         )}
+                        {puedeEditar && (
+                          <button onClick={() => setEditando(det)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold">
+                            ✏️ Editar envío
+                          </button>
+                        )}
                         <button onClick={() => reimprimir(m.id)}
                           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">🖨️ Remito</button>
                         {esAdmin && m.estado !== 'anulado' && (
                           <button onClick={() => anular(m.id)}
-                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium">🚫 Anular</button>
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium">
+                            {m.estado === 'en_proceso' ? (m.enviado ? '🚫 Cancelar envío' : '🚫 Rechazar') : '🚫 Anular'}
+                          </button>
                         )}
                       </div>
                     </>)}
@@ -653,6 +663,11 @@ function ReportesMovimientos({ negocios }) {
         <ModalRecepcion detalle={recepcion}
           onClose={() => setRecepcion(null)}
           onConfirmado={() => { setRecepcion(null); setDetalles(prev => { const c = { ...prev }; delete c[recepcion.movimiento.id]; return c; }); setExpandido(null); cargar(); }} />
+      )}
+      {editando && (
+        <ModalEditarEnvio detalle={editando}
+          onClose={() => setEditando(null)}
+          onGuardado={() => { setEditando(null); setDetalles(prev => { const c = { ...prev }; delete c[editando.movimiento.id]; return c; }); setExpandido(null); cargar(); }} />
       )}
     </div>
   );
@@ -736,6 +751,157 @@ function ModalRecepcion({ detalle, onClose, onConfirmado }) {
             <button onClick={confirmar} disabled={enviando}
               className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-xl text-sm font-bold">
               {enviando ? 'Confirmando…' : '✅ Confirmar recepción'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal para EDITAR un envío en proceso (lado origen): cambiar cantidades, quitar
+// o agregar productos, antes de que el destino lo confirme.
+const UNIDADES_DECIMAL_ME = ['kg', 'lt', 'mt'];
+function ModalEditarEnvio({ detalle, onClose, onGuardado }) {
+  const mov = detalle.movimiento;
+  const destinoId = mov.negocio_destino_id;
+  const [carrito, setCarrito] = useState(() => (detalle.items || []).map(it => ({
+    producto_id: it.producto_origen_id, nombre: it.nombre_producto, codigo: it.codigo,
+    precio_costo: Number(it.costo_unitario) || 0, unidad: 'Uni', cantidad: Number(it.cantidad) || 0,
+  })));
+  const [comentario, setComentario] = useState(mov.comentario_envio || '');
+  const [buscar, setBuscar] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [matches, setMatches] = useState({});
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Buscador de productos del origen.
+  useEffect(() => {
+    if (buscar.trim().length === 0) { setResultados([]); return; }
+    const termino = buscar.trim();
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/productos?buscar=${encodeURIComponent(termino)}&rapida=1`);
+        if (termino === buscar.trim()) setResultados(res.data || []);
+      } catch { /* noop */ }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [buscar]);
+
+  // Revalidar match en destino cuando cambia el carrito.
+  useEffect(() => {
+    if (carrito.length === 0) { setMatches({}); return; }
+    let vig = true;
+    api.post('/api/multinegocio/movimiento/validar', { destino_id: Number(destinoId), items: carrito.map(it => ({ producto_id: it.producto_id })) })
+      .then(res => { if (vig) { const m = {}; for (const r of (res.data.items || [])) m[r.producto_id] = r; setMatches(m); } })
+      .catch(() => { if (vig) setMatches({}); });
+    return () => { vig = false; };
+  }, [carrito, destinoId]);
+
+  const agregar = (prod) => {
+    setBuscar(''); setResultados([]);
+    setCarrito(prev => {
+      const ex = prev.find(x => x.producto_id === prod.id);
+      if (ex) return prev.map(x => x.producto_id === prod.id ? { ...x, cantidad: (Number(x.cantidad) || 0) + 1 } : x);
+      return [...prev, { producto_id: prod.id, nombre: prod.nombre, codigo: prod.codigo, precio_costo: parseFloat(prod.precio_costo) || 0, unidad: prod.unidad || 'Uni', cantidad: 1 }];
+    });
+  };
+  const cambiarCant = (id, v) => { const n = parseFloat(v); setCarrito(prev => prev.map(x => x.producto_id === id ? { ...x, cantidad: isNaN(n) ? '' : n } : x)); };
+  const quitar = (id) => setCarrito(prev => prev.filter(x => x.producto_id !== id));
+
+  const totalCosto = carrito.reduce((a, it) => a + (Number(it.precio_costo) || 0) * (Number(it.cantidad) || 0), 0);
+  const hayBloqueados = carrito.some(it => matches[it.producto_id] && matches[it.producto_id].destino_producto_id == null);
+  const hayCantInvalida = carrito.some(it => !(Number(it.cantidad) > 0));
+  const puedeGuardar = carrito.length > 0 && !hayBloqueados && !hayCantInvalida && !guardando;
+
+  const guardar = async () => {
+    if (!puedeGuardar) return;
+    try {
+      setGuardando(true); setError('');
+      await api.post(`/api/multinegocio/movimientos/${mov.id}/editar`, {
+        items: carrito.map(it => ({ producto_origen_id: it.producto_id, cantidad: Number(it.cantidad) })),
+        comentario: comentario.trim() || null,
+      });
+      onGuardado();
+    } catch (e) {
+      if (e.response?.data?.faltantes) setError(`${e.response.data.error}\n• ${e.response.data.faltantes.join('\n• ')}`);
+      else setError(e.response?.data?.error || 'No se pudo guardar');
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b bg-indigo-600 text-white flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold">✏️ Editar envío</h3>
+            <p className="text-indigo-200 text-xs">A {mov.destino_nombre} · Remito N° {String(mov.id).padStart(6, '0')} (en proceso)</p>
+          </div>
+          <button onClick={onClose} className="text-indigo-200 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        <div className="p-4 border-b flex-shrink-0 relative">
+          <input type="text" value={buscar} onChange={e => setBuscar(e.target.value)}
+            placeholder="Agregar un producto (nombre o código)…"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          {resultados.length > 0 && (
+            <div className="absolute z-10 left-4 right-4 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+              {resultados.map(p => (
+                <button key={p.id} onClick={() => agregar(p)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center justify-between gap-3">
+                  <span className="truncate">{p.nombre}</span>
+                  <span className="text-gray-400 text-xs flex-shrink-0">costo {fmt(p.precio_costo)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {carrito.length === 0 ? (
+            <div className="text-center text-gray-400 py-10"><p className="text-4xl mb-2">📦</p><p>Agregá productos al envío</p></div>
+          ) : (
+            <div className="space-y-2">
+              {carrito.map(it => {
+                const m = matches[it.producto_id];
+                const sinMatch = m && m.destino_producto_id == null;
+                const esDec = UNIDADES_DECIMAL_ME.includes((it.unidad || '').toLowerCase());
+                return (
+                  <div key={it.producto_id} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${sinMatch ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{it.nombre}</p>
+                      {sinMatch ? <p className="text-[11px] text-red-600">No existe en {mov.destino_nombre} — quitalo o creálo allá</p>
+                        : <p className="text-[11px] text-gray-500">costo {fmt(it.precio_costo)} c/u</p>}
+                    </div>
+                    <input type="number" min={esDec ? '0' : '1'} step={esDec ? '0.001' : '1'} value={it.cantidad}
+                      onChange={e => cambiarCant(it.producto_id, e.target.value)}
+                      className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <span className="text-sm font-semibold text-gray-700 w-24 text-right">{fmt((Number(it.precio_costo) || 0) * (Number(it.cantidad) || 0))}</span>
+                    <button onClick={() => quitar(it.producto_id)} className="text-gray-400 hover:text-red-500 text-lg">×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex-shrink-0 space-y-3">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 whitespace-pre-line">{error}</p>}
+          {hayBloqueados && !error && <p className="text-xs text-red-600">Hay productos que no existen en el destino. Quitalos para poder guardar.</p>}
+          <textarea value={comentario} onChange={e => setComentario(e.target.value)} rows={2}
+            placeholder="Comentario del envío (opcional)"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Valor de costo del envío</span>
+            <span className="text-xl font-bold text-gray-800">{fmt(totalCosto)}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-medium">Cancelar</button>
+            <button onClick={guardar} disabled={!puedeGuardar}
+              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold">
+              {guardando ? 'Guardando…' : '💾 Guardar cambios'}
             </button>
           </div>
         </div>

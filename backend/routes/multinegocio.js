@@ -566,6 +566,96 @@ router.post('/movimientos/:id/anular', soloAdmin, async (req, res) => {
     }
 });
 
+// ---- POST /movimientos/:id/editar ----  editar un envío EN PROCESO (solo el origen)
+// body: { items:[{producto_origen_id, cantidad}], comentario }. Reemplaza los ítems
+// y recalcula totales. Como en_proceso no movió stock, no hay nada que revertir.
+router.post('/movimientos/:id/editar', soloAdmin, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        const id = parseInt(req.params.id);
+        const { items, comentario } = req.body;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'Cargá al menos un producto.' });
+        }
+
+        const mov = await db.query('SELECT * FROM movimientos_mercaderia WHERE id = $1', [id]);
+        const m = mov.rows[0];
+        if (!m) return res.status(404).json({ error: 'Movimiento no encontrado' });
+        if (parseInt(m.negocio_origen_id) !== parseInt(negocio_id)) {
+            return res.status(403).json({ error: 'Solo el negocio que envía puede editar este envío.' });
+        }
+        if (m.estado !== 'en_proceso') {
+            return res.status(400).json({ error: 'Solo se puede editar un envío que está en proceso.' });
+        }
+
+        const origen = m.negocio_origen_id;
+        const destino_id = m.negocio_destino_id;
+        const permiteStockNegativo = !!(await db.query(
+            'SELECT permite_stock_negativo FROM configuracion WHERE negocio_id = $1', [origen]
+        )).rows[0]?.permite_stock_negativo;
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            // El en_proceso no movió stock: reemplazamos los ítems directamente.
+            await client.query('DELETE FROM movimientos_mercaderia_items WHERE movimiento_id = $1', [id]);
+
+            let totalCosto = 0, cantItems = 0;
+            const faltantes = [];
+            for (const it of items) {
+                const cantidad = parseFloat(it.cantidad);
+                if (!cantidad || cantidad <= 0) continue;
+                const prodR = await client.query(
+                    'SELECT id, nombre, codigo, precio_costo, stock, unidad, es_combinado FROM productos WHERE id = $1 AND negocio_id = $2 LIMIT 1',
+                    [it.producto_origen_id, origen]
+                );
+                const prod = prodR.rows[0];
+                if (!prod) { faltantes.push(`#${it.producto_origen_id} (no existe en origen)`); continue; }
+                const match = await resolverProductoDestino(destino_id, prod.codigo, prod.nombre, client);
+                if (!match) { faltantes.push(prod.nombre); continue; }
+                if (!permiteStockNegativo) {
+                    const disp = prod.es_combinado
+                        ? await disponibleCombo(origen, prod.id, client)
+                        : parseFloat(prod.stock) || 0;
+                    if (disp < cantidad) { faltantes.push(`${prod.nombre} (sin stock: hay ${disp}, pedís ${cantidad})`); continue; }
+                }
+                const costo = parseFloat(prod.precio_costo) || 0;
+                const subtotal = costo * cantidad;
+                totalCosto += subtotal; cantItems += 1;
+                await client.query(`
+                    INSERT INTO movimientos_mercaderia_items
+                        (movimiento_id, producto_origen_id, producto_destino_id, nombre_producto, codigo, cantidad, costo_unitario, subtotal_costo, recibido)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+                `, [id, prod.id, match.id, prod.nombre, prod.codigo, cantidad, costo, subtotal]);
+            }
+
+            if (faltantes.length > 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'No se pudo guardar. Revisá estos productos:', faltantes });
+            }
+            if (cantItems === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'No hay productos válidos.' });
+            }
+
+            await client.query(
+                `UPDATE movimientos_mercaderia SET total_costo = $1, cantidad_items = $2, comentario_envio = $3 WHERE id = $4`,
+                [totalCosto, cantItems, (comentario || '').trim() || null, id]
+            );
+            await client.query('COMMIT');
+            res.json({ ok: true, total_costo: totalCosto, cantidad_items: cantItems });
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Error al editar movimiento:', error);
+        res.status(500).json({ error: 'Error al editar el envío' });
+    }
+});
+
 // Arma el WHERE con filtros comunes (fecha, tipo enviado/recibido, otro negocio)
 // para el historial y los reportes de movimientos. Devuelve { where, params }.
 function filtrosMovimientos(negocio_id, query) {
@@ -692,7 +782,7 @@ router.get('/movimientos/:id', async (req, res) => {
         `, [negocio_id, id]);
         if (!cab.rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
         const items = await db.query(
-            'SELECT id AS item_id, nombre_producto, codigo, cantidad, costo_unitario, subtotal_costo, recibido FROM movimientos_mercaderia_items WHERE movimiento_id = $1 ORDER BY id',
+            'SELECT id AS item_id, producto_origen_id, producto_destino_id, nombre_producto, codigo, cantidad, costo_unitario, subtotal_costo, recibido FROM movimientos_mercaderia_items WHERE movimiento_id = $1 ORDER BY id',
             [id]
         );
         res.json({ movimiento: cab.rows[0], items: items.rows });
