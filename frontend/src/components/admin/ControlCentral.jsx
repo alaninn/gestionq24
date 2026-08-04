@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
@@ -21,6 +22,8 @@ const NOMBRE_METODO = {
 };
 
 export default function ControlCentral() {
+  const { usuario, puedeUsarFuncion } = useAuth();
+  const esDueno = usuario?.rol === 'admin' || usuario?.rol === 'superadmin';
   const [periodo, setPeriodo] = useState('hoy'); // hoy | dia | mes | rango
   const [dia, setDia] = useState(hoyISO());
   const [mes, setMes] = useState(hoyISO().slice(0, 7));
@@ -100,6 +103,12 @@ export default function ControlCentral() {
           <p className="text-gray-500 text-sm">Ganancia real del negocio, descontando costos y gastos.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {esDueno && puedeUsarFuncion('multinegocio') && (
+            <button onClick={() => { window.location.href = '/admin/mis-negocios'; }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+              🏢 Mis negocios
+            </button>
+          )}
           <button onClick={() => setMostrarGastos(true)}
             className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
             ⚙️ Gastos fijos del local

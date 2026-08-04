@@ -18,6 +18,7 @@ import Proveedores from '../components/admin/Proveedores';
 import Stock from '../components/admin/Stock';
 import ResumenFiscal from '../components/admin/ResumenFiscal';
 import MisNegocios from '../components/admin/MisNegocios';
+import MovimientosMercaderia from '../components/admin/MovimientosMercaderia';
 import PrediccionCompras from '../components/admin/PrediccionCompras';
 import VersionChangelog from '../components/shared/VersionChangelog';
 
@@ -190,7 +191,7 @@ function Admin() {
             <NavLink to="/admin/prediccion-compras" icon="🛒" label="Predicción de compras" />
           )}
           {puedeUsarFuncion('multinegocio') && (
-            <NavLink to="/admin/mis-negocios" icon="🏢" label="Mis negocios" />
+            <NavLink to="/admin/movimientos" icon="🔁" label="Movimiento de mercadería" />
           )}
 
           {(puedeVer('caja') || puedeVer('clientes') || puedeVer('proveedores') || puedeVer('gastos') || puedeVer('resumen_fiscal')) && (
@@ -322,6 +323,7 @@ function Admin() {
             <Route path="/soporte" element={<Soporte />} />
             <Route path="/resumen-fiscal" element={<ResumenFiscal />} />
             <Route path="/mis-negocios" element={<MisNegocios />} />
+            <Route path="/movimientos" element={<MovimientosMercaderia />} />
             <Route path="/prediccion-compras" element={<PrediccionCompras />} />
           </Routes>
         </main>

@@ -131,7 +131,7 @@ function MisNegocios() {
         ))}
       </div>
 
-      {vista === 'reportes' && <ReportesMovimientos negocios={negocios} />}
+      {vista === 'reportes' && <ReportesMovimientos />}
 
       {vista === 'negocios' && (<>
       {/* Resumen del grupo */}
@@ -252,7 +252,10 @@ function MisNegocios() {
 
 // Reportes de movimientos de mercadería entre los negocios del grupo.
 // Historial con filtros + reporte agregado de productos, exportables a Excel.
-function ReportesMovimientos({ negocios }) {
+// Carga su propia lista de negocios del grupo (endpoint liviano /grupo, accesible
+// al usuario común) para el filtro. NO requiere info sensible de los negocios.
+export function ReportesMovimientos() {
+  const [grupoNegocios, setGrupoNegocios] = useState([]);
   const [desde, setDesde] = useState(primerDiaMesAR());
   const [hasta, setHasta] = useState(hoyAR());
   const [tipo, setTipo] = useState('todos');   // todos | enviado | recibido
@@ -273,7 +276,11 @@ function ReportesMovimientos({ negocios }) {
 
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'admin' || usuario?.rol === 'superadmin';
-  const otros = (negocios || []).filter(n => !n.es_actual);
+  const otros = grupoNegocios.filter(n => !n.es_actual);
+
+  useEffect(() => {
+    api.get('/api/multinegocio/grupo').then(r => setGrupoNegocios(r.data.negocios || [])).catch(() => {});
+  }, []);
 
   const qs = () => {
     const p = new URLSearchParams();

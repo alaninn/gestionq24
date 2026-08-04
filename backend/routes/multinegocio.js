@@ -108,6 +108,28 @@ router.get('/mis-negocios', soloAdmin, async (req, res) => {
     }
 });
 
+// ---- GET /grupo ----  negocios del grupo (solo id + nombre), SIN datos sensibles.
+// Accesible a cualquier usuario con la capacidad (no solo admin): lo usa la pantalla
+// de "Movimiento de mercadería" para el filtro por negocio.
+router.get('/grupo', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await db.query(`
+            SELECT n.id, n.nombre, (n.id = $1) AS es_actual
+            FROM negocios n
+            WHERE n.id = $1
+               OR (n.grupo_multinegocio IS NOT NULL
+                   AND n.grupo_multinegocio = (SELECT grupo_multinegocio FROM negocios WHERE id = $1))
+            ORDER BY es_actual DESC, n.nombre ASC
+        `, [negocio_id]);
+        res.json({ negocio_actual_id: negocio_id, negocios: r.rows });
+    } catch (error) {
+        console.error('Error grupo:', error);
+        res.status(500).json({ error: 'Error al listar el grupo' });
+    }
+});
+
 // ---- POST /vincular ----  { email, password }
 router.post('/vincular', soloAdmin, async (req, res) => {
     try {
