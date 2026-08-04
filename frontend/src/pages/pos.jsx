@@ -359,6 +359,7 @@ function ModalMovimientoMercaderia({ config, onCerrar, onEnviado }) {
         nombre: prod.nombre,
         codigo: prod.codigo,
         precio_costo: parseFloat(prod.precio_costo) || 0,
+        stock: Number(prod.stock) || 0,
         unidad: prod.unidad || 'Uni',
         cantidad: 1,
       }];
@@ -420,7 +421,7 @@ function ModalMovimientoMercaderia({ config, onCerrar, onEnviado }) {
         <div className="p-4 border-b flex-shrink-0 space-y-3">
           {negocios.length === 0 ? (
             <p className="text-sm text-gray-500">
-              No tenés otros negocios vinculados. Vinculá uno desde <b>Centro de Control → Mis negocios</b>.
+              No tenés otros negocios vinculados. Vinculá uno desde <b>Inventario → Mis negocios</b>.
             </p>
           ) : (
             <div className="flex flex-wrap items-end gap-3">
@@ -445,7 +446,10 @@ function ModalMovimientoMercaderia({ config, onCerrar, onEnviado }) {
                     <button key={p.id} onClick={() => agregar(p)}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center justify-between gap-3">
                       <span className="truncate">{p.nombre}</span>
-                      <span className="text-gray-400 text-xs flex-shrink-0">costo {fmt(p.precio_costo)}</span>
+                      <span className="text-xs flex-shrink-0 flex items-center gap-2">
+                        <span className={`font-semibold ${Number(p.stock) <= 0 ? 'text-red-500' : 'text-emerald-600'}`}>{Number(p.stock) || 0} en stock</span>
+                        <span className="text-gray-400">costo {fmt(p.precio_costo)}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -474,7 +478,11 @@ function ModalMovimientoMercaderia({ config, onCerrar, onEnviado }) {
                       {sinMatch ? (
                         <p className="text-[11px] text-red-600">No existe en {destinoNombre || 'el destino'} — crealo o emparejalo primero</p>
                       ) : (
-                        <p className="text-[11px] text-gray-500">costo {fmt(it.precio_costo)} c/u{m?.match_por ? ` · por ${m.match_por}` : ''}</p>
+                        <p className="text-[11px] text-gray-500">
+                          En stock: <b className={Number(it.stock) <= 0 ? 'text-red-500' : 'text-emerald-600'}>{Number(it.stock) || 0}</b>
+                          {Number(it.cantidad) > Number(it.stock) && <span className="text-amber-600"> · enviás más que el stock</span>}
+                          <span className="text-gray-400"> · costo {fmt(it.precio_costo)} c/u</span>
+                        </p>
                       )}
                     </div>
                     <input type="number" min={esDecimal ? '0' : '1'} step={esDecimal ? '0.001' : '1'}

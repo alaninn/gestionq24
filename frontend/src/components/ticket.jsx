@@ -313,14 +313,14 @@ export function imprimirRemito({ movimiento, items, config }) {
   const tamanioPersonalizado = parseInt(config?.tamanio_ticket_personalizado || 0, 10);
   const anchoTicket = tamanioTicket === 'personalizado' && tamanioPersonalizado > 0 ? tamanioPersonalizado : parseInt(tamanioTicket, 10) || 80;
 
+  const negocio = config?.nombre_negocio || movimiento?.negocio_origen || 'Mi Negocio';
   const origen = movimiento?.negocio_origen || config?.nombre_negocio || 'Mi Negocio';
   const destino = movimiento?.negocio_destino || '';
   const nroMov = String(movimiento?.id ?? '').padStart(6, '0');
-  const estadoTxt = {
-    en_proceso: 'ENVÍO EN PROCESO', recibido: 'RECIBIDO',
-    recibido_parcial: 'RECIBIDO PARCIAL', rechazado: 'RECHAZADO', anulado: 'ANULADO',
-  }[movimiento?.estado] || '';
   const comentario = movimiento?.comentario_envio || '';
+  const nfmt = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(Number(n) || 0);
+  const cantProductos = (items || []).length;
+  const totalBultos = (items || []).reduce((s, i) => s + (Number(i.cantidad) || 0), 0);
 
   const html = `
     <!DOCTYPE html>
@@ -362,17 +362,15 @@ export function imprimirRemito({ movimiento, items, config }) {
       </style>
     </head>
     <body>
-      <div class="center bold grande">REMITO</div>
-      <div class="center small">MOVIMIENTO DE MERCADERÍA</div>
-      ${estadoTxt ? `<div class="center bold" style="margin-top:3px;">« ${esc(estadoTxt)} »</div>` : ''}
+      <div class="center bold grande">${esc(negocio)}</div>
+      <div class="center small">REMITO · Movimiento de mercadería</div>
       <div class="separador-doble"></div>
 
-      <div class="fila small"><span>N°</span><span>${nroMov}</span></div>
+      <div class="fila small"><span>Remito N°</span><span>${nroMov}</span></div>
       <div class="fila small"><span>Fecha</span><span>${fmtFecha(movimiento?.fecha || new Date())}</span></div>
       <div class="separador"></div>
-      <div class="small">DESDE: ${esc(origen)}</div>
-      <div class="small">HACIA: ${esc(destino)}</div>
-      ${comentario ? `<div class="separador"></div><div class="small">NOTA: ${esc(comentario)}</div>` : ''}
+      <div class="fila small"><span>Desde</span><span>${esc(origen)}</span></div>
+      <div class="fila small"><span>Hacia</span><span>${esc(destino)}</span></div>
       <div class="separador"></div>
 
       <div class="fila bold small">
@@ -385,7 +383,7 @@ export function imprimirRemito({ movimiento, items, config }) {
       ${(items || []).map(item => `
         <div class="fila-item">
           <span class="nombre-item">${esc(item.nombre_producto)}</span>
-          <span class="cant-item">${item.cantidad}</span>
+          <span class="cant-item">${nfmt(item.cantidad)}</span>
           <span class="precio-item">${fmt(item.subtotal_costo)}</span>
         </div>
         <div class="small" style="color:#555; margin-left:2px; margin-bottom:2px;">
@@ -393,15 +391,22 @@ export function imprimirRemito({ movimiento, items, config }) {
         </div>
       `).join('')}
 
+      <div class="separador"></div>
+      <div class="fila small bold"><span>Productos distintos</span><span>${cantProductos}</span></div>
+      <div class="fila small bold"><span>Bultos (total unidades)</span><span>${nfmt(totalBultos)}</span></div>
+
       <div class="separador-doble"></div>
       <div class="fila">
         <span class="bold grande">VALOR COSTO</span>
         <span class="total-grande">${fmt(movimiento?.total_costo)}</span>
       </div>
-      <div class="separador"></div>
-      <div class="center small">Este comprobante no es una venta.</div>
-      <div class="center small">Solo registra el traslado de mercadería.</div>
-      <div style="margin-top: 8px;"></div>
+      ${comentario ? `<div class="separador"></div><div class="small" style="color:#333;">Nota: ${esc(comentario)}</div>` : ''}
+      <div class="separador-doble"></div>
+      <div class="center small" style="color:#555;">Comprobante interno de traslado de mercadería.</div>
+      <div class="center small" style="color:#555;">No es una factura ni una venta.</div>
+      <div style="margin-top: 6px;"></div>
+      <div class="center small">Firma / Recibido: ____________________</div>
+      <div style="margin-top: 10px;"></div>
 
       <div class="controles-vista-previa">
         <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Remito</button>

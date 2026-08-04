@@ -174,7 +174,7 @@ function Admin() {
             <NavLink to="/admin" icon="📊" label="Dashboard" exact />
           )}
 
-          {(puedeVer('productos') || puedeVer('stock')) && (
+          {(puedeVer('productos') || puedeVer('stock') || puedeUsarFuncion('multinegocio')) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">Inventario</p>
           )}
           {puedeVer('productos') && (
@@ -188,6 +188,9 @@ function Admin() {
           )}
           {puedeVer('stock') && puedeUsarFuncion('prediccion_compras') && (
             <NavLink to="/admin/prediccion-compras" icon="🛒" label="Predicción de compras" />
+          )}
+          {puedeUsarFuncion('multinegocio') && (
+            <NavLink to="/admin/mis-negocios" icon="🏢" label="Mis negocios" />
           )}
 
           {(puedeVer('caja') || puedeVer('clientes') || puedeVer('proveedores') || puedeVer('gastos') || puedeVer('resumen_fiscal')) && (
