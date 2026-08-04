@@ -260,6 +260,8 @@ export function ReportesMovimientos() {
   const [hasta, setHasta] = useState(hoyAR());
   const [tipo, setTipo] = useState('todos');   // todos | enviado | recibido
   const [negocio, setNegocio] = useState('');  // filtrar por el otro negocio
+  const [estadoFiltro, setEstadoFiltro] = useState(''); // '' | en_proceso | recibido | recibido_parcial | anulado
+  const [buscarProd, setBuscarProd] = useState('');     // buscar por producto
   const [subvista, setSubvista] = useState('historial'); // historial | productos
 
   const [movimientos, setMovimientos] = useState([]);
@@ -288,6 +290,8 @@ export function ReportesMovimientos() {
     if (hasta) p.set('hasta', hasta);
     if (tipo !== 'todos') p.set('tipo', tipo);
     if (negocio) p.set('negocio', negocio);
+    if (estadoFiltro) p.set('estado', estadoFiltro);
+    if (buscarProd.trim()) p.set('buscar', buscarProd.trim());
     return p.toString();
   };
 
@@ -309,7 +313,13 @@ export function ReportesMovimientos() {
     }
   };
 
-  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [desde, hasta, tipo, negocio]);
+  // Recarga inmediata para filtros "duros"; la búsqueda por producto va con debounce.
+  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [desde, hasta, tipo, negocio, estadoFiltro]);
+  useEffect(() => {
+    const t = setTimeout(() => cargar(), 350);
+    return () => clearTimeout(t);
+    /* eslint-disable-next-line */
+  }, [buscarProd]);
 
   const cargarDetalle = async (id) => {
     const r = await api.get(`/api/multinegocio/movimientos/${id}`);
@@ -361,8 +371,11 @@ export function ReportesMovimientos() {
     const filas = movimientos.map(m => ({
       Fecha: fmtFechaHora(m.fecha), Tipo: m.enviado ? 'Enviado' : 'Recibido',
       Origen: m.origen_nombre, Destino: m.destino_nombre,
+      Estado: estadoInfo(m.estado).txt.replace(/^[^ ]+ /, ''),
       Items: m.cantidad_items, 'Valor costo': Number(m.total_costo) || 0,
-      Usuario: m.usuario_nombre || '',
+      'Enviado por': m.usuario_nombre || '',
+      'Recibido por': m.usuario_recepcion_nombre || '',
+      'Fecha recepción': m.fecha_recepcion ? fmtFechaHora(m.fecha_recepcion) : '',
     }));
     const ws = XLSX.utils.json_to_sheet(filas);
     const wb = XLSX.utils.book_new();
@@ -419,43 +432,83 @@ export function ReportesMovimientos() {
     doc.save(`Productos movidos ${desde}_a_${hasta}.pdf`);
   };
 
+  const ymdAR = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   const setRango = (dd, hh) => { setDesde(dd); setHasta(hh); };
   const esteMes = () => setRango(primerDiaMesAR(), hoyAR());
   const hoy = () => setRango(hoyAR(), hoyAR());
+  const ultimos7 = () => setRango(ymdAR(new Date(Date.now() - 6 * 86400000)), hoyAR());
+  const mesPasado = () => {
+    const [y, mo] = hoyAR().split('-').map(Number);
+    const first = new Date(Date.UTC(y, mo - 2, 1)).toISOString().slice(0, 10);
+    const last = new Date(Date.UTC(y, mo - 1, 0)).toISOString().slice(0, 10);
+    setRango(first, last);
+  };
+  const limpiarFiltros = () => { setTipo('todos'); setNegocio(''); setEstadoFiltro(''); setBuscarProd(''); esteMes(); };
 
   return (
     <div className="space-y-4">
       {/* Filtros */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Desde</label>
-          <input type="date" value={desde} max={hasta} onChange={e => setDesde(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
+        {/* Búsqueda por producto */}
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+          <input type="text" value={buscarProd} onChange={e => setBuscarProd(e.target.value)}
+            placeholder="Buscar por producto (nombre o código)…"
+            className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          {buscarProd && (
+            <button onClick={() => setBuscarProd('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">✕</button>
+          )}
         </div>
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Hasta</label>
-          <input type="date" value={hasta} min={desde} max={hoyAR()} onChange={e => setHasta(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Desde</label>
+            <input type="date" value={desde} max={hasta} onChange={e => setDesde(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Hasta</label>
+            <input type="date" value={hasta} min={desde} max={hoyAR()} onChange={e => setHasta(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Tipo</label>
+            <select value={tipo} onChange={e => setTipo(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="todos">Todos</option>
+              <option value="enviado">Enviados</option>
+              <option value="recibido">Recibidos</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Estado</label>
+            <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Todos</option>
+              <option value="en_proceso">⏳ En proceso</option>
+              <option value="recibido">✅ Recibido</option>
+              <option value="recibido_parcial">⚠️ Recibido parcial</option>
+              <option value="rechazado">⛔ Rechazado</option>
+              <option value="anulado">🚫 Anulado</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Negocio</label>
+            <select value={negocio} onChange={e => setNegocio(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Todos</option>
+              {otros.map(n => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Tipo</label>
-          <select value={tipo} onChange={e => setTipo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <option value="todos">Todos</option>
-            <option value="enviado">Enviados</option>
-            <option value="recibido">Recibidos</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-gray-400">Rápido:</span>
+          <button onClick={hoy} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Hoy</button>
+          <button onClick={ultimos7} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">7 días</button>
+          <button onClick={esteMes} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Este mes</button>
+          <button onClick={mesPasado} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Mes pasado</button>
+          <span className="flex-1" />
+          <button onClick={limpiarFiltros} className="px-3 py-1.5 text-gray-500 hover:text-gray-700 rounded-lg text-sm">Limpiar filtros</button>
         </div>
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-1">Negocio</label>
-          <select value={negocio} onChange={e => setNegocio(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">Todos</option>
-            {otros.map(n => <option key={n.id} value={n.id}>{n.nombre}</option>)}
-          </select>
-        </div>
-        <button onClick={esteMes} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Este mes</button>
-        <button onClick={hoy} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Hoy</button>
       </div>
 
       {/* Aviso de recepciones pendientes */}
@@ -598,6 +651,23 @@ export function ReportesMovimientos() {
                           ))}
                         </tbody>
                       </table>
+                      {/* Quién envió y quién recibió (info completa) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                          <p className="text-indigo-700 font-semibold">📤 Envío</p>
+                          <p className="text-gray-600">Por: <b>{det.movimiento.usuario_nombre || '—'}</b></p>
+                          <p className="text-gray-400">{fmtFechaHora(det.movimiento.fecha)}</p>
+                        </div>
+                        <div className={`rounded-lg px-3 py-2 border ${det.movimiento.fecha_recepcion ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-200'}`}>
+                          <p className={`font-semibold ${det.movimiento.fecha_recepcion ? 'text-emerald-700' : 'text-gray-500'}`}>📥 Recepción</p>
+                          {det.movimiento.fecha_recepcion ? (<>
+                            <p className="text-gray-600">Por: <b>{det.movimiento.usuario_recepcion_nombre || '—'}</b></p>
+                            <p className="text-gray-400">{fmtFechaHora(det.movimiento.fecha_recepcion)}</p>
+                          </>) : (
+                            <p className="text-gray-400">Pendiente de confirmación</p>
+                          )}
+                        </div>
+                      </div>
                       {(det.movimiento.comentario_envio || det.movimiento.comentario_recepcion) && (
                         <div className="text-xs space-y-1">
                           {det.movimiento.comentario_envio && <p className="text-gray-600">📝 <b>Nota del envío:</b> {det.movimiento.comentario_envio}</p>}

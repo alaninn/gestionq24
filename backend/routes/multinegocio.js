@@ -681,7 +681,7 @@ router.post('/movimientos/:id/editar', soloAdmin, async (req, res) => {
 // Arma el WHERE con filtros comunes (fecha, tipo enviado/recibido, otro negocio)
 // para el historial y los reportes de movimientos. Devuelve { where, params }.
 function filtrosMovimientos(negocio_id, query) {
-    const { desde, hasta, tipo, negocio } = query;
+    const { desde, hasta, tipo, negocio, estado } = query;
     const cond = ['(m.negocio_origen_id = $1 OR m.negocio_destino_id = $1)'];
     const params = [negocio_id];
     if (desde) { params.push(desde); cond.push(`m.fecha::date >= $${params.length}::date`); }
@@ -689,6 +689,7 @@ function filtrosMovimientos(negocio_id, query) {
     if (tipo === 'enviado') cond.push('m.negocio_origen_id = $1');
     else if (tipo === 'recibido') cond.push('m.negocio_destino_id = $1');
     if (negocio) { params.push(parseInt(negocio)); cond.push(`(m.negocio_origen_id = $${params.length} OR m.negocio_destino_id = $${params.length})`); }
+    if (estado) { params.push(estado); cond.push(`m.estado = $${params.length}`); }
     return { where: cond.join(' AND '), params };
 }
 
@@ -696,7 +697,13 @@ function filtrosMovimientos(negocio_id, query) {
 router.get('/movimientos', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
-        const { where, params } = filtrosMovimientos(negocio_id, req.query);
+        let { where, params } = filtrosMovimientos(negocio_id, req.query);
+        // Búsqueda por producto: movimientos que incluyan un producto por nombre/código.
+        const buscar = (req.query.buscar || '').trim();
+        if (buscar) {
+            params.push(`%${buscar}%`);
+            where += ` AND EXISTS (SELECT 1 FROM movimientos_mercaderia_items mi WHERE mi.movimiento_id = m.id AND (mi.nombre_producto ILIKE $${params.length} OR mi.codigo ILIKE $${params.length}))`;
+        }
         const r = await db.query(`
             SELECT m.id, m.fecha, m.total_costo, m.cantidad_items, m.estado,
                    m.comentario_envio, m.comentario_recepcion, m.fecha_recepcion,
@@ -757,7 +764,14 @@ router.get('/movimientos', async (req, res) => {
 router.get('/movimientos/reporte-productos', async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
-        const { where, params } = filtrosMovimientos(negocio_id, req.query);
+        let { where, params } = filtrosMovimientos(negocio_id, req.query);
+        // Búsqueda por producto: acota a los ítems que matcheen por nombre/código.
+        const buscar = (req.query.buscar || '').trim();
+        let filtroBuscar = '';
+        if (buscar) {
+            params.push(`%${buscar}%`);
+            filtroBuscar = ` AND (mi.nombre_producto ILIKE $${params.length} OR mi.codigo ILIKE $${params.length})`;
+        }
         const r = await db.query(`
             SELECT mi.nombre_producto,
                    MAX(mi.codigo) AS codigo,
@@ -771,7 +785,7 @@ router.get('/movimientos/reporte-productos', async (req, res) => {
             WHERE ${where}
               AND m.estado <> 'anulado'
               -- Solo lo que efectivamente movió stock: recibido, o envíos viejos ya confirmados.
-              AND (mi.recibido = TRUE OR m.estado = 'confirmado')
+              AND (mi.recibido = TRUE OR m.estado = 'confirmado')${filtroBuscar}
             GROUP BY LOWER(mi.nombre_producto), mi.nombre_producto
             ORDER BY total_cantidad DESC
         `, params);
