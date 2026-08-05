@@ -8,7 +8,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { diasRestantes } from '../../utils/vencimiento';
 import { linkRenovarWhatsApp } from '../../utils/contacto';
 
 // Clave de "oculto por hoy" para el banner (reaparece al día siguiente).
@@ -43,8 +42,12 @@ export default function AvisoVencimiento() {
   // El superadmin no ve avisos; tampoco si no hay fecha de vencimiento.
   if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return null;
 
-  const msRestantes = new Date(usuario.fecha_vencimiento).getTime() - ahora;
-  const dias = diasRestantes(usuario.fecha_vencimiento);
+  // El negocio puede usar el sistema durante TODO el día de vencimiento; el corte
+  // real es a las 00:00 del día siguiente. La cuenta regresiva apunta a ese instante.
+  const v = new Date(usuario.fecha_vencimiento);
+  const instanteCorte = new Date(v.getFullYear(), v.getMonth(), v.getDate() + 1).getTime();
+  const msRestantes = instanteCorte - ahora;
+  const dias = Math.max(0, Math.ceil(msRestantes / 86400000));
   // Fuera de rango (ya venció -> el backend lo bloquea; o falta más de 5 días).
   if (dias <= 0 || dias > 5) return null;
 

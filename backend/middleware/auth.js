@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const { diaVencido } = require('../helpers/vencimiento');
 
 // -----------------------------------------------
 // Estado del negocio (bloqueado / vencido) con cache corto.
@@ -76,7 +77,7 @@ const verificarToken = async (req, res, next) => {
             if (est.estado === 'bloqueado') {
                 return res.status(403).json({ error: 'Tu cuenta está bloqueada. Contactá al administrador.' });
             }
-            if (est.estado === 'vencido' || (est.venc && new Date(est.venc) < new Date())) {
+            if (est.estado === 'vencido' || diaVencido(est.venc)) {
                 return res.status(403).json({ error: 'Tu suscripción ha vencido. Contactá al administrador.' });
             }
         }

@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../config/database');
 const { soloAdmin } = require('../middleware/auth');
 const { ajustarStock, disponibleCombo } = require('../helpers/stock');
+const { diaVencido } = require('../helpers/vencimiento');
 
 // =============================================
 // MULTINEGOCIO (premium)
@@ -285,7 +286,7 @@ router.post('/acceder/:negocioId', soloAdmin, async (req, res) => {
             return res.status(403).json({ error: 'Ese negocio está bloqueado.' });
         }
         if (usuario.negocio_estado === 'vencido' ||
-            (usuario.fecha_vencimiento && new Date(usuario.fecha_vencimiento) < new Date())) {
+            diaVencido(usuario.fecha_vencimiento)) {
             return res.status(403).json({ error: 'La suscripción de ese negocio está vencida.' });
         }
 

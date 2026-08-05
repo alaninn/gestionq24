@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const jwt = require('jsonwebtoken');
+const { diaVencido } = require('../helpers/vencimiento');
 
 // Lee el token de dispositivo (header x-device-token). Ese token se emite en el
 // Paso 1 (acceso del negocio) y deja el equipo fijado a un negocio. Devuelve el
@@ -121,8 +122,8 @@ router.post('/login', async (req, res) => {
                     error: 'Tu cuenta está bloqueada. Contactá al administrador.' 
                 });
             }
-            if (usuario.negocio_estado === 'vencido' || 
-                (usuario.fecha_vencimiento && new Date(usuario.fecha_vencimiento) < new Date())) {
+            if (usuario.negocio_estado === 'vencido' ||
+                diaVencido(usuario.fecha_vencimiento)) {
                 return res.status(403).json({ 
                     error: 'Tu suscripción ha vencido. Contactá al administrador.' 
                 });
@@ -246,7 +247,7 @@ router.post('/acceso-negocio', async (req, res) => {
             return res.status(403).json({ error: 'El negocio está bloqueado. Contactá al administrador.' });
         }
         if (neg.negocio_estado === 'vencido' ||
-            (neg.fecha_vencimiento && new Date(neg.fecha_vencimiento) < new Date())) {
+            diaVencido(neg.fecha_vencimiento)) {
             return res.status(403).json({ error: 'La suscripción del negocio venció. Contactá al administrador.' });
         }
 
