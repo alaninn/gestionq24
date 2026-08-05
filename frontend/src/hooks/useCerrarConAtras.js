@@ -1,59 +1,75 @@
 // =============================================
 // HOOK: useCerrarConAtras
-// Hace que el botón "atrás" del celular cierre el modal en vez de salir
-// de la página. Al abrir el modal se agrega una entrada al historial del
-// navegador; "atrás" consume esa entrada y cierra el modal. Si el usuario
-// cierra con la ✕ o Cancelar, la entrada extra se limpia sola.
+// Hace que el botón "atrás" del celular cierre el modal en vez de salir de la
+// página. Robusto ante varios modales abiertos/encadenados (abrir uno mientras se
+// cierra otro), que antes desincronizaba el historial y podía navegar la página.
+//
+// Diseño: un ÚNICO listener global de popstate + una pila (stack) de modales
+// abiertos + UNA sola entrada de historial "modal" mientras haya al menos un modal.
+//   - "Atrás" del usuario  → cierra el modal de más arriba; si quedan, re-arma.
+//   - Cierre por código (✕/Cancelar/cambio de modal) → consume su entrada solo si
+//     era el último modal; los cierres "de consumo" se cuentan (contador, no flag)
+//     para tolerar cierres/aperturas solapados.
 //
 // Uso:  useCerrarConAtras(mostrarModal, () => setMostrarModal(false));
 // =============================================
 
 import { useEffect, useRef } from 'react';
 
-// Cuando un modal se cierra "por código" (✕ / Cancelar / pasar a otro modal),
-// consume su entrada de historial con history.back(). Ese back() genera un
-// popstate; si en el mismo momento se abrió OTRO modal, su listener capturaría
-// ese popstate por error y lo cerraría de inmediato (caso: cerrar "detalle" y
-// abrir "renovar/días/historial" a la vez). Este flag global marca ese popstate
-// "de consumo" para que se ignore una sola vez.
-let consumiendoEntrada = false;
+const stack = [];       // [{ cerrar }]  — el último es el de más arriba
+let armado = false;     // ¿hay una entrada de historial "modal" puesta?
+let ignorar = 0;        // popstates "de consumo" pendientes de ignorar (cierres por código)
+let listenerPuesto = false;
+
+function armar() {
+  if (!armado) {
+    window.history.pushState({ modalAbierto: true }, '');
+    armado = true;
+  }
+}
+
+function alVolver() {
+  // Popstate "de consumo" (generado por un history.back() de un cierre por código).
+  if (ignorar > 0) { ignorar--; return; }
+  // "Atrás" real del usuario: el navegador ya consumió nuestra entrada.
+  armado = false;
+  const top = stack[stack.length - 1];
+  if (!top) return;
+  // Si quedan más modales debajo, re-armamos la entrada para seguir capturando.
+  if (stack.length > 1) armar();
+  top.cerrar();
+}
 
 export default function useCerrarConAtras(abierto, onCerrar) {
-  // Ref para usar siempre la última versión del callback sin re-suscribir
+  // Ref para usar siempre la última versión del callback sin re-suscribir.
   const cerrarRef = useRef(onCerrar);
   cerrarRef.current = onCerrar;
 
-  const cerradoPorAtras = useRef(false);
-
   useEffect(() => {
     if (!abierto) return;
+    if (!listenerPuesto) { window.addEventListener('popstate', alVolver); listenerPuesto = true; }
 
-    cerradoPorAtras.current = false;
-    window.history.pushState({ modalAbierto: true }, '');
+    let cerradoPorAtras = false;
+    const entry = { cerrar: () => { cerradoPorAtras = true; cerrarRef.current(); } };
+    stack.push(entry);
+    armar();
 
-    const alVolver = () => {
-      // Si este popstate vino de "consumir" la entrada de otro modal que se
-      // cerró por código, lo ignoramos (no es un "atrás" real del usuario).
-      if (consumiendoEntrada) {
-        consumiendoEntrada = false;
-        return;
-      }
-      cerradoPorAtras.current = true;
-      cerrarRef.current();
-    };
-
-    window.addEventListener('popstate', alVolver);
     return () => {
-      window.removeEventListener('popstate', alVolver);
-      // Si el modal se cerró con ✕ / Cancelar / guardar (no con "atrás"),
-      // consumimos la entrada extra para no ensuciar el historial.
-      if (!cerradoPorAtras.current) {
-        consumiendoEntrada = true;
-        window.history.back();
-        // Failsafe: si por algún motivo no llega el popstate, reseteamos el flag
-        // para no swallowear un "atrás" real posterior.
-        setTimeout(() => { consumiendoEntrada = false; }, 100);
+      const idx = stack.indexOf(entry);
+      if (idx >= 0) stack.splice(idx, 1);
+      if (cerradoPorAtras) return; // ya lo manejó alVolver (atrás real)
+      // Cierre por código: solo consumimos la entrada si era el último modal.
+      if (stack.length === 0 && armado) {
+        armado = false;
+        // PROTECCION: solo volvemos atras si la entrada ACTUAL del historial es la
+        // nuestra (marca modalAbierto). Asi, ante cualquier desincronizacion, es
+        // imposible navegar la pagina real (ese era el sintoma: caia en /login o /admin).
+        if (window.history.state && window.history.state.modalAbierto) {
+          ignorar++;
+          window.history.back();
+        }
       }
+      // Si quedan modales abiertos, la entrada sigue armada: no tocamos el historial.
     };
   }, [abierto]);
 }

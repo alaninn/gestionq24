@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.43.0';
+export const VERSION_ACTUAL = '2.43.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.43.1',
+    fecha: '2026-08-04',
+    titulo: 'Ventanas más estables al abrir y cerrar',
+    cambios: [
+      { t: 'Se mejoró el manejo de las ventanas emergentes: al abrir una opción y cancelarla varias veces seguidas, ya no se cierra la pantalla ni se cambia de sección por error. La navegación con el botón "atrás" quedó más confiable.' },
+      { t: 'En el panel de superadmin, entrar a un negocio, elegir una opción (por ejemplo "Editar días de uso") y cancelar ya no abre por error el panel del negocio en blanco.', super: true },
+    ],
+  },
   {
     version: '2.43.0',
     fecha: '2026-08-03',
