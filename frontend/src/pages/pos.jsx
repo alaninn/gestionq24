@@ -10,6 +10,7 @@ import { imprimirTicket, imprimirRemito } from '../components/ticket';
 import ComprobanteElectronico from '../components/ComprobanteElectronico';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import VentaProductoModal from '../components/admin/VentaProductoModal';
+import AvisoVencimiento from '../components/shared/AvisoVencimiento';
 import { finDiaComercial } from '../utils/fecha';
 
 /**
@@ -3446,6 +3447,8 @@ const imprimirTicketDesdeModal = () => {
 
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ background: oscuro ? '#0f0f1a' : '#f1f5f9' }}>
+
+      <AvisoVencimiento />
 
       {/* ---- BANNER FIN DE DÍA (avisar antes) ---- */}
       {enVentanaAvisoCierre && (

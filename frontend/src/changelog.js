@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.43.1';
+export const VERSION_ACTUAL = '2.44.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.44.0',
+    fecha: '2026-08-05',
+    titulo: 'Aviso de vencimiento de la suscripción',
+    cambios: [
+      { t: 'Cuando falten 5 días o menos para que venza tu suscripción, aparece un aviso arriba de la pantalla. Podés ocultarlo por el día; vuelve a mostrarse al día siguiente.' },
+      { t: 'En las últimas 24 hs queda una alerta fija en la esquina avisando que vence, para que no se te pase.' },
+      { t: 'Tocando el aviso se abre WhatsApp con un mensaje ya escrito para renovar directamente con el administrador. El aviso lo ven el dueño y los cajeros; no aparece para el superadmin.' },
+    ],
+  },
   {
     version: '2.43.1',
     fecha: '2026-08-04',

@@ -169,6 +169,7 @@ router.post('/login', async (req, res) => {
                 permisos: usuario.permisos,
                 plan: usuario.plan || null,
                 negocio_estado: usuario.negocio_estado || null,
+                fecha_vencimiento: usuario.fecha_vencimiento || null,
             }
         });
 

@@ -21,6 +21,7 @@ import MisNegocios from '../components/admin/MisNegocios';
 import MovimientosMercaderia from '../components/admin/MovimientosMercaderia';
 import PrediccionCompras from '../components/admin/PrediccionCompras';
 import VersionChangelog from '../components/shared/VersionChangelog';
+import AvisoVencimiento from '../components/shared/AvisoVencimiento';
 
 function NombreNegocio() {
   const [nombre, setNombre] = useState(() => {
@@ -121,6 +122,8 @@ function Admin() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
+
+      <AvisoVencimiento />
 
       {menuAbierto && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
