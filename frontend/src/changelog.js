@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.44.0';
+export const VERSION_ACTUAL = '2.45.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.45.0',
+    fecha: '2026-08-05',
+    titulo: 'Vencimiento: cuenta regresiva y renovar por WhatsApp desde el ingreso',
+    cambios: [
+      { t: 'La alerta de las últimas 24 hs ahora muestra una cuenta regresiva en vivo con el tiempo exacto que falta para el vencimiento.' },
+      { t: 'Si tu suscripción venció, en la pantalla de ingreso aparece un botón para renovar al instante por WhatsApp con el administrador.' },
+      { t: 'El acceso queda protegido apenas vence la suscripción, sin depender de que se cierre y vuelva a abrir la sesión.', super: true },
+    ],
+  },
   {
     version: '2.44.0',
     fecha: '2026-08-05',

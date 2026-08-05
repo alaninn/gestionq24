@@ -7,7 +7,7 @@ const router = express.Router();
 const path = require('path');
 const axios = require('axios');
 const db = require('../config/database');
-const { verificarToken, soloSuperadmin } = require('../middleware/auth');
+const { verificarToken, soloSuperadmin, invalidarCacheNegocio } = require('../middleware/auth');
 
 router.use(verificarToken);
 router.use(soloSuperadmin);
@@ -103,6 +103,7 @@ router.put('/negocios/:id', async (req, res) => {
             RETURNING *
         `, [nombre, telefono, direccion, plan, estado, diasNum, id, multiOverride, predOverride]);
 
+        invalidarCacheNegocio(id);
         res.json(resultado.rows[0]);
     } catch (error) {
         console.error('Error:', error);
@@ -252,6 +253,7 @@ router.post('/negocios/:id/renovar', async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ error: 'El negocio no existe' });
         }
+        invalidarCacheNegocio(id);
 
          // Registrar en historial de pagos
         if (monto || metodo_pago) {
@@ -347,6 +349,7 @@ router.put('/negocios/:id/dias-uso', async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ error: 'El negocio no existe' });
         }
+        invalidarCacheNegocio(id);
 
         res.json(resultado.rows[0]);
     } catch (error) {

@@ -1,26 +1,15 @@
 // =============================================
 // AVISO DE VENCIMIENTO DE SUSCRIPCION (para el usuario del negocio)
 // - Faltando 5 dias o menos: banner de aviso arriba (se puede cerrar por el dia).
-// - Faltando 24 hs o menos: alerta FIJA en la esquina, no se puede cerrar.
+// - Faltando 24 hs o menos: alerta FIJA en la esquina, con cuenta regresiva, no se cierra.
 // En ambos casos, al tocar se abre WhatsApp con el administrador para renovar.
 // El superadmin no ve estos avisos.
 // =============================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { diasRestantes } from '../../utils/vencimiento';
-
-// Contacto del administrador del sistema (para renovaciones), formato wa.me.
-const WHATSAPP_ADMIN = '5491162684353';
-
-function armarLinkWhatsApp(usuario, dias) {
-  const negocio = usuario?.negocio_nombre || 'mi negocio';
-  const cuando = dias <= 1 ? 'en menos de 24 hs' : `en ${dias} días`;
-  const texto =
-    `Hola! Te escribo desde "${negocio}". Mi suscripción de GestionQ24 vence ${cuando}. ` +
-    `Quiero renovarla, ¿me pasás cómo abonar?`;
-  return `https://wa.me/${WHATSAPP_ADMIN}?text=${encodeURIComponent(texto)}`;
-}
+import { linkRenovarWhatsApp } from '../../utils/contacto';
 
 // Clave de "oculto por hoy" para el banner (reaparece al día siguiente).
 function claveOcultoHoy() {
@@ -28,23 +17,44 @@ function claveOcultoHoy() {
   return `aviso_venc_oculto_${hoy}`;
 }
 
+// Formatea milisegundos restantes como HH:MM:SS.
+function fmtCuentaRegresiva(ms) {
+  if (ms < 0) ms = 0;
+  const totalSeg = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeg / 3600);
+  const m = Math.floor((totalSeg % 3600) / 60);
+  const s = totalSeg % 60;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(h)}:${p(m)}:${p(s)}`;
+}
+
 export default function AvisoVencimiento() {
   const { usuario } = useAuth();
   const [ocultoBanner, setOcultoBanner] = useState(
     () => localStorage.getItem(claveOcultoHoy()) === '1'
   );
+  // Reloj que actualiza la cuenta regresiva cada segundo.
+  const [ahora, setAhora] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // El superadmin no ve avisos; tampoco si no hay fecha de vencimiento.
   if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return null;
 
+  const msRestantes = new Date(usuario.fecha_vencimiento).getTime() - ahora;
   const dias = diasRestantes(usuario.fecha_vencimiento);
   // Fuera de rango (ya venció -> el backend lo bloquea; o falta más de 5 días).
   if (dias <= 0 || dias > 5) return null;
 
-  const url = armarLinkWhatsApp(usuario, dias);
   const critico = dias <= 1;
+  const url = linkRenovarWhatsApp({
+    negocio: usuario.negocio_nombre,
+    estado: critico ? '24h' : dias,
+  });
 
-  // -------- Alerta fija en la esquina (24 hs o menos), no se cierra --------
+  // -------- Alerta fija en la esquina (24 hs o menos), con cuenta regresiva --------
   if (critico) {
     return (
       <a
@@ -53,14 +63,16 @@ export default function AvisoVencimiento() {
         rel="noreferrer"
         className="fixed bottom-4 right-4 z-[9999] flex items-center gap-3 max-w-xs
                    bg-red-600 text-white rounded-2xl shadow-2xl px-4 py-3
-                   ring-2 ring-red-300 animate-pulse hover:animate-none
-                   hover:bg-red-700 transition-colors cursor-pointer"
+                   ring-2 ring-red-300 hover:bg-red-700 transition-colors cursor-pointer"
         title="Tocá para renovar por WhatsApp"
       >
-        <span className="text-2xl leading-none">⏰</span>
+        <span className="text-2xl leading-none animate-pulse">⏰</span>
         <span className="text-sm leading-tight">
-          <strong className="block">Tu suscripción vence en menos de 24 hs</strong>
-          <span className="opacity-90">Tocá acá para renovar por WhatsApp</span>
+          <strong className="block">Tu suscripción vence en</strong>
+          <span className="block font-mono text-lg font-bold tabular-nums tracking-wide">
+            {fmtCuentaRegresiva(msRestantes)}
+          </span>
+          <span className="opacity-90 text-xs">Tocá acá para renovar por WhatsApp</span>
         </span>
       </a>
     );

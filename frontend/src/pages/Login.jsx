@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTema } from '../context/TemaContext';
+import { linkRenovarWhatsApp } from '../utils/contacto';
 
 // Inicial del nombre del negocio para el "avatar" de la pantalla 2
 const inicial = (txt) => (txt || '?').trim().charAt(0).toUpperCase();
@@ -234,12 +235,13 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
   const [password, setPassword] = useState('');
   const [verPass, setVerPass] = useState(false);
   const [error, setError] = useState('');
+  const [bloqueoRenovar, setBloqueoRenovar] = useState(false);
   const [cargando, setCargando] = useState(false);
   const color = negocio?.color_primario || '#16a34a';
 
   const enviar = async (e) => {
     e.preventDefault();
-    setError(''); setCargando(true);
+    setError(''); setBloqueoRenovar(false); setCargando(true);
     try {
       const usuario = await login(username.trim(), password);
       await cargarTema();
@@ -254,7 +256,10 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
         navigate(tienePermisoAdmin ? '/admin' : '/pos');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Usuario o contraseña incorrectos');
+      const msg = err.response?.data?.error || 'Usuario o contraseña incorrectos';
+      setError(msg);
+      // Suscripción vencida o cuenta bloqueada: ofrecer renovar por WhatsApp.
+      setBloqueoRenovar(err.response?.status === 403 && /vencid|bloquead/i.test(msg));
     } finally {
       setCargando(false);
     }
@@ -283,7 +288,19 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
 
       <form onSubmit={enviar} className="p-8 space-y-4">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">{error}</div>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">
+            <p>{error}</p>
+            {bloqueoRenovar && (
+              <a
+                href={linkRenovarWhatsApp({ negocio: negocio?.nombre, estado: 'vencido' })}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2.5 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg px-3 py-2 transition-colors"
+              >
+                <span className="text-base">💬</span> Renovar por WhatsApp
+              </a>
+            )}
+          </div>
         )}
 
         <div>
