@@ -103,6 +103,12 @@ app.use('/api/salud', rutasSalud);
 // Soporte técnico
 app.use('/api/soporte', rutasSoporte);
 
+// Gateway interno del ticket de acceso ARCA (maquina a maquina, protegido por
+// secreto). Va ANTES del /api/arca protegido por JWT para que sea alcanzable sin
+// login de usuario. Solo expone /api/arca/ticket-compartido; el resto cae al router
+// protegido de abajo.
+app.use('/api/arca', require('./routes/arcaGateway'));
+
 // Facturación Electrónica ARCA — solo plan premium
 app.use('/api/arca', verificarToken, validarLimitePlan, puedeUsarFuncion('facturacion_electronica'), rutasArca);
 

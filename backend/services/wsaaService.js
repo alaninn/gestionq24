@@ -395,11 +395,113 @@ async function obtenerTicketAcceso(negocio_id, servicio = 'wsfe') {
     };
 }
 
+// =============================================
+// TICKET COMPARTIDO DEL CERTIFICADO DELEGADO
+// Devuelve el TA (token+sign) del certificado delegado (maestro), reutilizando
+// el que esté vigente en la cache compartida y pidiendo uno nuevo a AFIP solo si
+// venció. Sirve como fuente ÚNICA del ticket para ese certificado, así otro
+// sistema del mismo grupo (ej: burgerpos, que comparte el CUIT) se lo pide a
+// gestionq24 en vez de a AFIP y NUNCA se piden dos TA para el mismo certificado
+// (AFIP rechaza el segundo mientras el primero esté vigente).
+// =============================================
+async function obtenerTicketDelegadoCompartido(servicio = 'wsfe') {
+    const cacheServicio = `${servicio}-delegado`;
+
+    // 1) Reusar el TA compartido vigente (se busca solo por servicio).
+    const cache = await db.query(
+        `SELECT token, sign, expiracion FROM tickets_acceso_wsaa
+         WHERE servicio = $1 AND expiracion > NOW()
+         ORDER BY created_at DESC LIMIT 1`,
+        [cacheServicio]
+    );
+    if (cache.rows.length > 0) {
+        const t = cache.rows[0];
+        return { token: t.token, sign: t.sign, expiracion: t.expiracion, cacheado: true };
+    }
+
+    // 2) Pedir uno nuevo a AFIP firmando con el certificado delegado (producción).
+    const delegado = obtenerCertDelegado();
+    if (!delegado.disponible) throw new Error(delegado.error);
+
+    const entorno = 'produccion';
+    const tra = crearTRA(servicio);
+    const cms = firmarTRA(tra, delegado.certPath, delegado.keyPath);
+    const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:ser="http://wsaa.view.sua.dvadac.desein.afip.gov">
+    <soapenv:Header/>
+    <soapenv:Body>
+        <ser:loginCms>
+            <ser:in0>${cms}</ser:in0>
+        </ser:loginCms>
+    </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const extraerFault = (err) => {
+        const data = err?.response?.data;
+        if (typeof data === 'string') {
+            const m = data.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
+            if (m) return m[1].trim();
+        }
+        return null;
+    };
+
+    let response;
+    try {
+        response = await axios.post(WSAA_URLS[entorno], soapEnvelope, {
+            headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': '' },
+            timeout: 30000
+        });
+    } catch (axiosError) {
+        const fault = extraerFault(axiosError);
+        if (fault) throw new Error(`WSAA rechazó la autenticación: ${fault}`);
+        response = await axios.post(WSAA_URLS_ALT[entorno], soapEnvelope, {
+            headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': '' },
+            timeout: 30000
+        });
+    }
+
+    if (!response.data) throw new Error('Respuesta vacía del WSAA');
+    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+    const resultado = await parser.parseStringPromise(response.data);
+    const envelope = resultado['soapenv:Envelope'] || resultado['Envelope'] || resultado['soap:Envelope'];
+    const soapBody = envelope['soapenv:Body'] || envelope['Body'] || envelope['soap:Body'];
+    const loginCmsResponse = soapBody['ns1:loginCmsResponse'] || soapBody['loginCmsResponse'] || soapBody['ns2:loginCmsResponse'];
+    if (!loginCmsResponse) throw new Error('Respuesta inválida del WSAA');
+    const loginTicketResponseStr = loginCmsResponse.loginCmsReturn || loginCmsResponse.loginTicketReturn || loginCmsResponse.return;
+    if (!loginTicketResponseStr) throw new Error('No se encontró loginCmsReturn en la respuesta');
+    const decoded = loginTicketResponseStr
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    const loginTicketResponse = await parser.parseStringPromise(decoded);
+    const credentials = loginTicketResponse.loginTicketResponse.credentials;
+    const header = loginTicketResponse.loginTicketResponse.header;
+    if (!credentials || !credentials.token || !credentials.sign) {
+        throw new Error(`Error WSAA: ${JSON.stringify(loginTicketResponse.loginTicketResponse.error)}`);
+    }
+
+    // 3) Guardar en la cache compartida. La tabla exige negocio_id (FK): se usa un
+    // negocio "titular" estable (configurable) solo como dueño de la fila; la
+    // lectura es por servicio, así que el ticket es compartido igual.
+    const holder = parseInt(process.env.ARCA_DELEGADO_HOLDER_NEGOCIO || '1', 10);
+    try {
+        await db.query(
+            `INSERT INTO tickets_acceso_wsaa (negocio_id, servicio, token, sign, expiracion)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [holder, cacheServicio, credentials.token, credentials.sign, new Date(header.expirationTime)]
+        );
+    } catch (e) {
+        console.error('No se pudo cachear el TA compartido:', e.message);
+    }
+
+    return { token: credentials.token, sign: credentials.sign, expiracion: header.expirationTime, cacheado: false };
+}
+
 module.exports = {
     solicitarTicketAcceso,
     obtenerTicketAcceso,
     obtenerTicketValido,
     obtenerCertDelegado,
+    obtenerTicketDelegadoCompartido,
     firmarTRA,
     crearTRA,
     WSAA_URLS
