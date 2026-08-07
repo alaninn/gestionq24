@@ -28,7 +28,7 @@ function fmtCuentaRegresiva(ms) {
 }
 
 export default function AvisoVencimiento() {
-  const { usuario } = useAuth();
+  const { usuario, refrescarUsuario } = useAuth();
   const [ocultoBanner, setOcultoBanner] = useState(
     () => localStorage.getItem(claveOcultoHoy()) === '1'
   );
@@ -38,6 +38,20 @@ export default function AvisoVencimiento() {
     const id = setInterval(() => setAhora(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Mientras el aviso puede estar visible (faltan <= 5 días), refrescamos la fecha
+  // de vencimiento desde el servidor cada 45s. Así, si el superadmin renueva la
+  // suscripción, el cartel (incluida la alerta fija de 24 hs) desaparece solo, sin
+  // necesidad de recargar la página.
+  useEffect(() => {
+    if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return;
+    const v = new Date(usuario.fecha_vencimiento);
+    const corte = new Date(v.getFullYear(), v.getMonth(), v.getDate() + 1).getTime();
+    const diasAprox = Math.ceil((corte - Date.now()) / 86400000);
+    if (diasAprox > 5) return; // fuera de la ventana de aviso: no hace falta refrescar
+    const id = setInterval(() => { refrescarUsuario && refrescarUsuario(); }, 45000);
+    return () => clearInterval(id);
+  }, [usuario?.fecha_vencimiento, usuario?.rol, refrescarUsuario]);
 
   // El superadmin no ve avisos; tampoco si no hay fecha de vencimiento.
   if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return null;

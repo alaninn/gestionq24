@@ -330,7 +330,7 @@ router.get('/me', async (req, res) => {
                 return res.status(403).json({ error: 'Tu cuenta está bloqueada.' });
             }
             if (usuario.negocio_estado === 'vencido' ||
-                (usuario.fecha_vencimiento && new Date(usuario.fecha_vencimiento) < new Date())) {
+                diaVencido(usuario.fecha_vencimiento)) {
                 return res.status(403).json({ error: 'Tu suscripción ha vencido.' });
             }
         }

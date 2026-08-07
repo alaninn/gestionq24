@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.45.0';
+export const VERSION_ACTUAL = '2.45.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.45.1',
+    fecha: '2026-08-07',
+    titulo: 'Aviso de vencimiento: se actualiza solo al renovar',
+    cambios: [
+      { t: 'Cuando renuevan tu suscripción, el aviso de vencimiento (incluida la alerta de las últimas 24 hs) desaparece solo en menos de un minuto, sin necesidad de recargar la página.' },
+      { t: 'Podés usar el sistema durante todo el día de vencimiento; el corte recién ocurre al día siguiente.' },
+    ],
+  },
   {
     version: '2.45.0',
     fecha: '2026-08-05',
