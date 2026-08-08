@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.45.1';
+export const VERSION_ACTUAL = '2.46.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.46.0',
+    fecha: '2026-08-08',
+    titulo: 'Tutoriales del sistema',
+    cambios: [
+      { t: 'Nuevo menú "📚 Tutoriales": tarjetas por módulo que abren una guía paso a paso de cómo usar cada sección (con tips y errores comunes), pensada para que la entienda cualquiera.' },
+      { t: 'Cada usuario ve los tutoriales de las secciones que puede usar.' },
+    ],
+  },
   {
     version: '2.45.1',
     fecha: '2026-08-07',

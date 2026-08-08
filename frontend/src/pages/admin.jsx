@@ -22,6 +22,7 @@ import MovimientosMercaderia from '../components/admin/MovimientosMercaderia';
 import PrediccionCompras from '../components/admin/PrediccionCompras';
 import VersionChangelog from '../components/shared/VersionChangelog';
 import AvisoVencimiento from '../components/shared/AvisoVencimiento';
+import Tutoriales from '../components/admin/Tutoriales';
 
 function NombreNegocio() {
   const [nombre, setNombre] = useState(() => {
@@ -233,6 +234,8 @@ function Admin() {
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
             </>
           )}
+          {/* Ayuda: siempre visible para cualquier usuario */}
+          <NavLink to="/admin/tutoriales" icon="📚" label="Tutoriales" />
         </nav>
 
         <div className="p-4 border-t border-gray-800 space-y-2">
@@ -328,6 +331,7 @@ function Admin() {
             <Route path="/mis-negocios" element={<MisNegocios />} />
             <Route path="/movimientos" element={<MovimientosMercaderia />} />
             <Route path="/prediccion-compras" element={<PrediccionCompras />} />
+            <Route path="/tutoriales" element={<Tutoriales />} />
           </Routes>
         </main>
       </div>
