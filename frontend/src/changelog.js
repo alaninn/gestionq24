@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.46.0';
+export const VERSION_ACTUAL = '2.46.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.46.1',
+    fecha: '2026-08-09',
+    titulo: 'Tutoriales: más información y fotos ampliables',
+    cambios: [
+      { t: 'Cada tutorial ahora explica para qué te sirve cada sección (beneficios), con muchos más detalles y pasos, en lenguaje bien simple.' },
+      { t: 'Las capturas se pueden tocar para verlas en grande (pantalla completa).' },
+      { t: 'Se agregaron capturas reales con indicaciones a la mayoría de los módulos.' },
+    ],
+  },
   {
     version: '2.46.0',
     fecha: '2026-08-08',
