@@ -42,7 +42,7 @@ export default function VisorTutorial({ tutorial, onCerrar }) {
 
   const {
     icono, titulo, color = 'from-emerald-500 to-green-600', pro,
-    intro, beneficios = [], pasos = [], tips = [], erroresComunes = [],
+    intro, beneficios = [], pasos = [], funciones = [], tips = [], erroresComunes = [],
   } = tutorial;
 
   return createPortal(
@@ -108,6 +108,25 @@ export default function VisorTutorial({ tutorial, onCerrar }) {
                         <ImagenPaso src={p.imagen} alt={p.titulo} onAmpliar={setZoom} />
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Todos los botones y opciones (detalle exhaustivo) */}
+            {funciones.length > 0 && (
+              <div>
+                <p className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2">🧩 Todos los botones y opciones (uno por uno)</p>
+                <div className="space-y-2">
+                  {funciones.map((f, i) => (
+                    typeof f === 'string' ? (
+                      <p key={i} className="text-xs font-bold text-gray-500 uppercase tracking-wide pt-2">{f}</p>
+                    ) : (
+                      <div key={i} className="border border-gray-200 rounded-lg p-3">
+                        <p className="font-semibold text-gray-800 text-sm">{f.titulo}</p>
+                        <p className="text-sm text-gray-600 leading-relaxed mt-0.5">{f.texto}</p>
+                      </div>
+                    )
                   ))}
                 </div>
               </div>

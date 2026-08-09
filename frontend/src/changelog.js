@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.46.1';
+export const VERSION_ACTUAL = '2.46.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.46.2',
+    fecha: '2026-08-09',
+    titulo: 'Tutoriales 100% completos: cada botón explicado',
+    cambios: [
+      { t: 'Cada tutorial ahora tiene una sección "🧩 Todos los botones y opciones" que explica, uno por uno, qué hace cada botón, filtro, pestaña y ventana de esa pantalla.' },
+      { t: 'Se cubrieron todas las funciones de cada módulo, en lenguaje simple, para que no te quede ninguna duda.' },
+    ],
+  },
   {
     version: '2.46.1',
     fecha: '2026-08-09',
