@@ -19,6 +19,26 @@ const httpsAgent = new https.Agent({
 const db = require('../config/database');
 const wsaaService = require('./wsaaService');
 
+// Traduce un error de la comunicación con AFIP a un mensaje claro para el usuario.
+// Cuando AFIP está caído/saturado (503, 5xx, timeout, sin respuesta), no es un
+// problema del negocio ni del sistema: hay que reintentar más tarde.
+function mensajeErrorArca(error) {
+    const esAxios = !!error?.isAxiosError;
+    const status = error?.response?.status;
+    const code = error?.code;
+    const data = error?.response?.data;
+    const afipCaido = esAxios && (
+        (status >= 500 && status <= 599) ||
+        ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ERR_BAD_RESPONSE', 'ERR_NETWORK'].includes(code) ||
+        (typeof data === 'string' && /Service Unavailable|Bad Gateway|Gateway Time-?out|<h1>50\d<\/h1>/i.test(data)) ||
+        !error?.response // pedido axios que no obtuvo respuesta = problema de red/AFIP
+    );
+    if (afipCaido) {
+        return 'AFIP no está disponible en este momento (su servidor de facturación no responde). Es un problema de AFIP, no del sistema. Esperá unos minutos y volvé a intentar; mientras tanto podés seguir vendiendo (queda como Factura X, sin CAE).';
+    }
+    return error?.message || 'No se pudo emitir el comprobante.';
+}
+
 // Crear directorio para certificados si no existe
 const CERT_DIR = path.join(__dirname, '../uploads/certificados');
 if (!fs.existsSync(CERT_DIR)) {
@@ -581,7 +601,7 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
         
         return {
             exito: false,
-            error: error.message
+            error: mensajeErrorArca(error)
         };
     }
 }
@@ -918,7 +938,7 @@ async function emitirNotaCredito({ negocio_id, venta_id }) {
                 importeTotal, importeNeto, importeIva, xmlEnviado, xmlRespuesta
             ]);
         } catch (dbError) { console.error('Error guardando NC con error:', dbError.message); }
-        return { exito: false, error: error.message };
+        return { exito: false, error: mensajeErrorArca(error) };
     }
 }
 
