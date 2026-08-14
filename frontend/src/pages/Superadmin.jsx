@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import VersionChangelog from '../components/shared/VersionChangelog';
+import RevendedoresModal from '../components/superadmin/RevendedoresModal';
 import useCerrarConAtras from '../hooks/useCerrarConAtras';
 import { MODULOS_PLAN, CLAVES_MODULOS_PLAN } from '../constants/modulos';
 
@@ -49,6 +50,7 @@ function Superadmin() {
   // Visor de logs (bajo demanda: solo consume mientras está iniciado)
   const [mostrarModalLogs, setMostrarModalLogs] = useState(false);
   const [mostrarModalPlanes, setMostrarModalPlanes] = useState(false);
+  const [mostrarModalRevendedores, setMostrarModalRevendedores] = useState(false);
   const [mostrarModalErrores, setMostrarModalErrores] = useState(false);
   const [errInfo, setErrInfo] = useState(null);     // cantidad de errores
   const [subiendoGit, setSubiendoGit] = useState(false);
@@ -615,6 +617,11 @@ function Superadmin() {
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
             title="Configurar límites y funciones de cada plan">
             📐 <span className="hidden sm:inline">Planes</span>
+          </button>
+          <button onClick={() => setMostrarModalRevendedores(true)}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            title="Gestionar revendedores marca blanca y sus tokens">
+            🏷️ <span className="hidden sm:inline">Revendedores</span>
           </button>
           <button onClick={() => setMostrarModalErrores(true)}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
@@ -1807,6 +1814,11 @@ function Superadmin() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Revendedores (marca blanca) */}
+      {mostrarModalRevendedores && (
+        <RevendedoresModal onCerrar={() => setMostrarModalRevendedores(false)} />
       )}
 
       {/* Modal Configuración de Planes */}

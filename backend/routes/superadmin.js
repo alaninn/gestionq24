@@ -7,7 +7,8 @@ const router = express.Router();
 const path = require('path');
 const axios = require('axios');
 const db = require('../config/database');
-const { verificarToken, soloSuperadmin, invalidarCacheNegocio } = require('../middleware/auth');
+const { verificarToken, soloSuperadmin, invalidarCacheNegocio, invalidarCacheDuenoNegocio } = require('../middleware/auth');
+const { getConfigSistema, invalidarCacheConfigSistema } = require('../helpers/configSistema');
 
 router.use(verificarToken);
 router.use(soloSuperadmin);
@@ -1178,6 +1179,192 @@ router.put('/planes/:plan', async (req, res) => {
     } catch (error) {
         console.error('Error actualizando plan:', error);
         res.status(500).json({ error: 'Error al actualizar el plan' });
+    }
+});
+
+// =============================================
+// CAPA DE REVENDEDORES (panel maestro)
+// Gestión de revendedores, carga manual de tokens y config global.
+// Todo apagado por defecto (config_sistema.revendedores_habilitado = FALSE).
+// =============================================
+
+// GET /api/superadmin/config-sistema — interruptor + defaults de tokens
+router.get('/config-sistema', async (req, res) => {
+    try {
+        const cfg = await getConfigSistema();
+        res.json(cfg);
+    } catch (error) {
+        console.error('Error al leer config del sistema:', error);
+        res.status(500).json({ error: 'Error al leer la configuración' });
+    }
+});
+
+// PUT /api/superadmin/config-sistema — encender/apagar la capa y fijar defaults
+router.put('/config-sistema', async (req, res) => {
+    try {
+        const { revendedores_habilitado, precio_token, dias_por_token } = req.body;
+        const hab = typeof revendedores_habilitado === 'boolean' ? revendedores_habilitado : null;
+        const precio = precio_token != null ? parseInt(precio_token) : null;
+        const dias = dias_por_token != null ? parseInt(dias_por_token) : null;
+
+        const r = await db.query(`
+            UPDATE config_sistema SET
+                revendedores_habilitado = COALESCE($1::boolean, revendedores_habilitado),
+                precio_token = COALESCE($2::integer, precio_token),
+                dias_por_token = COALESCE($3::integer, dias_por_token)
+            WHERE id = 1
+            RETURNING *
+        `, [hab, precio, dias]);
+        invalidarCacheConfigSistema();
+        res.json(r.rows[0]);
+    } catch (error) {
+        console.error('Error al actualizar config del sistema:', error);
+        res.status(500).json({ error: 'Error al actualizar la configuración' });
+    }
+});
+
+// GET /api/superadmin/revendedores — lista con tokens, negocios y cobrado
+router.get('/revendedores', async (req, res) => {
+    try {
+        const r = await db.query(`
+            SELECT
+                r.id, r.nombre, r.email, r.tokens, r.activo, r.slug,
+                r.marca_nombre, r.marca_color, r.precio_token, r.dias_por_token, r.created_at,
+                (SELECT COUNT(*) FROM negocios n WHERE n.revendedor_id = r.id)::int AS total_negocios,
+                (SELECT COUNT(*) FROM negocios n WHERE n.revendedor_id = r.id
+                    AND n.estado = 'activo' AND (n.fecha_vencimiento IS NULL OR n.fecha_vencimiento >= NOW()))::int AS negocios_activos,
+                (SELECT COALESCE(SUM(cantidad), 0) FROM revendedor_tokens_mov m
+                    WHERE m.revendedor_id = r.id AND m.tipo = 'compra')::int AS tokens_comprados
+            FROM revendedores r
+            ORDER BY r.created_at DESC
+        `).catch(() => ({ rows: [] }));
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error al listar revendedores:', error);
+        res.status(500).json({ error: 'Error al obtener revendedores' });
+    }
+});
+
+// POST /api/superadmin/revendedores — crear revendedor
+router.post('/revendedores', async (req, res) => {
+    try {
+        const { nombre, email, password, tokens, slug, marca_nombre, marca_color, precio_token, dias_por_token } = req.body;
+        if (!nombre || !email || !password) {
+            return res.status(400).json({ error: 'Nombre, email y contraseña son obligatorios' });
+        }
+        const tk = parseInt(tokens) || 0;
+        let slugLimpio = slug ? String(slug).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : null;
+        if (slugLimpio === '') slugLimpio = null;
+
+        const r = await db.query(`
+            INSERT INTO revendedores (nombre, email, password_hash, tokens, slug, marca_nombre, marca_color, precio_token, dias_por_token)
+            VALUES ($1, $2, crypt($3, gen_salt('bf')), $4, $5, $6, COALESCE($7, '#f97316'), $8, $9)
+            RETURNING id, nombre, email, tokens, activo, slug, marca_nombre, marca_color, precio_token, dias_por_token, created_at
+        `, [nombre, email, password, tk, slugLimpio, marca_nombre || nombre, marca_color || null,
+            precio_token != null ? parseInt(precio_token) : null,
+            dias_por_token != null ? parseInt(dias_por_token) : null]);
+
+        // Si arrancó con tokens, dejamos el movimiento en el libro.
+        if (tk > 0) {
+            await db.query(`
+                INSERT INTO revendedor_tokens_mov (revendedor_id, tipo, cantidad, saldo_resultante, observaciones)
+                VALUES ($1, 'carga_manual', $2, $2, 'Tokens iniciales')
+            `, [r.rows[0].id, tk]);
+        }
+        res.status(201).json(r.rows[0]);
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ya existe un revendedor con ese email o enlace (slug)' });
+        }
+        console.error('Error al crear revendedor:', error);
+        res.status(500).json({ error: 'Error al crear revendedor' });
+    }
+});
+
+// PUT /api/superadmin/revendedores/:id — editar (incluye activar/bloquear y reset de contraseña)
+router.put('/revendedores/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nombre, email, activo, slug, marca_nombre, marca_color, precio_token, dias_por_token, password } = req.body;
+        const act = typeof activo === 'boolean' ? activo : null;
+        let slugLimpio = slug != null ? String(slug).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') : null;
+        if (slugLimpio === '') slugLimpio = null;
+
+        const r = await db.query(`
+            UPDATE revendedores SET
+                nombre = COALESCE($1, nombre),
+                email = COALESCE($2, email),
+                activo = COALESCE($3::boolean, activo),
+                slug = COALESCE($4, slug),
+                marca_nombre = COALESCE($5, marca_nombre),
+                marca_color = COALESCE($6, marca_color),
+                precio_token = COALESCE($7::integer, precio_token),
+                dias_por_token = COALESCE($8::integer, dias_por_token),
+                password_hash = CASE WHEN $9::text IS NOT NULL AND $9 <> '' THEN crypt($9, gen_salt('bf')) ELSE password_hash END
+            WHERE id = $10
+            RETURNING id, nombre, email, tokens, activo, slug, marca_nombre, marca_color, precio_token, dias_por_token, created_at
+        `, [nombre || null, email || null, act, slugLimpio, marca_nombre || null, marca_color || null,
+            precio_token != null ? parseInt(precio_token) : null,
+            dias_por_token != null ? parseInt(dias_por_token) : null,
+            password != null ? password : null, id]);
+
+        if (!r.rows[0]) return res.status(404).json({ error: 'Revendedor no encontrado' });
+        res.json(r.rows[0]);
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ese email o enlace (slug) ya está en uso' });
+        }
+        console.error('Error al actualizar revendedor:', error);
+        res.status(500).json({ error: 'Error al actualizar revendedor' });
+    }
+});
+
+// POST /api/superadmin/revendedores/:id/tokens — cargar/quitar tokens manual
+router.post('/revendedores/:id/tokens', async (req, res) => {
+    const { id } = req.params;
+    const cantidad = parseInt(req.body.cantidad);
+    const observaciones = req.body.observaciones || null;
+    if (!cantidad || isNaN(cantidad)) {
+        return res.status(400).json({ error: 'Indicá una cantidad de tokens (positiva para cargar, negativa para quitar)' });
+    }
+    const cliente = await db.pool.connect();
+    try {
+        await cliente.query('BEGIN');
+        const rv = await cliente.query('SELECT tokens FROM revendedores WHERE id = $1 FOR UPDATE', [id]);
+        if (!rv.rows[0]) { await cliente.query('ROLLBACK'); return res.status(404).json({ error: 'Revendedor no encontrado' }); }
+        const nuevoSaldo = rv.rows[0].tokens + cantidad;
+        if (nuevoSaldo < 0) {
+            await cliente.query('ROLLBACK');
+            return res.status(400).json({ error: 'No se puede dejar el saldo de tokens en negativo' });
+        }
+        await cliente.query('UPDATE revendedores SET tokens = $1 WHERE id = $2', [nuevoSaldo, id]);
+        await cliente.query(`
+            INSERT INTO revendedor_tokens_mov (revendedor_id, tipo, cantidad, saldo_resultante, observaciones)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [id, cantidad >= 0 ? 'carga_manual' : 'ajuste', cantidad, nuevoSaldo, observaciones]);
+        await cliente.query('COMMIT');
+        res.json({ tokens: nuevoSaldo });
+    } catch (error) {
+        await cliente.query('ROLLBACK').catch(() => {});
+        console.error('Error al cargar tokens:', error);
+        res.status(500).json({ error: 'Error al cargar tokens' });
+    } finally {
+        cliente.release();
+    }
+});
+
+// GET /api/superadmin/revendedores/:id/movimientos — libro de tokens
+router.get('/revendedores/:id/movimientos', async (req, res) => {
+    try {
+        const r = await db.query(`
+            SELECT id, tipo, cantidad, saldo_resultante, negocio_id, pago_ref, observaciones, fecha
+            FROM revendedor_tokens_mov WHERE revendedor_id = $1
+            ORDER BY fecha DESC, id DESC LIMIT 300
+        `, [req.params.id]);
+        res.json(r.rows);
+    } catch (error) {
+        console.error('Error al obtener movimientos:', error);
+        res.status(500).json({ error: 'Error al obtener movimientos' });
     }
 });
 

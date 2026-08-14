@@ -116,10 +116,27 @@ function Admin() {
   const accesoSuperadminNegocio = localStorage.getItem('acceso_superadmin_negocio');
   const esSuperadminAccediendo = usuario?.rol === 'superadmin' && accesoSuperadminNegocio;
 
+  // Detectar si un REVENDEDOR está operando uno de sus negocios (impersonación).
+  const esRevendedorAccediendo = localStorage.getItem('impersonacion_revendedor') === '1' && !!accesoSuperadminNegocio;
+
   const volveraSuperadmin = () => {
+    if (esRevendedorAccediendo) {
+      // Volver al panel del revendedor: limpiamos la sesión "prestada" del negocio
+      // (el token del revendedor sigue en token_revendedor para su panel).
+      localStorage.removeItem('impersonacion_revendedor');
+      localStorage.removeItem('acceso_superadmin_negocio');
+      localStorage.removeItem('token');
+      localStorage.removeItem('usuario');
+      window.location.href = '/revendedor';
+      return;
+    }
     localStorage.removeItem('acceso_superadmin_negocio');
     navigate('/superadmin');
   };
+
+  // Bandera unificada: hay una sesión de administración por encima del negocio.
+  const hayAccesoSuperior = esSuperadminAccediendo || esRevendedorAccediendo;
+  const etiquetaPanel = esRevendedorAccediendo ? 'Mi panel' : 'SuperAdmin';
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -267,10 +284,10 @@ function Admin() {
             <span className="font-bold text-gray-800 text-sm">SistemasQ24</span>
           </div>
           <div className="flex items-center gap-2">
-            {esSuperadminAccediendo && (
+            {hayAccesoSuperior && (
               <button onClick={volveraSuperadmin}
                 className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-                👑 SuperAdmin
+                {esRevendedorAccediendo ? '↩️ ' + etiquetaPanel : '👑 SuperAdmin'}
               </button>
             )}
             <button onClick={() => navigate('/pos')}
@@ -281,13 +298,15 @@ function Admin() {
           </div>
         </div>
 
-        {/* Barra superior para SuperAdmin (Desktop) */}
-        {esSuperadminAccediendo && (
+        {/* Barra superior de sesión de administración (SuperAdmin o Revendedor) */}
+        {hayAccesoSuperior && (
           <div className="lg:flex bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 items-center justify-between sticky top-0 z-10 shadow-lg">
             <div className="flex items-center gap-3">
-              <span className="text-xl">👑</span>
+              <span className="text-xl">{esRevendedorAccediendo ? '🏷️' : '👑'}</span>
               <div>
-                <p className="text-xs opacity-75 uppercase tracking-wide font-medium">Modo SuperAdmin activo</p>
+                <p className="text-xs opacity-75 uppercase tracking-wide font-medium">
+                  {esRevendedorAccediendo ? 'Estás operando un negocio tuyo' : 'Modo SuperAdmin activo'}
+                </p>
                 <p className="font-bold text-sm">
                   Estás viendo:{' '}
                   <span className="bg-purple-500 bg-opacity-50 px-2 py-0.5 rounded-md">
@@ -298,7 +317,7 @@ function Admin() {
             </div>
             <div className="flex items-center gap-3 mt-2 lg:mt-0">
               <p className="text-xs opacity-75 hidden lg:block">
-                Cualquier cambio que hagas afecta al negocio del cliente
+                Cualquier cambio que hagas afecta a este negocio
               </p>
               <button onClick={volveraSuperadmin}
                 className="bg-white text-purple-700 hover:bg-purple-50 px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 shadow">

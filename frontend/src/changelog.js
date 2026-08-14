@@ -14,9 +14,21 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.46.2';
+export const VERSION_ACTUAL = '2.47.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.47.0',
+    fecha: '2026-08-14',
+    titulo: 'Revendedores marca blanca con tokens',
+    cambios: [
+      { t: 'Nueva capa de revendedores: cada revendedor administra sus propios negocios con su marca (nombre, color y logo), usando un sistema de tokens.', super: true },
+      { t: 'Panel maestro con gestión de revendedores: alta/edición, carga de tokens, precio del token y días por token. Se enciende o apaga desde el botón "Revendedores".', super: true },
+      { t: 'Cada revendedor tiene su panel para crear negocios (usa 1 token), renovarlos, editarlos, acceder a cada uno y comprar más tokens.', super: true },
+      { t: 'Aislamiento total entre revendedores: los negocios y usuarios de uno nunca se cruzan con los de otro.', super: true },
+      { t: 'La capa viene apagada por defecto: no cambia nada del funcionamiento actual hasta que se active.', super: true },
+    ],
+  },
   {
     version: '2.46.2',
     fecha: '2026-08-09',

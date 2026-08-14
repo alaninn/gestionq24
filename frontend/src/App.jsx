@@ -1,10 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useTema } from './context/TemaContext';
 import Login from './pages/Login';
 import POS from './pages/pos';
 import Admin from './pages/admin';
 import Superadmin from './pages/Superadmin';
+import Revendedor from './pages/Revendedor';
 import Landing from './pages/Landing';
 import { TemaProvider } from './context/TemaContext';
 import { ConectividadProvider } from './context/ConectividadContext';
@@ -18,6 +19,14 @@ function puedeEntrarAdmin(usuario) {
     ? JSON.parse(usuario.permisos || '{}')
     : (usuario.permisos || {});
   return Object.values(permisos).some(lista => Array.isArray(lista) && lista.length > 0);
+}
+
+// Acceso marca blanca por /r/<slug>: guarda el slug del revendedor para que el
+// Paso 1 (acceso del negocio) scopee la búsqueda del negocio a ese revendedor.
+function AccesoMarcaBlanca() {
+  const { slug } = useParams();
+  if (slug) localStorage.setItem('revendedor_slug', slug);
+  return <Login />;
 }
 
 function redireccionInicio(usuario) {
@@ -89,6 +98,14 @@ function AppRoutes() {
           <Superadmin />
         </RutaProtegida>
       } />
+
+      {/* Panel del revendedor (marca blanca). Autocontenido: gestiona su propia
+          sesión, no pasa por RutaProtegida/AuthContext. */}
+      <Route path="/revendedor" element={<Revendedor />} />
+
+      {/* Acceso marca blanca de los clientes de un revendedor: guarda el slug y
+          muestra el login de negocios normal (Paso 1 scopeado a ese revendedor). */}
+      <Route path="/r/:slug" element={<AccesoMarcaBlanca />} />
 
       <Route path="/pos" element={
         <RutaProtegida>

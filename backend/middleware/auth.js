@@ -38,6 +38,38 @@ function invalidarCacheNegocio(negocioId) {
     if (negocioId != null) cacheNegocio.delete(parseInt(negocioId));
 }
 
+// -----------------------------------------------
+// Pertenencia negocio -> revendedor (aislamiento estricto de la capa de
+// revendedores). Cacheado 30 s. Un revendedor SOLO puede operar un negocio si
+// ese negocio tiene revendedor_id = su id. Ante error de BD devuelve false
+// (fail-closed): mejor negar el acceso cruzado que arriesgar una fuga entre
+// revendedores.
+// -----------------------------------------------
+const cacheDuenoNegocio = new Map(); // negocio_id -> { revendedor_id, ts }
+
+async function negocioEsDeRevendedor(negocioId, revendedorId) {
+    if (!negocioId || !revendedorId) return false;
+    try {
+        const ahora = Date.now();
+        const cache = cacheDuenoNegocio.get(negocioId);
+        let duenoId;
+        if (cache && ahora - cache.ts < TTL_MS) {
+            duenoId = cache.revendedor_id;
+        } else {
+            const r = await db.query('SELECT revendedor_id FROM negocios WHERE id = $1', [negocioId]);
+            duenoId = r.rows[0] ? r.rows[0].revendedor_id : null;
+            cacheDuenoNegocio.set(negocioId, { revendedor_id: duenoId, ts: ahora });
+        }
+        return duenoId != null && parseInt(duenoId) === parseInt(revendedorId);
+    } catch (e) {
+        return false; // fail-closed ante error de BD (aislamiento)
+    }
+}
+
+function invalidarCacheDuenoNegocio(negocioId) {
+    if (negocioId != null) cacheDuenoNegocio.delete(parseInt(negocioId));
+}
+
 const verificarToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
@@ -58,12 +90,29 @@ const verificarToken = async (req, res, next) => {
     const negocioIdHeader = req.headers['x-negocio-id'];
     if (decoded.rol === 'superadmin' && negocioIdHeader) {
         req.negocio_id = parseInt(negocioIdHeader);
+    } else if (decoded.rol === 'revendedor') {
+        // Capa de revendedores: el token no pertenece a un negocio. Si el
+        // revendedor quiere OPERAR uno de sus negocios (impersonar), manda el
+        // header x-negocio-id y validamos que ese negocio sea suyo. Sin header,
+        // opera su propio panel (sin negocio_id).
+        req.revendedor_id = decoded.revendedor_id;
+        if (negocioIdHeader) {
+            const propio = await negocioEsDeRevendedor(parseInt(negocioIdHeader), decoded.revendedor_id);
+            if (!propio) {
+                return res.status(403).json({ error: 'No tenés acceso a ese negocio.' });
+            }
+            req.negocio_id = parseInt(negocioIdHeader);
+            req.revendedorImpersonando = true;
+        } else {
+            req.negocio_id = null;
+        }
     } else {
         req.negocio_id = decoded.negocio_id;
     }
 
-    // Verificaciones de negocio (excepto superadmin)
-    if (decoded.rol !== 'superadmin') {
+    // Verificaciones de negocio (excepto superadmin y revendedor, que son
+    // roles de administración por encima de los negocios).
+    if (decoded.rol !== 'superadmin' && decoded.rol !== 'revendedor') {
         const validPlans = ['estandar', 'premium'];
         if (!validPlans.includes(decoded.plan)) {
             return res.status(403).json({
@@ -94,8 +143,19 @@ const soloSuperadmin = (req, res, next) => {
 };
 
 const soloAdmin = (req, res, next) => {
+    // El revendedor cuenta como admin SOLO cuando está impersonando un negocio
+    // suyo (validado en verificarToken). En su propio panel no aplica.
+    if (req.usuario.rol === 'revendedor' && req.revendedorImpersonando) return next();
     if (!['superadmin', 'admin'].includes(req.usuario.rol)) {
         return res.status(403).json({ error: 'Acceso denegado. Se requiere rol admin.' });
+    }
+    next();
+};
+
+// Solo el rol revendedor (para el panel del revendedor, sin impersonar negocio).
+const soloRevendedor = (req, res, next) => {
+    if (req.usuario.rol !== 'revendedor') {
+        return res.status(403).json({ error: 'Acceso denegado. Solo revendedores.' });
     }
     next();
 };
@@ -108,6 +168,9 @@ const verificarPermiso = (modulo, accion) => {
 
         // Superadmin y admin tienen acceso total
         if (rol === 'superadmin' || rol === 'admin') return next();
+
+        // Revendedor impersonando un negocio suyo: opera como admin de ese negocio.
+        if (rol === 'revendedor' && req.revendedorImpersonando) return next();
 
         // Verificamos en los permisos del usuario
         const permisosUsuario = typeof permisos === 'string'
@@ -122,4 +185,4 @@ const verificarPermiso = (modulo, accion) => {
     };
 };
 
-module.exports = { verificarToken, soloSuperadmin, soloAdmin, verificarPermiso, invalidarCacheNegocio };
+module.exports = { verificarToken, soloSuperadmin, soloAdmin, soloRevendedor, verificarPermiso, invalidarCacheNegocio, invalidarCacheDuenoNegocio, negocioEsDeRevendedor };

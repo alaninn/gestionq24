@@ -98,7 +98,10 @@ const login = async (username, password) => {
 
   // Paso 1: el dueño/admin fija el negocio en esta PC con su mail + contraseña.
   const accederNegocio = async (email, password) => {
-    const res = await api.post('/api/auth/acceso-negocio', { email, password });
+    // Si el equipo entró por un enlace de marca blanca (/r/<slug>), scopeamos el
+    // acceso a los negocios de ese revendedor. Sin slug, comportamiento actual.
+    const slug = localStorage.getItem('revendedor_slug') || undefined;
+    const res = await api.post('/api/auth/acceso-negocio', { email, password, slug });
     localStorage.setItem('device_token', res.data.deviceToken);
     localStorage.setItem('device_negocio', JSON.stringify(res.data.negocio));
     setNegocioFijado(res.data.negocio);

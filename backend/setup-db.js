@@ -598,6 +598,84 @@ CREATE TABLE IF NOT EXISTS producto_combo (
 CREATE INDEX IF NOT EXISTS idx_producto_combo_combo ON producto_combo(combo_id);
 CREATE INDEX IF NOT EXISTS idx_producto_combo_negocio ON producto_combo(negocio_id);
 
+-- =============================================
+-- CAPA DE REVENDEDORES (marca blanca con tokens)
+-- Todo esto es ADITIVO e INERTE mientras el interruptor global
+-- revendedores_habilitado siga en FALSE. No cambia nada del flujo actual.
+-- =============================================
+
+-- Configuracion global del sistema (una sola fila, id=1). Guarda el interruptor
+-- de la capa de revendedores y los valores por defecto de tokens.
+CREATE TABLE IF NOT EXISTS config_sistema (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    revendedores_habilitado BOOLEAN DEFAULT FALSE,
+    precio_token INTEGER DEFAULT 20000,
+    dias_por_token INTEGER DEFAULT 30,
+    CONSTRAINT config_sistema_una_fila CHECK (id = 1)
+);
+INSERT INTO config_sistema (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Revendedores: cada uno administra sus propios negocios (marca blanca) y tiene
+-- una billetera de tokens. slug sirve para el acceso marca blanca por URL.
+CREATE TABLE IF NOT EXISTS revendedores (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    tokens INTEGER NOT NULL DEFAULT 0,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    slug VARCHAR(60) UNIQUE,
+    marca_nombre VARCHAR(150),
+    marca_logo TEXT,
+    marca_color VARCHAR(20) DEFAULT '#f97316',
+    precio_token INTEGER,
+    dias_por_token INTEGER DEFAULT 30,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_revendedores_slug ON revendedores(slug);
+
+-- Libro de movimientos de tokens por revendedor (auditoria completa).
+-- tipo: compra (MP) | consumo (crear/renovar negocio) | carga_manual (maestro) | ajuste
+CREATE TABLE IF NOT EXISTS revendedor_tokens_mov (
+    id SERIAL PRIMARY KEY,
+    revendedor_id INTEGER NOT NULL REFERENCES revendedores(id) ON DELETE CASCADE,
+    tipo VARCHAR(20) NOT NULL,
+    cantidad INTEGER NOT NULL,
+    saldo_resultante INTEGER,
+    negocio_id INTEGER,
+    pago_ref VARCHAR(120),
+    observaciones TEXT,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_mov_revendedor ON revendedor_tokens_mov(revendedor_id);
+-- Idempotencia del webhook de pagos: no acreditar dos veces el mismo pago.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_mov_pago_ref
+ON revendedor_tokens_mov(pago_ref)
+WHERE pago_ref IS NOT NULL;
+
+-- Vinculo negocio -> revendedor (NULL = negocio directo del maestro, como hoy).
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS revendedor_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_negocios_revendedor ON negocios(revendedor_id);
+
+-- AISLAMIENTO: aflojar los UNIQUE globales de email para que no choquen entre
+-- distintos revendedores. Solo AFLOJA la regla (global a por-scope): como los
+-- datos actuales ya son unicos a nivel global, siguen siendo validos y no se
+-- rechaza ninguna fila existente.
+
+-- usuarios.email: pasa de unico global a unico POR NEGOCIO.
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS usuarios_email_negocio_uniq
+ON usuarios (negocio_id, lower(email))
+WHERE email IS NOT NULL;
+
+-- negocios.email: pasa de unico global a unico POR REVENDEDOR. El indice
+-- funcional trata NULL como 0, asi los negocios directos del maestro siguen
+-- siendo unicos entre si (y acceso-negocio por email sigue funcionando igual).
+ALTER TABLE negocios DROP CONSTRAINT IF EXISTS negocios_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS negocios_email_revendedor_uniq
+ON negocios (COALESCE(revendedor_id, 0), lower(email))
+WHERE email IS NOT NULL;
+
 `;
 
 async function setupDB() {

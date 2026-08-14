@@ -57,6 +57,10 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', cred
 app.use('/api/auth', rutasAuth);
 app.use('/api/publico', require('./routes/publico'));
 
+// Webhook de pagos (Mercado Pago) — público, lo llama MP. Inactivo si no hay
+// MP_ACCESS_TOKEN o si la capa de revendedores está apagada.
+app.use('/api/pagos', require('./routes/pagos'));
+
 // Productos
 app.use('/api/productos', verificarToken, validarLimitePlan, rutasProductos);
 
@@ -120,6 +124,11 @@ app.use('/api/multinegocio', verificarToken, validarLimitePlan, require('./route
 // Usuarios y superadmin
 app.use('/api/usuarios', verificarToken, validarLimitePlan, rutasUsuarios);
 app.use('/api/superadmin', verificarToken, soloSuperadmin, rutasSuperadmin);
+
+// Panel del revendedor (capa marca blanca). Scopeado a su revendedor_id. La
+// guarda interna del router responde 404 si la capa está apagada.
+const { soloRevendedor } = require('./middleware/auth');
+app.use('/api/revendedor', verificarToken, soloRevendedor, require('./routes/revendedor'));
 
 // Servir el frontend
 const rutaFrontend = process.env.RENDER 

@@ -189,7 +189,7 @@ router.post('/login', async (req, res) => {
 // -----------------------------------------------
 router.post('/acceso-negocio', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, slug } = req.body;
         const clientIP = req.ip || req.connection.remoteAddress;
         const attemptKey = `negocio-${clientIP}-${(email || '').toLowerCase()}`;
 
@@ -203,6 +203,26 @@ router.post('/acceso-negocio', async (req, res) => {
         if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
             const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
             return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
+        }
+
+        // Aislamiento marca blanca: si llega un slug de revendedor (acceso por
+        // /r/<slug>), la busqueda del negocio se limita a los negocios de ESE
+        // revendedor. Sin slug, se limita a los negocios directos del maestro
+        // (revendedor_id IS NULL), que es exactamente el comportamiento actual
+        // (hoy todos los negocios son directos). Asi no hay ambiguedad de email
+        // entre distintos revendedores.
+        const valores = [email, password];
+        let filtroDueno = ' AND n.revendedor_id IS NULL';
+        if (slug) {
+            const rev = await db.query(
+                'SELECT id FROM revendedores WHERE slug = $1 AND activo = TRUE',
+                [slug]
+            ).catch(() => ({ rows: [] }));
+            if (!rev.rows[0]) {
+                return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
+            }
+            valores.push(rev.rows[0].id);
+            filtroDueno = ' AND n.revendedor_id = $3';
         }
 
         // El acceso del negocio se abre con el mail del negocio y la contraseña del
@@ -223,8 +243,9 @@ router.post('/acceso-negocio', async (req, res) => {
             WHERE LOWER(u.email) = LOWER($1)
               AND u.activo = TRUE
               AND u.rol = 'admin'
+              ${filtroDueno}
             LIMIT 1
-        `, [email, password]);
+        `, valores);
 
         const fila = r.rows[0];
         // Contraseña válida: la del portal si está configurada; si no, la del admin.
@@ -275,6 +296,88 @@ router.post('/acceso-negocio', async (req, res) => {
     }
 });
 
+// -----------------------------------------------
+// RUTA: POST /api/auth/login-revendedor
+// FUNCIÓN: Login de la capa de revendedores (marca blanca). Separado del login
+//          de negocios para no tocar ese flujo. Solo funciona si la capa de
+//          revendedores está habilitada en la config global (modo apagado por
+//          defecto). Emite un JWT con rol 'revendedor'.
+// -----------------------------------------------
+router.post('/login-revendedor', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const clientIP = req.ip || req.connection.remoteAddress;
+        const attemptKey = `rev-${clientIP}-${(email || '').toLowerCase()}`;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Mail y contraseña son obligatorios' });
+        }
+
+        // Interruptor global: si la capa está apagada, no existe el login.
+        const { revendedoresHabilitado } = require('../helpers/configSistema');
+        if (!(await revendedoresHabilitado())) {
+            return res.status(404).json({ error: 'No disponible' });
+        }
+
+        const now = Date.now();
+        const attempts = loginAttempts.get(attemptKey);
+        if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
+            const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
+            return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
+        }
+
+        const r = await db.query(`
+            SELECT id, nombre, email, activo,
+                   marca_nombre, marca_color, slug,
+                   (password_hash = crypt($2, password_hash)) AS pass_ok
+            FROM revendedores
+            WHERE LOWER(email) = LOWER($1)
+            LIMIT 1
+        `, [email, password]);
+
+        const rev = r.rows[0];
+        if (!rev || !rev.pass_ok) {
+            const a = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
+            a.count++; a.lastAttempt = now;
+            loginAttempts.set(attemptKey, a);
+            return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
+        }
+
+        if (!rev.activo) {
+            return res.status(403).json({ error: 'Tu cuenta de revendedor está desactivada. Contactá al administrador.' });
+        }
+
+        loginAttempts.delete(attemptKey);
+
+        const token = jwt.sign(
+            {
+                tipo: 'revendedor',
+                revendedor_id: rev.id,
+                rol: 'revendedor',
+                nombre: rev.nombre,
+                email: rev.email,
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            token,
+            revendedor: {
+                id: rev.id,
+                nombre: rev.nombre,
+                email: rev.email,
+                marca_nombre: rev.marca_nombre || null,
+                marca_color: rev.marca_color || '#f97316',
+                slug: rev.slug || null,
+            }
+        });
+    } catch (error) {
+        console.error('Error en login-revendedor:', error);
+        res.status(500).json({ error: 'Error al iniciar sesión' });
+    }
+});
+
 // Función auxiliar para registrar intento fallido (se usa internamente)
 const registrarIntentoFallido = (req) => {
     const { username } = req.body;
@@ -303,6 +406,42 @@ router.get('/me', async (req, res) => {
 
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Capa de revendedores: el token no pertenece a un usuario de negocio.
+        if (decoded.rol === 'revendedor') {
+            const negocioIdHeader = req.headers['x-negocio-id'];
+            if (!negocioIdHeader) {
+                // Sin impersonar: identidad del propio revendedor.
+                return res.json({
+                    rol: 'revendedor',
+                    revendedor_id: decoded.revendedor_id,
+                    nombre: decoded.nombre || null,
+                    email: decoded.email || null,
+                });
+            }
+            // Impersonando un negocio: validamos pertenencia y devolvemos una
+            // identidad tipo admin de ESE negocio, para reutilizar el panel admin.
+            const ng = await db.query(`
+                SELECT id, nombre, estado, fecha_vencimiento, plan
+                FROM negocios WHERE id = $1 AND revendedor_id = $2
+            `, [parseInt(negocioIdHeader), decoded.revendedor_id]);
+            if (!ng.rows[0]) {
+                return res.status(403).json({ error: 'No tenés acceso a ese negocio.' });
+            }
+            const neg = ng.rows[0];
+            return res.json({
+                id: null,
+                rol: 'admin',
+                nombre: decoded.nombre || 'Revendedor',
+                email: decoded.email || null,
+                negocio_id: neg.id,
+                negocio_nombre: neg.nombre,
+                permisos: {},
+                plan: neg.plan,
+                fecha_vencimiento: neg.fecha_vencimiento,
+                impersonado_por_revendedor: true,
+            });
+        }
 
         // Traemos los datos actualizados del usuario incluyendo estado del negocio
         const resultado = await db.query(`
