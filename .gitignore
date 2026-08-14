@@ -8,3 +8,4 @@ uploads/
 backend/backups/
 backend/scripts/_tmp_*.js
 .vps-credenciales
+_auxiliar/
