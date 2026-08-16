@@ -27,14 +27,33 @@ function mensajeErrorArca(error) {
     const status = error?.response?.status;
     const code = error?.code;
     const data = error?.response?.data;
-    const afipCaido = esAxios && (
+    const msg = String(error?.message || '');
+
+    const afipCaidoAxios = esAxios && (
         (status >= 500 && status <= 599) ||
         ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ERR_BAD_RESPONSE', 'ERR_NETWORK'].includes(code) ||
         (typeof data === 'string' && /Service Unavailable|Bad Gateway|Gateway Time-?out|<h1>50\d<\/h1>/i.test(data)) ||
         !error?.response // pedido axios que no obtuvo respuesta = problema de red/AFIP
     );
-    if (afipCaido) {
-        return 'AFIP no está disponible en este momento (su servidor de facturación no responde). Es un problema de AFIP, no del sistema. Esperá unos minutos y volvé a intentar; mientras tanto podés seguir vendiendo (queda como Factura X, sin CAE).';
+
+    // La caída de AFIP suele llegar ya "envuelta" en un Error común (perdió el
+    // flag isAxiosError al re-lanzarse), o como una falla interna del propio
+    // AFIP (su base de datos caída, mantenimiento programado). La detectamos por
+    // el texto del error para mostrar igual el mensaje claro. Solo firmas de
+    // infraestructura/servicio: una validación de datos (CUIT, importe, fecha)
+    // NO matchea y conserva su motivo específico.
+    const afipCaidoTexto = (
+        /Error de conexi[oó]n con WSFEv1/i.test(msg) ||
+        /status code 5\d\d/i.test(msg) ||
+        /Respuesta inv[aá]lida del WSFEv1/i.test(msg) ||
+        /Service Unavailable|Bad Gateway|Gateway Time-?out/i.test(msg) ||
+        /Connection request timed out|OracleException/i.test(msg) ||
+        /Error interno de base de datos/i.test(msg) ||   // AFIP error 501
+        /servicio no disponible/i.test(msg)              // AFIP error 603
+    );
+
+    if (afipCaidoAxios || afipCaidoTexto) {
+        return 'AFIP no está disponible en este momento (su servidor de facturación no responde o está en mantenimiento). Es un problema de AFIP, no del sistema. Esperá unos minutos y volvé a intentar; mientras tanto podés seguir vendiendo (queda como Factura X, sin CAE).';
     }
     return error?.message || 'No se pudo emitir el comprobante.';
 }

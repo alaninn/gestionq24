@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.47.0';
+export const VERSION_ACTUAL = '2.47.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.47.1',
+    fecha: '2026-08-16',
+    titulo: 'Facturación: mensaje claro cuando AFIP está caído o en mantenimiento',
+    cambios: [
+      { t: 'Cuando AFIP no responde o está en mantenimiento, la facturación ahora te avisa con un mensaje claro ("es un problema de AFIP, esperá unos minutos") en vez de un texto técnico. Mientras tanto podés seguir vendiendo: la venta queda como Factura X y la podés facturar cuando AFIP vuelva.' },
+    ],
+  },
   {
     version: '2.47.0',
     fecha: '2026-08-14',
