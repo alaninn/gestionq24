@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.47.1';
+export const VERSION_ACTUAL = '2.47.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.47.2',
+    fecha: '2026-08-16',
+    titulo: 'Facturas que fallaron por AFIP: se reintentan solas + aviso',
+    cambios: [
+      { t: 'Si una venta no se pudo facturar porque AFIP estaba caído o en mantenimiento, ahora el sistema la reintenta solo cada 30 minutos y la factura apenas AFIP vuelve. No hay que hacer nada.' },
+      { t: 'En Facturación Electrónica aparece un aviso con cuántas ventas quedaron sin facturar y un botón "Reintentar ahora" para hacerlo en el momento.' },
+      { t: 'Solo se reintentan las ventas de los últimos 7 días; nunca se factura dos veces la misma venta.' },
+    ],
+  },
   {
     version: '2.47.1',
     fecha: '2026-08-16',

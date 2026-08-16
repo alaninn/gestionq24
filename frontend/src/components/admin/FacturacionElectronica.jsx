@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import Toggle from '../shared/Toggle';
+import AvisoFacturasPendientes from './AvisoFacturasPendientes';
 
 function FacturacionElectronica({ config, setConfig }) {
   const [certificados, setCertificados] = useState([]);
@@ -268,6 +269,9 @@ function FacturacionElectronica({ config, setConfig }) {
 
   return (
     <div className="space-y-6">
+      {/* Aviso de ventas que quedaron sin facturar (ej. AFIP caído) */}
+      <AvisoFacturasPendientes />
+
       {/* Título */}
       <div>
         <h2 className="text-2xl font-bold text-gray-800">🧾 Facturación Electrónica</h2>

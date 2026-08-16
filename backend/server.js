@@ -185,3 +185,17 @@ schedule.scheduleJob('0 * * * *', async () => { // cada hora
         console.error('Error generando alertas automáticas:', err.message);
     }
 });
+
+// Reintento automático de facturaciones que quedaron en error (ej. AFIP caído o
+// en mantenimiento). Cada 30 min, y una vez ~2 min después de arrancar para que
+// se recuperen rápido tras un despliegue o cuando AFIP vuelve.
+schedule.scheduleJob('*/30 * * * *', async () => {
+    try {
+        await require('./services/refacturacion').reintentarTodos();
+    } catch (err) {
+        console.error('Error en reintento automático de facturación:', err.message);
+    }
+});
+setTimeout(() => {
+    require('./services/refacturacion').reintentarTodos().catch(() => {});
+}, 120000);

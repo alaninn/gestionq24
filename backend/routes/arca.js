@@ -11,6 +11,7 @@ const db = require('../config/database');
 const { verificarToken, soloAdmin } = require('../middleware/auth');
 const arcaService = require('../services/arcaService');
 const wsaaService = require('../services/wsaaService');
+const refacturacion = require('../services/refacturacion');
 
 // Configurar multer para subida de archivos
 const storage = multer.diskStorage({
@@ -391,6 +392,47 @@ router.post('/emitir', verificarToken, async (req, res) => {
     } catch (error) {
         console.error('❌ Error emitiendo comprobante:', error);
         res.status(500).json({ error: error.message || 'Error al emitir comprobante' });
+    }
+});
+
+// =============================================
+// FACTURAS PENDIENTES: ventas cuya facturación falló (ej. AFIP caído) y siguen
+// sin CAE. Se reintentan solas periódicamente; acá se pueden ver y reintentar
+// a mano.
+// =============================================
+router.get('/pendientes', verificarToken, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const pendientes = await refacturacion.listarPendientes(negocio_id);
+        res.json({
+            total: pendientes.length,
+            pendientes: pendientes.map(p => ({
+                venta_id: p.venta_id,
+                importe_total: p.importe_total,
+                tipo_comprobante: p.tipo_comprobante,
+                fecha: p.created_at,
+            })),
+        });
+    } catch (error) {
+        console.error('Error listando facturas pendientes:', error);
+        res.status(500).json({ error: 'Error al obtener facturas pendientes' });
+    }
+});
+
+// Reintentar ahora las pendientes de este negocio.
+router.post('/reintentar', verificarToken, async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await refacturacion.reintentarNegocio(negocio_id);
+        if (r.afipCaido) {
+            return res.json({ ...r, mensaje: 'AFIP sigue sin responder. Las facturas quedan pendientes y se reintentan solas cuando AFIP vuelva.' });
+        }
+        res.json({ ...r, mensaje: `Se emitieron ${r.exitosas} de ${r.intentadas}. Quedan ${r.pendientes} pendiente(s).` });
+    } catch (error) {
+        console.error('Error reintentando facturación:', error);
+        res.status(500).json({ error: 'Error al reintentar la facturación' });
     }
 });
 
