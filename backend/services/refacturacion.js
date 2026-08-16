@@ -117,19 +117,26 @@ async function reintentarNegocio(negocioId) {
                 importe_total: p.importe_total,
                 importe_neto: p.importe_neto,
                 importe_iva: p.importe_iva,
+                noGuardarError: true, // no acumular filas de error en cada reintento
             });
             if (r && r.exito) {
                 exitosas++;
-                // Marcar el intento viejo como reintentado (para que no vuelva a
-                // contarse como pendiente ni ensucie el conteo de errores).
-                await db.query("UPDATE comprobantes_electronicos SET estado = 'reintentado' WHERE id = $1", [p.id]).catch(() => {});
+                // Marcar todos los intentos fallidos de esa venta como reintentados,
+                // así no vuelven a contarse como pendientes ni ensucian el conteo.
+                await db.query(
+                    "UPDATE comprobantes_electronicos SET estado = 'reintentado' WHERE venta_id = $1 AND estado = 'error'",
+                    [p.venta_id]
+                ).catch(() => {});
             } else {
-                // Si volvió a fallar (AFIP se cayó de nuevo, u otro motivo),
-                // cortamos el lote para no seguir golpeando.
                 fallidas++;
-                break;
+                // Si el motivo es que AFIP se cayó (infraestructura), cortamos el
+                // lote para no seguir golpeando. Si fue un rechazo por DATOS de este
+                // comprobante puntual, seguimos con los demás (no se traba el resto).
+                const msg = (r && r.error) || '';
+                if (/AFIP no está disponible|no responde|mantenimiento/i.test(msg)) break;
             }
         } catch (e) {
+            // Excepción de red no controlada = AFIP/infra: cortamos el lote.
             fallidas++;
             break;
         }

@@ -597,25 +597,29 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
         };
     } catch (error) {
         console.error('❌ Error emitiendo comprobante:', error);
-        
-        // Guardar comprobante con error si es posible
-        try {
-            await db.query(`
-                INSERT INTO comprobantes_electronicos (
-                    venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
-                    punto_venta, tipo_comprobante, tipo_documento, numero_documento,
-                    denominacion_comprador, importe_total, importe_neto, importe_iva,
-                    xml_enviado, xml_respuesta, estado
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'error')
-            `, [
-                venta_id, negocio_id, null, null, numeroComprobante || 0,
-                punto_venta, tipo_comprobante, tipo_documento || 99,
-                numero_documento || null, denominacion_comprador || 'Consumidor Final',
-                importe_total, importe_neto || importe_total, importe_iva || 0,
-                xmlEnviado, xmlRespuesta
-            ]);
-        } catch (dbError) {
-            console.error('Error guardando comprobante con error:', dbError);
+
+        // Guardar comprobante con error si es posible. En los REINTENTOS
+        // automáticos no lo guardamos (noGuardarError): ya existe la fila de
+        // error del intento original y no queremos acumular una por cada reintento.
+        if (!datos.noGuardarError) {
+            try {
+                await db.query(`
+                    INSERT INTO comprobantes_electronicos (
+                        venta_id, negocio_id, cae, cae_vencimiento, numero_comprobante,
+                        punto_venta, tipo_comprobante, tipo_documento, numero_documento,
+                        denominacion_comprador, importe_total, importe_neto, importe_iva,
+                        xml_enviado, xml_respuesta, estado
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'error')
+                `, [
+                    venta_id, negocio_id, null, null, numeroComprobante || 0,
+                    punto_venta, tipo_comprobante, tipo_documento || 99,
+                    numero_documento || null, denominacion_comprador || 'Consumidor Final',
+                    importe_total, importe_neto || importe_total, importe_iva || 0,
+                    xmlEnviado, xmlRespuesta
+                ]);
+            } catch (dbError) {
+                console.error('Error guardando comprobante con error:', dbError);
+            }
         }
         
         return {
