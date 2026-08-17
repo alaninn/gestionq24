@@ -74,6 +74,8 @@ module.exports = `<!doctype html>
 
 <script>
 const METODOS = [
+  ['puertos','Puertos/servicios expuestos (MySQL, SSH, RDP…)',true],
+  ['paneles','Paneles admin y backups accesibles',true],
   ['headers','Encabezados de seguridad',true],
   ['jwt','Tokens JWT falsificados',true],
   ['authz','Endpoints sin login',true],

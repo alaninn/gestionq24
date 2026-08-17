@@ -14,8 +14,14 @@
 'use strict';
 const http = require('http');
 const https = require('https');
+const net = require('net');
 const { URL } = require('url');
 const { exec } = require('child_process');
+
+// A prueba de caídas: un error inesperado no debe tumbar el escáner (si no,
+// el navegador queda con "Failed to fetch").
+process.on('unhandledRejection', (e) => console.error('aviso (rejection):', e && e.message));
+process.on('uncaughtException', (e) => console.error('aviso (exception):', e && e.message));
 
 const SEV_ORDEN = { CRITICA: 5, ALTA: 4, MEDIA: 3, BAJA: 2, INFO: 1, OK: 0 };
 
@@ -23,7 +29,7 @@ const SEV_ORDEN = { CRITICA: 5, ALTA: 4, MEDIA: 3, BAJA: 2, INFO: 1, OK: 0 };
 // Cliente HTTP con módulos propios de Node (soporta http/https, self-signed).
 // Nunca lanza: devuelve el resultado o el error para poder analizarlo.
 // ---------------------------------------------------------------------------
-function pedir(method, urlStr, { headers = {}, body, timeout = 9000 } = {}) {
+function pedir(method, urlStr, { headers = {}, body, timeout = 6000 } = {}) {
     return new Promise((resolve) => {
         let u;
         try { u = new URL(urlStr); } catch { return resolve({ status: 0, headers: {}, data: '', ms: 0, err: 'URL inválida' }); }
@@ -112,8 +118,8 @@ const PRUEBAS = {
         }
         if (!exp) add('OK', 'Endpoints protegidos', 'Los endpoints sensibles piden autenticación.', '');
     },
-    sqli: async (base, add, req) => {
-        if (!(await loginAplica(base, req))) return omitidaLogin(add, 'Inyección SQL (login)');
+    sqli: async (base, add, req, ctx) => {
+        if (!ctx.loginExiste) return omitidaLogin(add, 'Inyección SQL (login)');
         const b = await req('POST', base + '/api/auth/login', { body: { username: 'zzz_no_existe', password: 'zzz' } });
         let vuln = false;
         for (const p of ["' OR '1'='1", "admin'--", "' OR 1=1--"]) {
@@ -145,9 +151,9 @@ const PRUEBAS = {
             else add('MEDIA', 'CORS permisivo', `Access-Control-Allow-Origin = ${acao}.`, 'Restringir a orígenes conocidos.');
         } else add('OK', 'CORS restringido', 'No refleja orígenes arbitrarios.', '');
     },
-    credenciales: async (base, add, req) => {
-        if (!(await loginAplica(base, req))) return omitidaLogin(add, 'Credenciales por defecto');
-        const combos = [['admin', 'admin'], ['admin', '1234'], ['admin', '123456'], ['admin', 'admin123'], ['superadmin', 'superadmin'], ['test', 'test'], ['admin', 'password']];
+    credenciales: async (base, add, req, ctx) => {
+        if (!ctx.loginExiste) return omitidaLogin(add, 'Credenciales por defecto');
+        const combos = [['admin', 'admin'], ['admin', '1234'], ['admin', '123456'], ['admin', 'admin123'], ['superadmin', 'superadmin'], ['test', 'test'], ['admin', 'password'], ['administrator', 'administrator'], ['root', 'root'], ['admin', 'l2'], ['admin', 'lineage']];
         let enc = false;
         for (const [u, p] of combos) {
             const r = await req('POST', base + '/api/auth/login', { body: { username: u, password: p } });
@@ -172,8 +178,79 @@ const PRUEBAS = {
         if (/PUT|DELETE/i.test(allow)) add('INFO', 'Métodos de escritura visibles', `Allow: ${allow}`, 'Confirmar que PUT/DELETE estén protegidos.');
         add('OK', 'Métodos HTTP', `Métodos permitidos: ${allow || '(no informado)'}`, '');
     },
-    fuerzabruta: async (base, add, req) => {
-        if (!(await loginAplica(base, req))) return omitidaLogin(add, 'Fuerza bruta');
+    // Puertos/servicios expuestos a Internet (clave para un server de L2 en VPS).
+    puertos: async (base, add) => {
+        let host;
+        try { host = new URL(base).hostname; } catch { return; }
+        if (['localhost', '127.0.0.1', '::1'].includes(host)) {
+            add('INFO', 'Escaneo de puertos sobre localhost', 'Estás escaneando tu propia máquina: los puertos que aparezcan son servicios locales, no reflejan lo que está expuesto a Internet.', 'Para ver la exposición real, escaneá el server por su IP/dominio público desde otra máquina (tu PC).');
+        }
+        const lista = [
+            [21, 'FTP', 'MEDIA'], [23, 'Telnet', 'CRITICA'], [22, 'SSH', 'ALTA'], [25, 'SMTP', 'BAJA'],
+            [3306, 'MySQL', 'CRITICA'], [5432, 'PostgreSQL', 'CRITICA'], [6379, 'Redis', 'CRITICA'],
+            [27017, 'MongoDB', 'CRITICA'], [9200, 'Elasticsearch', 'ALTA'], [11211, 'Memcached', 'ALTA'],
+            [3389, 'RDP', 'ALTA'], [445, 'SMB', 'ALTA'], [139, 'NetBIOS', 'ALTA'], [111, 'RPC', 'MEDIA'],
+            [2106, 'Login L2', 'INFO'], [7777, 'Game L2', 'INFO'], [8080, 'HTTP alternativo', 'INFO'],
+        ];
+        const probar = (port) => new Promise((res) => {
+            const s = net.connect({ host, port, timeout: 3500 });
+            let listo = false;
+            const fin = (v) => { if (!listo) { listo = true; try { s.destroy(); } catch (e) {} res(v); } };
+            s.on('connect', () => fin(true));
+            s.on('timeout', () => fin(false));
+            s.on('error', () => fin(false));
+        });
+        const abiertos = [];
+        await Promise.all(lista.map(async ([port, nombre, sev]) => { if (await probar(port)) abiertos.push([port, nombre, sev]); }));
+        if (!abiertos.length) { add('OK', 'Puertos', 'No se detectaron puertos sensibles abiertos al público.', ''); return; }
+        for (const [port, nombre, sev] of abiertos) {
+            if (sev === 'INFO') add('INFO', `Puerto ${port} abierto (${nombre})`, `Es normal que ${nombre} esté accesible para jugar. Cualquiera puede ver que tu server corre acá.`, 'Ponelo detrás de protección DDoS/proxy y ocultá la IP real (origin).');
+            else add(sev, `Puerto ${port} expuesto: ${nombre}`, `El servicio ${nombre} responde a Internet en ${host}:${port}. Un atacante lo ve y lo ataca directo.`, sev === 'CRITICA'
+                ? `Cerrá ${nombre} al público YA: que escuche solo en 127.0.0.1 o bloquealo por firewall. Nunca debe estar abierto a Internet.`
+                : `Restringí ${nombre} por firewall a IPs conocidas, clave fuerte y (si aplica) 2FA / puerto no estándar.`);
+        }
+    },
+    // Paneles de administración, backups y archivos peligrosos accesibles por web.
+    paneles: async (base, add, req) => {
+        const esHtml = (b) => /<!doctype html|<html/i.test(String(b || '').slice(0, 300));
+        // Línea base: una ruta que seguro no existe. Si responde 200 con HTML, el
+        // sitio devuelve lo mismo para todo (SPA/catch-all) y no podemos confiar en
+        // el 200 para detectar paneles; ahí solo reportamos backups reales (no HTML).
+        const baseline = await req('GET', base + '/zzz-no-existe-' + Math.random().toString(36).slice(2));
+        const catchAll = baseline.status === 200;
+        const baseLen = String(baseline.data || '').length;
+
+        const paneles = ['/admin', '/administrator', '/phpmyadmin', '/pma', '/adminer.php', '/adminer', '/panel', '/acp', '/cpanel', '/wp-admin/', '/wp-login.php'];
+        const backups = ['/backup.sql', '/db.sql', '/dump.sql', '/database.sql', '/backup.zip', '/backup.tar.gz', '/www.zip', '/site.zip', '/config.php.bak', '/.env.bak', '/index.php.bak'];
+        let hall = 0;
+
+        for (const ruta of paneles) {
+            const r = await req('GET', base + ruta);
+            const body = String(r.data || '');
+            if (r.status !== 200 || body.length < 10) continue;
+            // Si es catch-all, solo cuenta si el contenido difiere claramente del baseline.
+            if (catchAll && Math.abs(body.length - baseLen) < 40) continue;
+            hall++;
+            add('ALTA', 'Panel administrativo accesible', `${ruta} responde 200.`, 'Protegé el panel con login + lista de IPs permitidas (o restringilo por firewall).');
+        }
+        for (const ruta of backups) {
+            const r = await req('GET', base + ruta);
+            const body = String(r.data || '');
+            // Un backup real NO es una página HTML. Esto descarta los catch-all/SPA.
+            if (r.status === 200 && body.length > 10 && !esHtml(body)) {
+                hall++;
+                add('CRITICA', 'Backup/archivo sensible accesible', `${ruta} responde 200 con contenido (no es una página normal).`, 'Eliminá ese archivo del servidor web o bloqueá su acceso.');
+            }
+        }
+        // Directory listing
+        for (const ruta of ['/', '/uploads/', '/backup/', '/files/', '/tmp/']) {
+            const r = await req('GET', base + ruta);
+            if (r.status === 200 && /Index of |<title>Index of/i.test(String(r.data || ''))) { hall++; add('ALTA', 'Directory listing habilitado', `${ruta} lista los archivos del directorio.`, 'Deshabilitar autoindex en el servidor web.'); }
+        }
+        if (!hall) add('OK', 'Sin paneles/backups expuestos', 'No se encontraron paneles de admin ni backups accesibles por la web.', '');
+    },
+    fuerzabruta: async (base, add, req, ctx) => {
+        if (!ctx.loginExiste) return omitidaLogin(add, 'Fuerza bruta');
         let fijo = false;
         for (let i = 0; i < 8; i++) { const r = await req('POST', base + '/api/auth/login', { headers: { 'X-Forwarded-For': '203.0.113.7' }, body: { username: 'usuario_prueba_bruta', password: 'malo' + i } }); if (r.status === 429) { fijo = true; break; } }
         if (!fijo) add('ALTA', 'Sin freno de fuerza bruta', 'Tras 8 intentos fallidos no aparece bloqueo (429).', 'Agregar lockout por usuario.');
@@ -194,15 +271,21 @@ async function escanear(urlObjetivo, metodos) {
     const add = (sev, titulo, detalle, recomendacion) => hallazgos.push({ sev, titulo, detalle: detalle || '', recomendacion: recomendacion || '' });
     const req = (m, u, o) => pedir(m, u, o);
 
-    // recon primero; si no responde, cortamos.
-    const vivo = await PRUEBAS.recon(base, add, req);
-    if (vivo) {
-        const orden = ['headers', 'jwt', 'authz', 'sqli', 'archivos', 'cors', 'credenciales', 'errores', 'metodos', 'fuerzabruta'];
+    try {
+        // recon primero; si no responde, cortamos (salvo el chequeo de puertos,
+        // que sirve aunque la web esté caída).
+        const vivo = await PRUEBAS.recon(base, add, req);
+        // Detectar una sola vez si hay endpoint de login (lo usan 3 pruebas).
+        const necesitaLogin = metodos.some((m) => ['sqli', 'credenciales', 'fuerzabruta'].includes(m));
+        const ctx = { loginExiste: (vivo && necesitaLogin) ? await loginAplica(base, req) : false };
+        const orden = ['puertos', 'headers', 'jwt', 'authz', 'sqli', 'archivos', 'paneles', 'cors', 'credenciales', 'errores', 'metodos', 'fuerzabruta'];
         for (const m of orden) {
-            if (metodos.includes(m) && PRUEBAS[m]) {
-                try { await PRUEBAS[m](base, add, req); } catch (e) { add('INFO', `Error corriendo prueba "${m}"`, e.message, ''); }
-            }
+            if (!metodos.includes(m) || !PRUEBAS[m]) continue;
+            if (m !== 'puertos' && !vivo) continue; // sin web viva, solo corre "puertos"
+            try { await PRUEBAS[m](base, add, req, ctx); } catch (e) { add('INFO', `Error corriendo prueba "${m}"`, e.message, ''); }
         }
+    } catch (e) {
+        add('INFO', 'Error durante el escaneo', e.message, '');
     }
     hallazgos.sort((a, b) => SEV_ORDEN[b.sev] - SEV_ORDEN[a.sev]);
     const resumen = {};
@@ -222,10 +305,15 @@ function servir(puerto) {
             return res.end(PAGINA);
         }
         if (req.url.startsWith('/scan')) {
-            const q = new URL(req.url, 'http://x').searchParams;
-            const url = q.get('url') || '';
-            const metodos = (q.get('metodos') || '').split(',').filter(Boolean);
-            const resultado = await escanear(url, metodos);
+            let resultado;
+            try {
+                const q = new URL(req.url, 'http://x').searchParams;
+                const url = q.get('url') || '';
+                const metodos = (q.get('metodos') || '').split(',').filter(Boolean);
+                resultado = await escanear(url, metodos);
+            } catch (e) {
+                resultado = { objetivo: '', error: 'Error durante el escaneo: ' + (e && e.message) };
+            }
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             return res.end(JSON.stringify(resultado));
         }
