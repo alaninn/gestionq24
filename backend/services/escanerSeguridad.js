@@ -50,13 +50,17 @@ async function escanear(urlObjetivo, opciones = {}) {
     // (SQLi, credenciales, fuerza bruta) solo aplican si existe; si no, se omiten
     // para no dar falsos positivos contra sistemas de otro tipo.
     async function loginAplica() {
+        if (waf) return false;
         const r = await req('POST', '/api/auth/login', { data: { username: '__probe__', password: '__probe__' } });
         if (!r.status || r.status === 404) return false;
-        const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 200));
-        if (r.status === 200 && esHtml) return false;
+        // Un login real responde JSON, no HTML (SPA/error/desafío de WAF).
+        const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+        if (esHtml) return false;
         return true;
     }
-    const omitidaLogin = (nombre) => add('INFO', `${nombre}: no aplica`, 'No se encontró un endpoint de login tipo /api/auth/login en este sistema, así que la prueba se omitió (evita falsos positivos).', 'Esta prueba es para sistemas con ese login (ej. gestionq24/burgerpos).');
+    const omitidaLogin = (nombre) => add('INFO', `${nombre}: no aplica`, waf
+        ? 'El sitio está detrás de un WAF/Cloudflare que bloqueó las pruebas, así que esta prueba de login no llegó al servidor real.'
+        : 'No se encontró un endpoint de login tipo /api/auth/login en este sistema, así que la prueba se omitió (evita falsos positivos).', 'Para probarla hay que llegar al servidor real (endpoint tipo gestionq24/burgerpos, sin WAF en el medio).');
 
     // 1) Encabezados de seguridad
     const raiz = await req('GET', '/');
@@ -64,6 +68,12 @@ async function escanear(urlObjetivo, opciones = {}) {
         add('CRITICA', 'El sistema no responde', `No se pudo conectar a ${OBJETIVO} (${raiz.err}).`, 'Verificá que el sistema esté corriendo y que la URL/puerto sean correctos.');
         return armarResultado(OBJETIVO, hallazgos);
     }
+    // ¿Hay un WAF/CDN adelante? Si sí, las pruebas de app no llegan al origin.
+    const _srv = String(raiz.headers['server'] || '');
+    var waf = /cloudflare|sucuri|incapsula|imperva|akamai|ddos-guard|stackpath/i.test(_srv)
+        || !!raiz.headers['cf-ray']
+        || /just a moment|attention required|checking your browser|cf-browser-verification|ddos-guard/i.test(String(raiz.data || ''));
+    if (waf) add('INFO', 'Sitio detrás de Cloudflare/WAF — pruebas de app limitadas', 'El sitio respondió con un desafío/bloqueo del WAF, así que las pruebas de aplicación (login, endpoints, paneles, inyección) NO llegaron al servidor real. Sus resultados "OK" no son concluyentes.', 'Para probar la app real, escaneá el origin directamente (con su IP), no a través de Cloudflare.');
     {
         const h = raiz.headers;
         if (!h['strict-transport-security'] && OBJETIVO.startsWith('https')) add('BAJA', 'Falta HSTS', 'No se envía Strict-Transport-Security sobre HTTPS.', 'Activar HSTS (helmet).');

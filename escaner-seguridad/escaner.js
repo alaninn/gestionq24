@@ -68,8 +68,10 @@ function jsonBody(data) { try { return typeof data === 'string' ? JSON.parse(dat
 async function loginAplica(base, req) {
     const r = await req('POST', base + '/api/auth/login', { body: { username: '__probe__', password: '__probe__' } });
     if (!r.status || r.status === 404) return false;
-    const esHtml = /<html|<!doctype/i.test(String(r.data).slice(0, 200));
-    if (r.status === 200 && esHtml) return false; // devolvió una página, no el endpoint
+    // Un login real de API responde JSON, no una página HTML. Si es HTML (SPA,
+    // página de error, o desafío de Cloudflare/WAF), no es un endpoint testeable.
+    const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+    if (esHtml) return false;
     return true;
 }
 function omitidaLogin(add, nombre) {
@@ -82,10 +84,17 @@ function omitidaLogin(add, nombre) {
 const PRUEBAS = {
     recon: async (base, add, req) => {
         const r = await req('GET', base + '/');
-        if (!r.status) { add('CRITICA', 'El sistema no responde', `No se pudo conectar (${r.err}).`, 'Verificá la URL/puerto y que el sistema esté online.'); return false; }
+        if (!r.status) { add('CRITICA', 'El sistema no responde', `No se pudo conectar (${r.err}).`, 'Verificá la URL/puerto y que el sistema esté online.'); return { vivo: false, waf: false }; }
         const titulo = (String(r.data).match(/<title>([^<]{1,120})<\/title>/i) || [])[1];
         add('INFO', 'Sistema accesible', `Respondió HTTP ${r.status} en ${r.ms}ms${titulo ? ` · título: "${titulo.trim()}"` : ''}${r.headers.server ? ` · server: ${r.headers.server}` : ''}.`, '');
-        return true;
+        // ¿Hay un WAF/CDN (Cloudflare, Sucuri, DDoS-Guard…) adelante? Si sí, las
+        // pruebas de aplicación no llegan al origin y no son concluyentes.
+        const server = String(r.headers.server || '');
+        const waf = /cloudflare|sucuri|incapsula|imperva|akamai|ddos-guard|stackpath/i.test(server)
+            || !!r.headers['cf-ray']
+            || /just a moment|attention required|checking your browser|cf-browser-verification|ddos-guard/i.test(String(r.data || ''));
+        if (waf) add('INFO', 'Sitio detrás de Cloudflare/WAF — pruebas de app limitadas', 'El sitio respondió con un desafío/bloqueo del WAF, así que las pruebas de aplicación (login, endpoints, paneles, inyección) NO llegaron a tu servidor real. Sus resultados "OK" no son concluyentes: solo significan que el WAF bloqueó al escáner.', 'Para probar la app de verdad, escaneá el origin directamente (con su IP, desde dentro de la red), no a través de Cloudflare.');
+        return { vivo: true, waf };
     },
     headers: async (base, add, req) => {
         const r = await req('GET', base + '/');
@@ -274,10 +283,12 @@ async function escanear(urlObjetivo, metodos) {
     try {
         // recon primero; si no responde, cortamos (salvo el chequeo de puertos,
         // que sirve aunque la web esté caída).
-        const vivo = await PRUEBAS.recon(base, add, req);
-        // Detectar una sola vez si hay endpoint de login (lo usan 3 pruebas).
+        const recon = await PRUEBAS.recon(base, add, req);
+        const vivo = recon.vivo;
+        // Detectar una sola vez si hay endpoint de login (lo usan 3 pruebas). Si
+        // hay WAF adelante, no tiene sentido probar login (todo da 403 del WAF).
         const necesitaLogin = metodos.some((m) => ['sqli', 'credenciales', 'fuerzabruta'].includes(m));
-        const ctx = { loginExiste: (vivo && necesitaLogin) ? await loginAplica(base, req) : false };
+        const ctx = { loginExiste: (vivo && necesitaLogin && !recon.waf) ? await loginAplica(base, req) : false };
         const orden = ['puertos', 'headers', 'jwt', 'authz', 'sqli', 'archivos', 'paneles', 'cors', 'credenciales', 'errores', 'metodos', 'fuerzabruta'];
         for (const m of orden) {
             if (!metodos.includes(m) || !PRUEBAS[m]) continue;
