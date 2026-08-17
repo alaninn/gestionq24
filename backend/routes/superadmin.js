@@ -1368,4 +1368,23 @@ router.get('/revendedores/:id/movimientos', async (req, res) => {
     }
 });
 
+// =============================================
+// PRUEBAS DE SEGURIDAD (menú "hacker" del panel maestro)
+// Corre el escáner de auto-auditoría contra una URL de un sistema propio.
+// Solo superadmin (el router ya aplica soloSuperadmin). Pruebas no destructivas.
+// Nota: el escaneo se hace DESDE el servidor donde corre la app; si lo usás en
+// producción, "localhost" apunta al propio servidor, no a tu PC.
+// =============================================
+router.post('/escaner', async (req, res) => {
+    try {
+        const { url, fuerzaBruta } = req.body || {};
+        if (!url) return res.status(400).json({ error: 'Indicá la URL a escanear (ej. http://localhost:3001)' });
+        const { escanear } = require('../services/escanerSeguridad');
+        const resultado = await escanear(url, { fuerzaBruta: fuerzaBruta !== false });
+        res.json(resultado);
+    } catch (error) {
+        res.status(400).json({ error: error.message || 'No se pudo escanear' });
+    }
+});
+
 module.exports = router;

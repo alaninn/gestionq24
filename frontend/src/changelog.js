@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.48.0';
+export const VERSION_ACTUAL = '2.48.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.48.1',
+    fecha: '2026-08-17',
+    titulo: 'Panel maestro: botón de Pruebas de seguridad',
+    cambios: [
+      { t: 'Nuevo botón "🕵️ Pruebas" en el panel maestro: escaneás un sistema propio (por URL) y ves en pantalla un informe de vulnerabilidades (login, permisos, headers, fuerza bruta, archivos expuestos y más).', super: true },
+    ],
+  },
   {
     version: '2.48.0',
     fecha: '2026-08-17',
