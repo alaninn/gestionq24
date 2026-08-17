@@ -46,6 +46,18 @@ async function escanear(urlObjetivo, opciones = {}) {
         }
     }
 
+    // ¿Existe un endpoint de login tipo /api/auth/login? Las pruebas de login
+    // (SQLi, credenciales, fuerza bruta) solo aplican si existe; si no, se omiten
+    // para no dar falsos positivos contra sistemas de otro tipo.
+    async function loginAplica() {
+        const r = await req('POST', '/api/auth/login', { data: { username: '__probe__', password: '__probe__' } });
+        if (!r.status || r.status === 404) return false;
+        const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 200));
+        if (r.status === 200 && esHtml) return false;
+        return true;
+    }
+    const omitidaLogin = (nombre) => add('INFO', `${nombre}: no aplica`, 'No se encontró un endpoint de login tipo /api/auth/login en este sistema, así que la prueba se omitió (evita falsos positivos).', 'Esta prueba es para sistemas con ese login (ej. gestionq24/burgerpos).');
+
     // 1) Encabezados de seguridad
     const raiz = await req('GET', '/');
     if (!raiz.status) {
@@ -87,7 +99,8 @@ async function escanear(urlObjetivo, opciones = {}) {
     }
 
     // 4) Inyección SQL en el login
-    {
+    if (!(await loginAplica())) { omitidaLogin('Inyección SQL (login)'); }
+    else {
         const base = await req('POST', '/api/auth/login', { data: { username: 'zzz_no_existe', password: 'zzz' } });
         let vuln = false;
         for (const p of ["' OR '1'='1", "admin'--", "' OR 1=1--"]) {
@@ -124,7 +137,8 @@ async function escanear(urlObjetivo, opciones = {}) {
     }
 
     // 7) Credenciales débiles / por defecto
-    {
+    if (!(await loginAplica())) { omitidaLogin('Credenciales por defecto'); }
+    else {
         const combos = [['admin', 'admin'], ['admin', '1234'], ['admin', '123456'], ['admin', 'admin123'], ['superadmin', 'superadmin'], ['test', 'test'], ['admin', 'password']];
         let enc = false;
         for (const [u, p] of combos) {
@@ -148,7 +162,9 @@ async function escanear(urlObjetivo, opciones = {}) {
 
     // 9) Fuerza bruta (+ evasión por X-Forwarded-For). Al final: puede dejar
     //    usuarios de prueba bloqueados un rato. Se puede saltear con fuerzaBruta:false.
-    if (incluirFuerzaBruta) {
+    if (incluirFuerzaBruta && !(await loginAplica())) {
+        omitidaLogin('Fuerza bruta');
+    } else if (incluirFuerzaBruta) {
         let bloqueoFijo = false;
         for (let i = 0; i < 8; i++) {
             const r = await req('POST', '/api/auth/login', { headers: { 'X-Forwarded-For': '203.0.113.7' }, data: { username: 'usuario_prueba_bruta', password: 'malo' + i } });
