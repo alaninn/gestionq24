@@ -37,7 +37,24 @@ const { validarLimitePlan, puedeUsarFuncion } = require('./middleware/planLimite
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 app.use(helmet({
-    contentSecurityPolicy: false,
+    // CSP afinada a lo que la app REALMENTE usa, para no romper nada:
+    //  - scripts propios + la librería de QR del comprobante (cdnjs)
+    //  - estilos inline (React/Tailwind) + Google Fonts
+    //  - imágenes propias, data: y blob: (logos, QR, capturas)
+    contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", 'https://cdnjs.cloudflare.com'],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+            connectSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            frameAncestors: ["'self'"],
+        },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false,

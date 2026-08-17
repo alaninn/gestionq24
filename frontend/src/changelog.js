@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.48.1';
+export const VERSION_ACTUAL = '2.48.2';
 
 export const CHANGELOG = [
+  {
+    version: '2.48.2',
+    fecha: '2026-08-17',
+    titulo: 'Seguridad: Content-Security-Policy',
+    cambios: [
+      { t: 'Se agregó una política de seguridad de contenido (CSP) que reduce el riesgo de scripts maliciosos, sin afectar el funcionamiento del sistema.', super: true },
+    ],
+  },
   {
     version: '2.48.1',
     fecha: '2026-08-17',
