@@ -108,13 +108,17 @@ const PRUEBAS = {
         if (!PRUEBAS._huboProblema(add)) add('OK', 'Encabezados de seguridad', 'Los encabezados principales están presentes.', '');
     },
     jwt: async (base, add, req) => {
-        const rutas = ['/api/superadmin/negocios', '/api/usuarios', '/api/configuracion', '/api/admin', '/admin'];
+        // Solo rutas de API (devuelven JSON). No rutas del frontend/SPA como /admin,
+        // que responden 200 con HTML para cualquier ruta (daría falso positivo).
+        const rutas = ['/api/superadmin/negocios', '/api/usuarios', '/api/configuracion', '/api/ventas'];
         const none = b64url({ alg: 'none', typ: 'JWT' }) + '.' + b64url({ id: 1, rol: 'superadmin' }) + '.';
         const basura = b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url({ id: 1, rol: 'superadmin' }) + '.firmafalsa';
         let aceptado = false;
         for (const ruta of rutas) for (const tok of [none, basura]) {
             const r = await req('GET', base + ruta, { headers: { Authorization: 'Bearer ' + tok } });
-            if (r.status && ![401, 403, 404, 0].includes(r.status)) { aceptado = true; add('CRITICA', 'Token JWT falsificado aceptado', `${ruta} respondió ${r.status} con un token sin firma válida.`, 'Verificar la firma y no permitir alg=none.'); }
+            const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+            // Un bypass real devuelve datos (JSON), no la página HTML de la app.
+            if (r.status && ![401, 403, 404, 0].includes(r.status) && !esHtml) { aceptado = true; add('CRITICA', 'Token JWT falsificado aceptado', `${ruta} respondió ${r.status} con datos, usando un token sin firma válida.`, 'Verificar la firma y no permitir alg=none.'); }
         }
         if (!aceptado) add('OK', 'JWT bien validado', 'Los tokens falsificados son rechazados (o no hay endpoints JWT).', '');
     },
@@ -123,7 +127,8 @@ const PRUEBAS = {
         let exp = 0;
         for (const ruta of protegidas) {
             const r = await req('GET', base + ruta);
-            if (r.status && ![401, 403, 404, 0].includes(r.status)) { exp++; add('ALTA', 'Endpoint sin autenticación', `${ruta} respondió ${r.status} SIN token.`, 'Exigir autenticación en esa ruta.'); }
+            const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+            if (r.status && ![401, 403, 404, 0].includes(r.status) && !esHtml) { exp++; add('ALTA', 'Endpoint sin autenticación', `${ruta} respondió ${r.status} con datos SIN token.`, 'Exigir autenticación en esa ruta.'); }
         }
         if (!exp) add('OK', 'Endpoints protegidos', 'Los endpoints sensibles piden autenticación.', '');
     },

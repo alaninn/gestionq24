@@ -92,7 +92,8 @@ async function escanear(urlObjetivo, opciones = {}) {
         let aceptado = false;
         for (const ruta of rutas) for (const tok of [none, basura]) {
             const r = await req('GET', ruta, { headers: { Authorization: 'Bearer ' + tok } });
-            if (r.status && ![401, 403, 404].includes(r.status)) { aceptado = true; add('CRITICA', 'Token JWT falsificado aceptado', `${ruta} respondió ${r.status} con un token sin firma válida.`, 'Verificar la firma del JWT y no permitir alg=none.'); }
+            const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+            if (r.status && ![401, 403, 404].includes(r.status) && !esHtml) { aceptado = true; add('CRITICA', 'Token JWT falsificado aceptado', `${ruta} respondió ${r.status} con datos, usando un token sin firma válida.`, 'Verificar la firma del JWT y no permitir alg=none.'); }
         }
         if (!aceptado) add('OK', 'JWT bien validado', 'Los tokens falsificados (alg=none / firma inválida) son rechazados.', '');
     }
@@ -103,7 +104,8 @@ async function escanear(urlObjetivo, opciones = {}) {
         let exp = 0;
         for (const ruta of protegidas) {
             const r = await req('GET', ruta);
-            if (r.status && ![401, 403].includes(r.status)) { exp++; add('ALTA', 'Endpoint sin autenticación', `${ruta} respondió ${r.status} SIN token.`, 'Exigir token (verificarToken) en esa ruta.'); }
+            const esHtml = /<html|<!doctype/i.test(String(r.data || '').slice(0, 300));
+            if (r.status && ![401, 403, 404].includes(r.status) && !esHtml) { exp++; add('ALTA', 'Endpoint sin autenticación', `${ruta} respondió ${r.status} con datos SIN token.`, 'Exigir token (verificarToken) en esa ruta.'); }
         }
         if (!exp) add('OK', 'Endpoints protegidos', 'Los endpoints sensibles piden autenticación (401/403 sin token).', '');
     }
