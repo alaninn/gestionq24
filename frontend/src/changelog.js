@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.47.2';
+export const VERSION_ACTUAL = '2.48.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.48.0',
+    fecha: '2026-08-17',
+    titulo: 'Mejoras de seguridad',
+    cambios: [
+      { t: 'Los permisos de cada usuario ahora se aplican también del lado del servidor: los reportes, finanzas y datos sensibles solo los ve quien tiene el permiso, no solo se ocultan en pantalla.', super: true },
+      { t: 'Reforzado el freno contra intentos de adivinar contraseñas y el aislamiento entre negocios en la facturación.', super: true },
+      { t: 'Validaciones extra (CUIT, precios) y endurecimiento general del servidor.', super: true },
+    ],
+  },
   {
     version: '2.47.2',
     fecha: '2026-08-16',

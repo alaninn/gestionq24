@@ -15,6 +15,14 @@ const { verificarToken } = require('../middleware/auth');
 // SIN token obligatorio (el error puede ocurrir antes del login); si hay token
 // se usa para asociar negocio/usuario. Protegido por el rate limit global.
 // -----------------------------------------------
+// Tope global de errores ANÓNIMOS guardados por minuto. Frena que un atacante
+// llene la tabla (DoS de almacenamiento) aunque rote la IP con X-Forwarded-For,
+// porque el tope es global (no por IP). Los reportes autenticados (token válido)
+// no cuentan contra este tope: son de usuarios reales.
+let _ventanaErrAnon = Date.now();
+let _errAnonEnVentana = 0;
+const MAX_ERR_ANON_POR_MIN = 120;
+
 router.post('/error-frontend', async (req, res) => {
     try {
         const { mensaje, stack, url } = req.body || {};
@@ -29,6 +37,17 @@ router.post('/error-frontend', async (req, res) => {
                 negocio_id = decoded.negocio_id || null;
                 usuario_id = decoded.id || null;
             } catch {}
+        }
+
+        // Tope global para reportes anónimos (sin token válido)
+        if (!usuario_id) {
+            const ahora = Date.now();
+            if (ahora - _ventanaErrAnon > 60000) { _ventanaErrAnon = ahora; _errAnonEnVentana = 0; }
+            if (_errAnonEnVentana >= MAX_ERR_ANON_POR_MIN) {
+                // Respondemos ok para no revelar el tope, pero no guardamos.
+                return res.json({ ok: true });
+            }
+            _errAnonEnVentana++;
         }
 
         await db.query(`

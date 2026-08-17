@@ -41,7 +41,9 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false,
-    strictTransportSecurity: false,
+    // HSTS: fuerza HTTPS en el navegador (evita SSL-strip). Solo tiene efecto
+    // cuando la página se sirve por HTTPS, así que en local (HTTP) se ignora.
+    strictTransportSecurity: { maxAge: 15552000 }, // 180 días
     originAgentCluster: false,
 }));
 app.use(rateLimit({ 

@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { permisoAny } = require('../middleware/auth');
+
+// Crear/editar/borrar categorías es parte de la gestión de productos: lo permite
+// quien pueda crear o editar productos. La lectura (GET) queda abierta a
+// cualquier usuario del negocio: el POS necesita listar las categorías.
+const GESTION_CATEGORIAS = permisoAny([['productos', 'editar'], ['productos', 'crear']]);
 
 router.get('/', async (req, res) => {
     try {
@@ -21,7 +27,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', GESTION_CATEGORIAS, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -39,7 +45,7 @@ router.post('/', async (req, res) => {
 });
 
 // Endpoint para obtener o crear la categoría por defecto
-router.post('/default', async (req, res) => {
+router.post('/default', GESTION_CATEGORIAS, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -66,7 +72,7 @@ router.post('/default', async (req, res) => {
 });
 
 // Renombrar una categoría
-router.put('/:id', async (req, res) => {
+router.put('/:id', GESTION_CATEGORIAS, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -85,7 +91,7 @@ router.put('/:id', async (req, res) => {
 
 // Unir categorías: mueve todos los productos de 'origen' a 'destino' y borra 'origen'.
 // Sirve para juntar categorías repetidas (ej: "Cigarrillos" y "cigarrillos").
-router.post('/unir', async (req, res) => {
+router.post('/unir', GESTION_CATEGORIAS, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -116,7 +122,7 @@ router.post('/unir', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', GESTION_CATEGORIAS, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });

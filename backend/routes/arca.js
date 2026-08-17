@@ -42,6 +42,13 @@ const upload = multer({
     }
 });
 
+// El CUIT debe ser exactamente 11 dígitos. Además de ser correcto para AFIP,
+// esto evita que el valor se use para armar rutas de archivos con caracteres de
+// path traversal (se usa en nombres de .key/.csr/.crt).
+function cuitValido(cuit) {
+    return /^\d{11}$/.test(String(cuit || '').trim());
+}
+
 // =============================================
 // GENERAR CERTIFICADOS (.key + .csr)
 // =============================================
@@ -51,9 +58,12 @@ router.post('/generar-certificados', verificarToken, soloAdmin, async (req, res)
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
 
         const { cuit, razon_social } = req.body;
-        
+
         if (!cuit) {
             return res.status(400).json({ error: 'CUIT es requerido' });
+        }
+        if (!cuitValido(cuit)) {
+            return res.status(400).json({ error: 'El CUIT debe tener 11 dígitos (sin guiones ni espacios)' });
         }
 
         // Generar certificados
@@ -130,6 +140,10 @@ router.post('/subir-certificado', verificarToken, soloAdmin, upload.single('cert
 
         if (!cuit) {
             return res.status(400).json({ error: 'CUIT es requerido' });
+        }
+        if (!cuitValido(cuit)) {
+            if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
+            return res.status(400).json({ error: 'El CUIT debe tener 11 dígitos (sin guiones ni espacios)' });
         }
 
         // Leer el archivo subido
@@ -368,6 +382,15 @@ router.post('/emitir', verificarToken, async (req, res) => {
 
         if (!tipo_comprobante || !importe_total) {
             return res.status(400).json({ error: 'Faltan datos requeridos' });
+        }
+
+        // Aislamiento: si se factura sobre una venta, esa venta DEBE ser de este
+        // negocio. Evita que un negocio facture o toque ventas de otro (IDOR).
+        if (venta_id) {
+            const duenia = await db.query('SELECT 1 FROM ventas WHERE id = $1 AND negocio_id = $2', [venta_id, negocio_id]);
+            if (duenia.rows.length === 0) {
+                return res.status(404).json({ error: 'Venta no encontrada' });
+            }
         }
 
         const resultado = await arcaService.emitirComprobante({

@@ -160,6 +160,25 @@ const soloRevendedor = (req, res, next) => {
     next();
 };
 
+// Devuelve true si el usuario tiene ALGUNO de los permisos [modulo, accion]
+// indicados (o es admin/superadmin, o un revendedor impersonando su negocio).
+// Sirve para endpoints que usan tanto un rol de gestión como el de ventas
+// (ej. registrar un pago de cuenta corriente desde el POS).
+function tieneAlgunPermiso(req, pares) {
+    const { rol, permisos } = req.usuario || {};
+    if (rol === 'superadmin' || rol === 'admin') return true;
+    if (rol === 'revendedor' && req.revendedorImpersonando) return true;
+    const p = typeof permisos === 'string' ? (() => { try { return JSON.parse(permisos); } catch { return {}; } })() : (permisos || {});
+    return pares.some(([modulo, accion]) => Array.isArray(p[modulo]) && p[modulo].includes(accion));
+}
+
+// Middleware: pasa si el usuario tiene ALGUNO de los permisos indicados.
+// Uso: permisoAny([['clientes','editar'], ['ventas','crear']])
+const permisoAny = (pares) => (req, res, next) => {
+    if (tieneAlgunPermiso(req, pares)) return next();
+    return res.status(403).json({ error: 'No tenés permiso para esta acción' });
+};
+
 // ---- MIDDLEWARE PRINCIPAL DE PERMISOS ----
 // Uso: verificarPermiso('productos', 'crear')
 const verificarPermiso = (modulo, accion) => {
@@ -185,4 +204,4 @@ const verificarPermiso = (modulo, accion) => {
     };
 };
 
-module.exports = { verificarToken, soloSuperadmin, soloAdmin, soloRevendedor, verificarPermiso, invalidarCacheNegocio, invalidarCacheDuenoNegocio, negocioEsDeRevendedor };
+module.exports = { verificarToken, soloSuperadmin, soloAdmin, soloRevendedor, verificarPermiso, permisoAny, tieneAlgunPermiso, invalidarCacheNegocio, invalidarCacheDuenoNegocio, negocioEsDeRevendedor };

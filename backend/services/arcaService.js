@@ -580,11 +580,12 @@ console.log(`📋 Último comprobante AFIP: ${ultimoNro}, próximo: ${numeroComp
             `, valoresInsert.slice(0, 15));
         }
         
-        // 13. Actualizar venta con el comprobante electrónico
+        // 13. Actualizar venta con el comprobante electrónico (siempre scopeado al
+        // negocio: nunca tocar una venta de otro negocio).
         if (venta_id) {
             await db.query(
-                'UPDATE ventas SET comprobante_electronico_id = $1, tipo_facturacion = $2 WHERE id = $3',
-                [comprobanteResult.rows[0].id, 'electronica', venta_id]
+                'UPDATE ventas SET comprobante_electronico_id = $1, tipo_facturacion = $2 WHERE id = $3 AND negocio_id = $4',
+                [comprobanteResult.rows[0].id, 'electronica', venta_id, negocio_id]
             );
         }
         

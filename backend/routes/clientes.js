@@ -1,8 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { verificarPermiso, permisoAny } = require('../middleware/auth');
 
-router.get('/', async (req, res) => {
+// Permiso para ver clientes: quien tenga el módulo clientes o quien pueda vender
+// (el POS necesita leer/usar clientes para las cuentas corrientes).
+const VER_CLIENTES = permisoAny([['clientes', 'ver'], ['ventas', 'crear'], ['caja', 'ver']]);
+// Registrar pago/deuda de cuenta corriente: lo hace el POS durante la venta.
+const OPERAR_CC = permisoAny([['clientes', 'editar'], ['ventas', 'crear']]);
+
+router.get('/', VER_CLIENTES, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -18,7 +25,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', VER_CLIENTES, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -36,7 +43,7 @@ router.get('/:id', async (req, res) => {
 
 // Historial COMPLETO de compras del cliente + estadísticas de interés.
 // ?mes=YYYY-MM filtra la lista de compras a ese mes (las stats son siempre globales).
-router.get('/:id/historial', async (req, res) => {
+router.get('/:id/historial', VER_CLIENTES, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -118,7 +125,7 @@ router.get('/:id/historial', async (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', permisoAny([['clientes', 'crear'], ['ventas', 'crear']]), async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -135,7 +142,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', permisoAny([['clientes', 'editar'], ['ventas', 'crear']]), async (req, res) => {
     try {
         const negocio_id = req.usuario.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -150,7 +157,7 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-router.post('/:id/pago', async (req, res) => {
+router.post('/:id/pago', OPERAR_CC, async (req, res) => {
     try {
         const negocio_id = req.usuario.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -172,7 +179,7 @@ router.post('/:id/pago', async (req, res) => {
 
 // Cargar deuda a mano a un cliente (préstamo, artículo fuera de stock, etc.).
 // Sube saldo_deuda y queda registrado en pagos_deuda con tipo 'deuda'.
-router.post('/:id/deuda', async (req, res) => {
+router.post('/:id/deuda', OPERAR_CC, async (req, res) => {
     try {
         const negocio_id = req.negocio_id || req.usuario?.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
@@ -199,7 +206,7 @@ router.post('/:id/deuda', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verificarPermiso('clientes', 'eliminar'), async (req, res) => {
     try {
         const negocio_id = req.usuario.negocio_id;
         if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });

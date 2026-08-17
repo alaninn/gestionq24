@@ -290,6 +290,12 @@ if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
         if (!nombre || !precio_venta) {
             return res.status(400).json({ error: 'Nombre y precio de venta son obligatorios' });
         }
+        // No permitir importes/stock negativos (romperían reportes y márgenes).
+        if (parseFloat(precio_venta) < 0 || (precio_costo != null && parseFloat(precio_costo) < 0)
+            || (precio_mayorista != null && parseFloat(precio_mayorista) < 0)
+            || (stock != null && parseFloat(stock) < 0)) {
+            return res.status(400).json({ error: 'Los precios y el stock no pueden ser negativos' });
+        }
         if (es_combinado && (!Array.isArray(componentes) || componentes.length === 0)) {
             return res.status(400).json({ error: 'Un producto combinado necesita al menos un componente' });
         }

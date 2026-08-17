@@ -1,6 +1,37 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { tieneAlgunPermiso } = require('../middleware/auth');
+
+// -----------------------------------------------
+// Autorización para los reportes. Antes este router solo pedía estar logueado,
+// así que cualquier usuario (incluso un cajero con permiso solo de ventas) podía
+// leer finanzas, márgenes y arqueos por la API.
+//
+// Varios de estos endpoints los comparten distintas pantallas de gestión
+// (Dashboard, Reportes, Control de Caja, Centro de Control, Stock), así que en
+// vez de atar cada endpoint a un módulo puntual (que rompería una pantalla que
+// también lo usa), pedimos que el usuario tenga ALGUNO de los módulos de gestión
+// o reportes. Con esto: un cajero de solo ventas queda bloqueado (era la falla),
+// y cualquier usuario que legítimamente abre una de esas pantallas pasa.
+//
+// El historial y "vendidos hoy" quedan accesibles también para quien puede
+// VENDER (los usa el POS / la pantalla de Stock), para no bloquear la caja.
+// -----------------------------------------------
+const MODULOS_GESTION = [
+    ['reportes', 'ver'], ['caja', 'ver'], ['centro_control', 'ver'],
+    ['dashboard', 'ver'], ['stock', 'ver'], ['resumen_fiscal', 'ver'],
+];
+const ABIERTOS_A_VENTAS = new Set(['historial', 'vendidos-hoy']);
+
+router.use((req, res, next) => {
+    const seg = req.path.split('/').filter(Boolean)[0] || '';
+    const pares = ABIERTOS_A_VENTAS.has(seg)
+        ? [...MODULOS_GESTION, ['ventas', 'crear']]
+        : MODULOS_GESTION;
+    if (tieneAlgunPermiso(req, pares)) return next();
+    return res.status(403).json({ error: 'No tenés permiso para ver este reporte' });
+});
 
 // Sanea una fecha que llega por query: devuelve 'YYYY-MM-DD' válido o null.
 // Evita el error de PostgreSQL "DateTimeParseError" cuando llega '' o basura.

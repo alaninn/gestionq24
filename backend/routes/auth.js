@@ -30,6 +30,14 @@ const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutos
 
+// Segundo freno, por IDENTIDAD (usuario/email), independiente de la IP. El freno
+// por IP se puede evadir rotando el header X-Forwarded-For; este cuenta los
+// intentos fallidos contra una misma cuenta sin importar desde qué IP vengan, y
+// frena la fuerza bruta dirigida a un usuario. Umbral algo más alto para no
+// molestar a un usuario que se equivoca varias veces.
+const idAttempts = new Map();
+const MAX_ID_ATTEMPTS = 12;
+
 // Función para limpiar intentos expirados
 setInterval(() => {
     const now = Date.now();
@@ -38,7 +46,24 @@ setInterval(() => {
             loginAttempts.delete(key);
         }
     }
+    for (const [key, data] of idAttempts.entries()) {
+        if (now - data.lastAttempt > LOGIN_LOCKOUT_TIME) {
+            idAttempts.delete(key);
+        }
+    }
 }, 60000); // Limpiar cada minuto
+
+// Freno por identidad: devuelve true si la cuenta está temporalmente bloqueada.
+function identidadBloqueada(idKey) {
+    const a = idAttempts.get(idKey);
+    return !!(a && a.count >= MAX_ID_ATTEMPTS && (Date.now() - a.lastAttempt) < LOGIN_LOCKOUT_TIME);
+}
+function registrarFalloIdentidad(idKey) {
+    const now = Date.now();
+    const a = idAttempts.get(idKey) || { count: 0, lastAttempt: now };
+    a.count++; a.lastAttempt = now;
+    idAttempts.set(idKey, a);
+}
 
 // -----------------------------------------------
 // RUTA: POST /api/auth/login
@@ -54,17 +79,17 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
         }
 
-        // Verificar rate limiting
+        // Verificar rate limiting (por IP+usuario y por identidad global)
         const now = Date.now();
+        const idKey = `user:${String(username).toLowerCase()}`;
         const attempts = loginAttempts.get(attemptKey);
-        
-        if (attempts) {
-            if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
-                const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
-                return res.status(429).json({ 
-                    error: `Demasiados intentos fallidos. Intentá de nuevo en ${timeLeft} minutos.` 
-                });
-            }
+
+        if ((attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) || identidadBloqueada(idKey)) {
+            const base = attempts?.lastAttempt || idAttempts.get(idKey)?.lastAttempt || now;
+            const timeLeft = Math.max(1, Math.ceil((LOGIN_LOCKOUT_TIME - (now - base)) / 1000 / 60));
+            return res.status(429).json({
+                error: `Demasiados intentos fallidos. Intentá de nuevo en ${timeLeft} minutos.`
+            });
         }
 
         // Si el equipo está fijado a un negocio (Paso 1), scopeamos el login a ese
@@ -95,12 +120,13 @@ router.post('/login', async (req, res) => {
         `, valores);
 
         if (resultado.rows.length === 0) {
-            // Registrar intento fallido
+            // Registrar intento fallido (por IP+usuario y por identidad global)
             const attempts = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
             attempts.count++;
             attempts.lastAttempt = now;
             loginAttempts.set(attemptKey, attempts);
-            
+            registrarFalloIdentidad(idKey);
+
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
 
@@ -156,6 +182,7 @@ router.post('/login', async (req, res) => {
 
         // Login exitoso - limpiar intentos fallidos
         loginAttempts.delete(attemptKey);
+        idAttempts.delete(idKey);
 
         // Enviamos el token y los datos del usuario
         res.json({
@@ -197,11 +224,13 @@ router.post('/acceso-negocio', async (req, res) => {
             return res.status(400).json({ error: 'Mail y contraseña son obligatorios' });
         }
 
-        // Rate limiting (mismo esquema que el login)
+        // Rate limiting (mismo esquema que el login) + freno por identidad
         const now = Date.now();
+        const idKey = `neg:${String(email).toLowerCase()}`;
         const attempts = loginAttempts.get(attemptKey);
-        if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
-            const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
+        if ((attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) || identidadBloqueada(idKey)) {
+            const base = attempts?.lastAttempt || idAttempts.get(idKey)?.lastAttempt || now;
+            const timeLeft = Math.max(1, Math.ceil((LOGIN_LOCKOUT_TIME - (now - base)) / 1000 / 60));
             return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
         }
 
@@ -255,6 +284,7 @@ router.post('/acceso-negocio', async (req, res) => {
             const a = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
             a.count++; a.lastAttempt = now;
             loginAttempts.set(attemptKey, a);
+            registrarFalloIdentidad(idKey);
             return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
         }
 
@@ -273,6 +303,7 @@ router.post('/acceso-negocio', async (req, res) => {
         }
 
         loginAttempts.delete(attemptKey);
+        idAttempts.delete(idKey);
 
         // Token de dispositivo: deja el equipo fijado a este negocio (no es una sesión
         // de usuario). Dura bastante para que la PC quede "fija".
@@ -320,9 +351,11 @@ router.post('/login-revendedor', async (req, res) => {
         }
 
         const now = Date.now();
+        const idKey = `rev:${String(email).toLowerCase()}`;
         const attempts = loginAttempts.get(attemptKey);
-        if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
-            const timeLeft = Math.ceil((LOGIN_LOCKOUT_TIME - (now - attempts.lastAttempt)) / 1000 / 60);
+        if ((attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) || identidadBloqueada(idKey)) {
+            const base = attempts?.lastAttempt || idAttempts.get(idKey)?.lastAttempt || now;
+            const timeLeft = Math.max(1, Math.ceil((LOGIN_LOCKOUT_TIME - (now - base)) / 1000 / 60));
             return res.status(429).json({ error: `Demasiados intentos. Probá de nuevo en ${timeLeft} minutos.` });
         }
 
@@ -340,6 +373,7 @@ router.post('/login-revendedor', async (req, res) => {
             const a = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: now };
             a.count++; a.lastAttempt = now;
             loginAttempts.set(attemptKey, a);
+            registrarFalloIdentidad(idKey);
             return res.status(401).json({ error: 'Mail o contraseña incorrectos' });
         }
 
@@ -348,6 +382,7 @@ router.post('/login-revendedor', async (req, res) => {
         }
 
         loginAttempts.delete(attemptKey);
+        idAttempts.delete(idKey);
 
         const token = jwt.sign(
             {
