@@ -97,16 +97,16 @@ async function reintentarNegocio(negocioId) {
         return { intentadas: 0, exitosas: 0, fallidas: 0, afipCaido: false, pendientes: 0 };
     }
 
-    const entorno = await entornoNegocio(negocioId);
-    if (!(await afipDisponible(entorno))) {
-        // AFIP sigue caído: no reintentamos ahora, quedan para la próxima pasada.
-        return { intentadas: 0, exitosas: 0, fallidas: 0, afipCaido: true, pendientes: pendientes.length };
-    }
-
-    let exitosas = 0, fallidas = 0;
+    // NO usamos un pre-chequeo de disponibilidad de AFIP: un GET al WSDL puede
+    // fallar (TLS/handshake) aunque el POST real de facturación ande perfecto, y
+    // eso bloqueaba el reintento con un falso "AFIP caído". En su lugar, detectamos
+    // que AFIP está caído por el resultado real del primer intento: si el primero
+    // falla por infraestructura, cortamos el lote; si AFIP responde, seguimos.
+    let exitosas = 0, fallidas = 0, afipCaido = false;
     for (const p of pendientes) {
+        let r;
         try {
-            const r = await arcaService.emitirComprobante({
+            r = await arcaService.emitirComprobante({
                 negocio_id: negocioId,
                 venta_id: p.venta_id,
                 tipo_comprobante: p.tipo_comprobante,
@@ -119,29 +119,28 @@ async function reintentarNegocio(negocioId) {
                 importe_iva: p.importe_iva,
                 noGuardarError: true, // no acumular filas de error en cada reintento
             });
-            if (r && r.exito) {
-                exitosas++;
-                // Marcar todos los intentos fallidos de esa venta como reintentados,
-                // así no vuelven a contarse como pendientes ni ensucian el conteo.
-                await db.query(
-                    "UPDATE comprobantes_electronicos SET estado = 'reintentado' WHERE venta_id = $1 AND estado = 'error'",
-                    [p.venta_id]
-                ).catch(() => {});
-            } else {
-                fallidas++;
-                // Si el motivo es que AFIP se cayó (infraestructura), cortamos el
-                // lote para no seguir golpeando. Si fue un rechazo por DATOS de este
-                // comprobante puntual, seguimos con los demás (no se traba el resto).
-                const msg = (r && r.error) || '';
-                if (/AFIP no está disponible|no responde|mantenimiento/i.test(msg)) break;
-            }
         } catch (e) {
-            // Excepción de red no controlada = AFIP/infra: cortamos el lote.
+            // Excepción no controlada = AFIP/infra: cortamos el lote.
+            fallidas++; afipCaido = true; break;
+        }
+        if (r && r.exito) {
+            exitosas++;
+            // Marcar todos los intentos fallidos de esa venta como reintentados,
+            // así no vuelven a contarse como pendientes ni ensucian el conteo.
+            await db.query(
+                "UPDATE comprobantes_electronicos SET estado = 'reintentado' WHERE venta_id = $1 AND estado = 'error'",
+                [p.venta_id]
+            ).catch(() => {});
+        } else {
             fallidas++;
-            break;
+            // Si el motivo es que AFIP está caído (infraestructura), cortamos el
+            // lote para no seguir golpeando. Si fue un rechazo por DATOS de este
+            // comprobante puntual, seguimos con los demás (no se traba el resto).
+            const msg = (r && r.error) || '';
+            if (/AFIP no está disponible|no responde|mantenimiento/i.test(msg)) { afipCaido = true; break; }
         }
     }
-    return { intentadas: pendientes.length, exitosas, fallidas, afipCaido: false, pendientes: pendientes.length - exitosas };
+    return { intentadas: pendientes.length, exitosas, fallidas, afipCaido, pendientes: pendientes.length - exitosas };
 }
 
 // Job global: recorre los negocios con pendientes y reintenta. No corre en
