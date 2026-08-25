@@ -9,6 +9,7 @@ import api from '../api/axios';
 import VersionChangelog from '../components/shared/VersionChangelog';
 import RevendedoresModal from '../components/superadmin/RevendedoresModal';
 import EscanerSeguridadModal from '../components/superadmin/EscanerSeguridadModal';
+import ModalLanding from '../components/superadmin/ModalLanding';
 import useCerrarConAtras from '../hooks/useCerrarConAtras';
 import { MODULOS_PLAN, CLAVES_MODULOS_PLAN } from '../constants/modulos';
 
@@ -51,6 +52,7 @@ function Superadmin() {
   // Visor de logs (bajo demanda: solo consume mientras está iniciado)
   const [mostrarModalLogs, setMostrarModalLogs] = useState(false);
   const [mostrarModalPlanes, setMostrarModalPlanes] = useState(false);
+  const [mostrarModalLanding, setMostrarModalLanding] = useState(false);
   const [mostrarModalRevendedores, setMostrarModalRevendedores] = useState(false);
   const [mostrarModalEscaner, setMostrarModalEscaner] = useState(false);
   const [mostrarModalErrores, setMostrarModalErrores] = useState(false);
@@ -100,6 +102,7 @@ function Superadmin() {
   useCerrarConAtras(mostrarModalMiCuenta, () => setMostrarModalMiCuenta(false));
   useCerrarConAtras(mostrarModalLogs, () => cerrarModalLogs());
   useCerrarConAtras(mostrarModalPlanes, () => setMostrarModalPlanes(false));
+  useCerrarConAtras(mostrarModalLanding, () => setMostrarModalLanding(false));
 
   // ---- Configuración de planes (límites y funciones editables) ----
   // ---- Reporte de errores ----
@@ -632,6 +635,11 @@ function Superadmin() {
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
             title="Configurar límites y funciones de cada plan">
             📐 <span className="hidden sm:inline">Planes</span>
+          </button>
+          <button onClick={() => setMostrarModalLanding(true)}
+            className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            title="Configurar la página de venta: WhatsApp, precios y textos">
+            🛒 <span className="hidden sm:inline">Landing</span>
           </button>
           <button onClick={() => setMostrarModalRevendedores(true)}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
@@ -1853,6 +1861,9 @@ function Superadmin() {
       {mostrarModalEscaner && (
         <EscanerSeguridadModal onCerrar={() => setMostrarModalEscaner(false)} />
       )}
+
+      {/* Modal de la Página de venta (landing) */}
+      {mostrarModalLanding && <ModalLanding onCerrar={() => setMostrarModalLanding(false)} />}
 
       {/* Modal Configuración de Planes */}
       {mostrarModalPlanes && (

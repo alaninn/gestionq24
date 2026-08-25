@@ -110,6 +110,29 @@ router.get('/precios', async (req, res) => {
     }
 });
 
+// GET /api/publico/landing — datos configurables de la página de venta.
+// Teléfono de contacto y textos del hero (los edita el superadmin) + precios.
+router.get('/landing', async (req, res) => {
+    const DEFAULT_WA = '5491162684353';
+    try {
+        const cs = await db.query('SELECT landing_whatsapp, landing_hero_titulo, landing_hero_subtitulo FROM config_sistema WHERE id = 1');
+        const pc = await db.query('SELECT plan, precio FROM planes_config');
+        const precios = {};
+        for (const row of pc.rows) precios[row.plan] = row.precio ?? 0;
+        const c = cs.rows[0] || {};
+        const wa = String(c.landing_whatsapp || DEFAULT_WA).replace(/\D/g, '') || DEFAULT_WA;
+        res.json({
+            whatsapp: wa,
+            hero_titulo: c.landing_hero_titulo || '',
+            hero_subtitulo: c.landing_hero_subtitulo || '',
+            precios: { estandar: precios.estandar || 10000, premium: precios.premium || 30000 },
+        });
+    } catch (e) {
+        // Ante cualquier error, valores por defecto para no romper la landing.
+        res.json({ whatsapp: DEFAULT_WA, hero_titulo: '', hero_subtitulo: '', precios: { estandar: 10000, premium: 30000 } });
+    }
+});
+
 // =============================================
 // TIENDA ONLINE PÚBLICA (sin login) — catálogo y pedidos
 // =============================================

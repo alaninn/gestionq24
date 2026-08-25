@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.49.1';
+export const VERSION_ACTUAL = '2.50.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.50.0',
+    fecha: '2026-08-25',
+    titulo: 'Nueva página de venta + configuración',
+    cambios: [
+      { t: 'Rediseño completo de la página de venta pública: diseño premium, moderno y con animaciones, pensado para transmitir confianza y destacar la facturación ARCA, el punto de venta y la Tienda Online.', super: true },
+      { t: 'Nuevo botón "Página de venta" en el panel maestro para cambiar el WhatsApp de contacto, los precios y los textos principales sin tocar el código, con efecto inmediato en la web.', super: true },
+    ],
+  },
   {
     version: '2.49.1',
     fecha: '2026-08-25',

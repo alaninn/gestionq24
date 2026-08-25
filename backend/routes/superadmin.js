@@ -1225,6 +1225,59 @@ router.put('/config-sistema', async (req, res) => {
     }
 });
 
+// GET /api/superadmin/landing — config de la página de venta (landing)
+// Teléfono de contacto, textos del hero y precios de los planes.
+router.get('/landing', async (req, res) => {
+    try {
+        const cs = await db.query('SELECT landing_whatsapp, landing_hero_titulo, landing_hero_subtitulo FROM config_sistema WHERE id = 1');
+        const pc = await db.query('SELECT plan, precio FROM planes_config');
+        const precios = {};
+        for (const row of pc.rows) precios[row.plan] = row.precio ?? 0;
+        const c = cs.rows[0] || {};
+        res.json({
+            whatsapp: c.landing_whatsapp || '',
+            hero_titulo: c.landing_hero_titulo || '',
+            hero_subtitulo: c.landing_hero_subtitulo || '',
+            precio_estandar: precios.estandar ?? 10000,
+            precio_premium: precios.premium ?? 30000,
+        });
+    } catch (error) {
+        console.error('Error al leer config de landing:', error);
+        res.status(500).json({ error: 'Error al leer la configuración de la página' });
+    }
+});
+
+// PUT /api/superadmin/landing — guardar teléfono, textos del hero y precios.
+// Los precios se guardan en planes_config (fuente única de los planes).
+router.put('/landing', async (req, res) => {
+    try {
+        const { whatsapp, hero_titulo, hero_subtitulo, precio_estandar, precio_premium } = req.body || {};
+        let waLimpio = whatsapp != null ? String(whatsapp).replace(/\D/g, '').slice(0, 20) : null;
+        if (waLimpio === '') waLimpio = null; // vacío: no pisar el número guardado
+        await db.query(`
+            UPDATE config_sistema SET
+                landing_whatsapp = COALESCE($1, landing_whatsapp),
+                landing_hero_titulo = $2,
+                landing_hero_subtitulo = $3
+            WHERE id = 1
+        `, [waLimpio,
+            hero_titulo != null ? String(hero_titulo).slice(0, 200) : null,
+            hero_subtitulo != null ? String(hero_subtitulo).slice(0, 400) : null]);
+
+        if (precio_estandar != null && precio_estandar !== '') {
+            await db.query('UPDATE planes_config SET precio = $1 WHERE plan = $2', [Math.max(0, parseInt(precio_estandar) || 0), 'estandar']);
+        }
+        if (precio_premium != null && precio_premium !== '') {
+            await db.query('UPDATE planes_config SET precio = $1 WHERE plan = $2', [Math.max(0, parseInt(precio_premium) || 0), 'premium']);
+        }
+        invalidarCacheConfigSistema();
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error al guardar config de landing:', error);
+        res.status(500).json({ error: 'Error al guardar la configuración de la página' });
+    }
+});
+
 // GET /api/superadmin/revendedores — lista con tokens, negocios y cobrado
 router.get('/revendedores', async (req, res) => {
     try {

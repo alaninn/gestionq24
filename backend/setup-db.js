@@ -615,6 +615,14 @@ CREATE TABLE IF NOT EXISTS config_sistema (
 );
 INSERT INTO config_sistema (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+-- Config de la pagina de venta (landing): telefono de contacto y textos del hero.
+-- Los precios se toman de planes_config (fuente unica). Se siembra el whatsapp
+-- con el numero actual para que nada cambie hasta que el superadmin lo edite.
+ALTER TABLE config_sistema ADD COLUMN IF NOT EXISTS landing_whatsapp VARCHAR(30);
+ALTER TABLE config_sistema ADD COLUMN IF NOT EXISTS landing_hero_titulo TEXT;
+ALTER TABLE config_sistema ADD COLUMN IF NOT EXISTS landing_hero_subtitulo TEXT;
+UPDATE config_sistema SET landing_whatsapp = '5491162684353' WHERE landing_whatsapp IS NULL;
+
 -- Revendedores: cada uno administra sus propios negocios (marca blanca) y tiene
 -- una billetera de tokens. slug sirve para el acceso marca blanca por URL.
 CREATE TABLE IF NOT EXISTS revendedores (
