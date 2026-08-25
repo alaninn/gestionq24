@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.51.0';
+export const VERSION_ACTUAL = '2.51.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.51.1',
+    fecha: '2026-08-25',
+    titulo: 'Tienda Online: acceso para empleados (por permiso)',
+    cambios: [
+      { t: 'La Tienda Online ya no es exclusiva del administrador: desde Usuarios podés darle el permiso "Tienda Online" a cualquier empleado para que vea y gestione los pedidos. Los encargados y cajeros nuevos lo traen por defecto.', super: true },
+    ],
+  },
   {
     version: '2.51.0',
     fecha: '2026-08-25',

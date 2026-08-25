@@ -2435,7 +2435,7 @@ function SincronizacionExitosa({ ultimaSincronizacion }) {
 
 function POS() {
   const navigate = useNavigate();
-  const { logout, usuario, puedeUsarFuncion } = useAuth();
+  const { logout, usuario, puedeUsarFuncion, tienePermiso } = useAuth();
   const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
@@ -2606,7 +2606,7 @@ function POS() {
   // Ventas online: sondear pedidos nuevos cada 25s (solo admin premium con tienda).
   // Si aumentan, mostrar un aviso en la barra del POS.
   useEffect(() => {
-    const esAdminTienda = ['admin', 'superadmin'].includes(usuario?.rol) && puedeUsarFuncion && puedeUsarFuncion('tienda_online');
+    const esAdminTienda = tienePermiso && tienePermiso('tienda', 'ver') && puedeUsarFuncion && puedeUsarFuncion('tienda_online');
     if (!esAdminTienda) return;
     let previo = -1;
     const consultar = async () => {
@@ -3651,7 +3651,7 @@ const imprimirTicketDesdeModal = () => {
           <span className="text-red-300 text-xs hidden lg:inline">[F4]</span>
         </button>
 
-        {['admin', 'superadmin'].includes(usuario?.rol) && puedeUsarFuncion && puedeUsarFuncion('tienda_online') && (
+        {tienePermiso && tienePermiso('tienda', 'ver') && puedeUsarFuncion && puedeUsarFuncion('tienda_online') && (
           <button onClick={() => navigate('/admin/tienda')}
             className="relative flex items-center gap-2 bg-pink-600 hover:bg-pink-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
             🛍️ <span className="hidden sm:inline">Ventas Online</span>

@@ -50,6 +50,9 @@ const PERMISOS_GRUPOS = [
   { modulo: 'soporte', titulo: '🎫 Soporte', desc: 'Tickets de soporte', acciones: [
     { accion: 'ver', label: 'Ver panel' },
   ]},
+  { modulo: 'tienda', titulo: '🛍️ Tienda Online', desc: 'Pedidos y catálogo de la tienda web (Premium)', acciones: [
+    { accion: 'ver', label: 'Ver panel' },
+  ]},
   { modulo: 'ventas', titulo: '🛒 Ventas (POS)', desc: 'Vender y manejar ventas', acciones: [
     { accion: 'crear', label: 'Vender' }, { accion: 'ver', label: 'Ver ventas' },
     { accion: 'editar', label: 'Editar' }, { accion: 'anular', label: 'Anular' },
@@ -75,6 +78,7 @@ const PERMISOS_DEFAULT = {
     resumen_fiscal: ['ver'],
     reportes: ['ver'],
     soporte: ['ver'],
+    tienda: ['ver'],
     ventas: ['ver', 'crear', 'editar', 'anular'],
   },
   encargado: {
@@ -87,6 +91,7 @@ const PERMISOS_DEFAULT = {
     gastos: ['ver', 'crear'],
     resumen_fiscal: ['ver'],
     reportes: ['ver'],
+    tienda: ['ver'],
     ventas: ['ver', 'crear'],
   },
   cajero: {

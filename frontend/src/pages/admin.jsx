@@ -249,7 +249,7 @@ function Admin() {
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
 
-          {(puedeVer('reportes') || puedeVer('soporte')) && (
+          {(puedeVer('reportes') || puedeVer('soporte') || (puedeUsarFuncion('tienda_online') && tienePermiso('tienda', 'ver'))) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
           )}
           {puedeVer('reportes') && (
@@ -258,11 +258,13 @@ function Admin() {
           {puedeVer('soporte') && (
             <NavLink to="/admin/soporte" icon="🎫" label="Soporte" />
           )}
+          {/* Tienda Online: se muestra con el permiso (asignable desde Usuarios) y el plan.
+              El cartel bloqueado (★ PRO) solo se le muestra al admin para invitar a activarla. */}
+          {puedeUsarFuncion('tienda_online')
+            ? (tienePermiso('tienda', 'ver') && <NavLink to="/admin/tienda" icon="🛍️" label="Tienda Online" badge={<BadgePro />} />)
+            : (['admin', 'superadmin'].includes(usuario?.rol) && <NavLinkPremium icon="🛍️" label="Tienda Online" />)}
           {['admin', 'superadmin'].includes(usuario?.rol) && (
             <>
-              {puedeUsarFuncion('tienda_online')
-                ? <NavLink to="/admin/tienda" icon="🛍️" label="Tienda Online" badge={<BadgePro />} />
-                : <NavLinkPremium icon="🛍️" label="Tienda Online" />}
               <NavLink to="/admin/usuarios" icon="👤" label="Usuarios" />
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
             </>
