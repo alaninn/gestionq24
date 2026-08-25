@@ -515,6 +515,43 @@ if (error) return (
         </div>
       </div>
 
+      {/* Tienda Online (pedidos web) — solo si el negocio la usa */}
+      {datos.tienda_online?.activa && (
+        <div onClick={() => irA('/admin/tienda')} title="Ver los pedidos de la Tienda Online"
+          className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer">
+          <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">🛍️</span>
+                <div>
+                  <h3 className="font-bold text-lg leading-tight">Tienda Online</h3>
+                  <p className="text-slate-400 text-xs">Pedidos web de hoy · ver todos →</p>
+                </div>
+              </div>
+              {datos.tienda_online.pendientes > 0 && (
+                <span className="flex items-center gap-1.5 bg-amber-400/20 text-amber-300 text-xs font-bold px-2.5 py-1 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> {datos.tienda_online.pendientes} sin atender
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                ['Pedidos hoy', datos.tienda_online.pedidos_hoy, false],
+                ['En curso', datos.tienda_online.en_curso, false],
+                ['Facturado hoy', fmt(datos.tienda_online.facturado_hoy), true],
+                ['Facturado mes', fmt(datos.tienda_online.facturado_mes), false],
+              ].map(([lab, val, dst], i) => (
+                <div key={i} className={`rounded-xl p-3 ring-1 ${dst ? 'bg-emerald-500/15 ring-emerald-400/30' : 'bg-white/5 ring-white/10'}`}>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold truncate">{lab}</p>
+                  <p className={`text-xl font-extrabold mt-0.5 ${dst ? 'text-emerald-300' : 'text-white'}`}>{val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Comparación de rendimiento */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div onClick={verAyer} title="Ver el resumen completo de ayer arriba"

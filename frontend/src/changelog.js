@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.50.0';
+export const VERSION_ACTUAL = '2.51.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.51.0',
+    fecha: '2026-08-25',
+    titulo: 'Tienda Online: recepción de pedidos al frente + info en Dashboard y Reportes',
+    cambios: [
+      { t: 'La Tienda Online abre directo en Pedidos (la recepción), con un resumen del día más prolijo y premium. La configuración quedó a un costado, ya que se usa una sola vez.', super: true },
+      { t: 'El Dashboard muestra un resumen de la Tienda Online (pedidos del día, en curso y facturado), y hay un nuevo reporte "Tienda Online" con el detalle del período (entregados, delivery/retiro, lo más pedido).', super: true },
+      { t: 'Las funciones premium (Tienda Online, Predicción de compras y Movimiento de mercadería) ahora muestran un distintivo ★ PRO también cuando están activas, indicando que son una categoría especial.', super: true },
+    ],
+  },
   {
     version: '2.50.0',
     fecha: '2026-08-25',

@@ -701,6 +701,34 @@ router.get('/dashboard', async (req, res) => {
             })),
         };
 
+        // Tienda Online: resumen de pedidos online (hoy y mes). No entran en la
+        // caja, por eso van aparte. Envuelto en try/catch para que un problema
+        // con la tienda nunca rompa el dashboard.
+        let tienda = { activa: false, pedidos_hoy: 0, pendientes: 0, en_curso: 0, facturado_hoy: 0, pedidos_mes: 0, facturado_mes: 0 };
+        try {
+            const to = await db.query(`
+                SELECT
+                    (SELECT COUNT(*) FROM tienda_pedidos WHERE negocio_id = $1 AND created_at::date = COALESCE($2::date, CURRENT_DATE) AND estado <> 'cancelado') AS pedidos_hoy,
+                    (SELECT COUNT(*) FROM tienda_pedidos WHERE negocio_id = $1 AND estado = 'pendiente') AS pendientes,
+                    (SELECT COUNT(*) FROM tienda_pedidos WHERE negocio_id = $1 AND estado IN ('confirmado','en_camino')) AS en_curso,
+                    (SELECT COALESCE(SUM(total),0) FROM tienda_pedidos WHERE negocio_id = $1 AND created_at::date = COALESCE($2::date, CURRENT_DATE) AND estado = 'entregado') AS facturado_hoy,
+                    (SELECT COUNT(*) FROM tienda_pedidos WHERE negocio_id = $1 AND created_at::date >= $3::date AND estado <> 'cancelado') AS pedidos_mes,
+                    (SELECT COALESCE(SUM(total),0) FROM tienda_pedidos WHERE negocio_id = $1 AND created_at::date >= $3::date AND estado = 'entregado') AS facturado_mes,
+                    (SELECT COUNT(*) FROM tienda_pedidos WHERE negocio_id = $1) AS total_historico,
+                    (SELECT habilitada FROM tienda_config WHERE negocio_id = $1) AS habilitada
+            `, [negocio_id, fechaDia, inicioMes]);
+            const r = to.rows[0] || {};
+            tienda = {
+                activa: r.habilitada === true || (parseInt(r.total_historico) || 0) > 0,
+                pedidos_hoy: parseInt(r.pedidos_hoy) || 0,
+                pendientes: parseInt(r.pendientes) || 0,
+                en_curso: parseInt(r.en_curso) || 0,
+                facturado_hoy: parseFloat(r.facturado_hoy) || 0,
+                pedidos_mes: parseInt(r.pedidos_mes) || 0,
+                facturado_mes: parseFloat(r.facturado_mes) || 0,
+            };
+        } catch (e) { /* tienda no disponible: se muestran ceros */ }
+
         res.json({
             stats: stats.rows[0],
             facturacion_activa: facturacionActivaDash,
@@ -709,6 +737,7 @@ router.get('/dashboard', async (req, res) => {
             topProductos: topProductos.rows,
             comparacion: comparacion.rows[0],
             comparativas,
+            tienda_online: tienda,
             dia: {
                 fecha: fechaDia,
                 detalle: diaDetalle.rows[0],
@@ -721,6 +750,49 @@ router.get('/dashboard', async (req, res) => {
     } catch (error) {
         console.error('Error dashboard:', error);
         res.status(500).json({ error: 'Error al obtener datos del dashboard' });
+    }
+});
+
+// GET /api/reportes/tienda-online — resumen de pedidos online del período.
+// Los pedidos online se gestionan aparte (no entran en la caja), por eso tienen
+// su propio reporte. Ante cualquier problema devuelve ceros para no romper.
+router.get('/tienda-online', async (req, res) => {
+    try {
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+        const { desde, hasta } = rangoSeguro(req);
+
+        const resumen = await db.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE estado <> 'cancelado') AS pedidos,
+                COUNT(*) FILTER (WHERE estado = 'entregado') AS entregados,
+                COUNT(*) FILTER (WHERE estado = 'cancelado') AS cancelados,
+                COUNT(*) FILTER (WHERE estado IN ('pendiente','confirmado','en_camino')) AS en_curso,
+                COUNT(*) FILTER (WHERE tipo_entrega = 'delivery' AND estado <> 'cancelado') AS delivery,
+                COUNT(*) FILTER (WHERE (tipo_entrega = 'takeaway' OR tipo_entrega IS NULL) AND estado <> 'cancelado') AS takeaway,
+                COALESCE(SUM(total) FILTER (WHERE estado = 'entregado'), 0) AS facturado,
+                COALESCE(AVG(total) FILTER (WHERE estado = 'entregado'), 0) AS ticket_promedio
+            FROM tienda_pedidos
+            WHERE negocio_id = $1 AND created_at::date BETWEEN $2::date AND $3::date
+        `, [negocio_id, desde, hasta]);
+
+        const top = await db.query(`
+            SELECT it->>'nombre' AS nombre,
+                   SUM((it->>'cantidad')::numeric) AS cantidad,
+                   SUM((it->>'subtotal')::numeric) AS total
+            FROM tienda_pedidos tp, jsonb_array_elements(COALESCE(tp.items_json, '[]'::jsonb)) it
+            WHERE tp.negocio_id = $1 AND tp.created_at::date BETWEEN $2::date AND $3::date AND tp.estado <> 'cancelado'
+            GROUP BY it->>'nombre'
+            ORDER BY cantidad DESC
+            LIMIT 8
+        `, [negocio_id, desde, hasta]);
+
+        res.json({ resumen: resumen.rows[0], topProductos: top.rows });
+    } catch (error) {
+        res.json({
+            resumen: { pedidos: 0, entregados: 0, cancelados: 0, en_curso: 0, delivery: 0, takeaway: 0, facturado: 0, ticket_promedio: 0 },
+            topProductos: [],
+        });
     }
 });
 

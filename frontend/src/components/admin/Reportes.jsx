@@ -4,6 +4,7 @@
 // =============================================
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -36,6 +37,7 @@ const fmtFechaHora = (f) => new Date(f).toLocaleDateString('es-AR', {
 function Reportes() {
 
   // Pestaña principal: 'historial' o 'reportes'
+  const { puedeUsarFuncion } = useAuth();
   const [pestana, setPestana] = useState('historial');
 
   // ---- ESTADOS HISTORIAL ----
@@ -201,6 +203,7 @@ const calcularFechas = () => {
       if (tipo === 'rentabilidad') url = `/api/reportes/rentabilidad?fecha_desde=${reporteFechaDesde}&fecha_hasta=${reporteFechaHasta}`;
       if (tipo === 'stock') url = `/api/reportes/stock`;
       if (tipo === 'por-categoria') url = `/api/reportes/por-categoria?fecha_desde=${reporteFechaDesde}&fecha_hasta=${reporteFechaHasta}&categoria_id=${categoriaSeleccionada}`;
+      if (tipo === 'tienda-online') url = `/api/reportes/tienda-online?fecha_desde=${reporteFechaDesde}&fecha_hasta=${reporteFechaHasta}`;
 
       const res = await api.get(url);
       setDatosReporte(res.data);
@@ -259,6 +262,13 @@ const calcularFechas = () => {
           p.nombre_producto, p.codigo || '-', p.categoria || '-',
           Number(p.total_cantidad) || 0, p.veces_vendido, fmt(p.total_facturado)
         ])
+      };
+    }
+    if (reporteActivo === 'tienda-online' && datosReporte?.resumen) {
+      return {
+        titulo: 'Tienda Online — lo más pedido',
+        columnas: ['Producto', 'Cantidad', 'Total'],
+        filas: (datosReporte.topProductos || []).map(p => [p.nombre, cant(p.cantidad), fmt(p.total)])
       };
     }
     if (reporteActivo === 'por-turno' && datosReporte) {
@@ -671,6 +681,14 @@ const calcularFechas = () => {
                   tag: 'INVENTARIO',
                   color: 'orange'
                 },
+                ...(puedeUsarFuncion('tienda_online') ? [{
+                  id: 'tienda-online',
+                  icon: '🛍️',
+                  titulo: 'Tienda Online',
+                  desc: 'Pedidos web del período: facturado, entregados, delivery/retiro y lo más pedido',
+                  tag: 'ONLINE',
+                  color: 'pink'
+                }] : []),
               ].map(r => (
                 <div
                   key={r.id}
@@ -806,6 +824,61 @@ const calcularFechas = () => {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ---- REPORTE: TIENDA ONLINE ---- */}
+                  {reporteActivo === 'tienda-online' && datosReporte?.resumen && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                          ['Pedidos', cant(datosReporte.resumen.pedidos), 'text-gray-800'],
+                          ['Entregados', cant(datosReporte.resumen.entregados), 'text-emerald-600'],
+                          ['Facturado', fmt(datosReporte.resumen.facturado), 'text-emerald-600'],
+                          ['Ticket promedio', fmt(datosReporte.resumen.ticket_promedio), 'text-gray-800'],
+                        ].map(([lab, val, cls], i) => (
+                          <div key={i} className="bg-white rounded-xl p-4 shadow">
+                            <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">{lab}</p>
+                            <p className={`text-2xl font-bold mt-1 ${cls}`}>{val}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                          ['🛵 Delivery', datosReporte.resumen.delivery],
+                          ['🏪 Retiro', datosReporte.resumen.takeaway],
+                          ['⏳ En curso', datosReporte.resumen.en_curso],
+                          ['✖ Cancelados', datosReporte.resumen.cancelados],
+                        ].map(([lab, val], i) => (
+                          <div key={i} className="bg-white rounded-xl p-3 shadow text-center">
+                            <p className="text-sm text-gray-500">{lab}</p>
+                            <p className="text-lg font-bold text-gray-800">{cant(val)}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="bg-white rounded-xl shadow overflow-hidden">
+                        <div className="p-4 border-b"><h3 className="font-semibold text-gray-800">🛍️ Lo más pedido online</h3></div>
+                        {datosReporte.topProductos?.length ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className="bg-gray-50 border-b"><tr>
+                                <th className="text-left px-4 py-3 text-gray-600 font-medium text-sm">Producto</th>
+                                <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Cantidad</th>
+                                <th className="text-right px-4 py-3 text-gray-600 font-medium text-sm">Total</th>
+                              </tr></thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {datosReporte.topProductos.map((p, i) => (
+                                  <tr key={i} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium text-gray-800">{p.nombre}</td>
+                                    <td className="px-4 py-3 text-right text-gray-700">{cant(p.cantidad)}</td>
+                                    <td className="px-4 py-3 text-right font-medium text-green-600">{fmt(p.total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : <p className="text-center text-gray-400 py-8">No hubo pedidos online en este período.</p>}
                       </div>
                     </div>
                   )}

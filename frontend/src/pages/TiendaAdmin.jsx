@@ -21,7 +21,7 @@ async function procesarImagen(file, preset, cb) {
 }
 
 export default function TiendaAdmin() {
-    const [tab, setTab] = useState('config');
+    const [tab, setTab] = useState('pedidos');
     const [cfg, setCfg] = useState(null);
     const [cargando, setCargando] = useState(true);
     const [guardando, setGuardando] = useState(false);
@@ -83,13 +83,16 @@ export default function TiendaAdmin() {
                 </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-4">
-                {[['config', '⚙️ Configuración'], ['catalogo', '📦 Catálogo'], ['pedidos', '🧾 Pedidos'], ['integraciones', '🔗 Integraciones']].map(([id, label]) => (
+            {/* Tabs — Pedidos es la pantalla principal; Configuración queda al final (se usa una vez). */}
+            <div className="flex gap-2 mb-4 flex-wrap items-center">
+                {[['pedidos', '🧾 Pedidos'], ['catalogo', '📦 Catálogo'], ['integraciones', '🔗 Integraciones']].map(([id, label]) => (
                     <button key={id} onClick={() => setTab(id)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === id ? 'text-white' : 'bg-white text-gray-600 border'}`}
                         style={tab === id ? { background: 'var(--color-primario)' } : {}}>{label}</button>
                 ))}
+                <button onClick={() => setTab('config')} title="Configuración de la tienda"
+                    className={`ml-auto px-3 py-2 rounded-lg text-sm font-medium border ${tab === 'config' ? 'text-white border-transparent' : 'bg-white text-gray-400 hover:text-gray-600'}`}
+                    style={tab === 'config' ? { background: 'var(--color-primario)' } : {}}>⚙️ <span className="hidden sm:inline">Configuración</span></button>
             </div>
 
             {tab === 'config' && (
@@ -487,11 +490,25 @@ function imprimirComanda(p, subtotal) {
     if (w) { w.document.write(html); w.document.close(); }
 }
 
-function MiniStat({ label, valor, destacado }) {
+const TONOS_STAT = {
+    slate: { ic: 'bg-slate-100 text-slate-600', val: 'text-slate-800', ring: 'ring-slate-200/70', glow: 'from-slate-100/60' },
+    amber: { ic: 'bg-amber-100 text-amber-600', val: 'text-amber-700', ring: 'ring-amber-200', glow: 'from-amber-100/70' },
+    blue: { ic: 'bg-blue-100 text-blue-600', val: 'text-blue-700', ring: 'ring-blue-200/70', glow: 'from-blue-100/60' },
+    green: { ic: 'bg-emerald-100 text-emerald-600', val: 'text-emerald-700', ring: 'ring-emerald-200/70', glow: 'from-emerald-100/60' },
+};
+function MiniStat({ label, valor, icon, tono = 'slate', pulso }) {
+    const t = TONOS_STAT[tono] || TONOS_STAT.slate;
     return (
-        <div className={`rounded-xl border p-3 ${destacado ? 'bg-amber-50 border-amber-200' : 'bg-white'}`}>
-            <p className="text-xs text-gray-500">{label}</p>
-            <p className={`text-lg sm:text-xl font-bold ${destacado ? 'text-amber-700' : 'text-gray-800'}`}>{valor}</p>
+        <div className={`relative rounded-2xl bg-white p-3.5 ring-1 ${t.ring} shadow-sm overflow-hidden`}>
+            <div className={`absolute -top-8 -right-8 w-24 h-24 rounded-full bg-gradient-to-br ${t.glow} to-transparent blur-xl pointer-events-none`} />
+            <div className="relative flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl grid place-items-center text-lg flex-shrink-0 ${t.ic}`}>{icon}</div>
+                <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold truncate">{label}</p>
+                    <p className={`text-xl font-extrabold leading-tight ${t.val}`}>{valor}</p>
+                </div>
+                {pulso && <span className="ml-auto w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />}
+            </div>
         </div>
     );
 }
@@ -558,10 +575,10 @@ function Pedidos() {
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <MiniStat label="Pedidos hoy" valor={hoy.length} />
-                <MiniStat label="Sin atender" valor={pendientes.length} destacado={pendientes.length > 0} />
-                <MiniStat label="En curso" valor={enCurso.length} />
-                <MiniStat label="Facturado hoy" valor={fmt(facturadoHoy)} />
+                <MiniStat label="Pedidos hoy" valor={hoy.length} icon="📦" tono="blue" />
+                <MiniStat label="Sin atender" valor={pendientes.length} icon="🔔" tono="amber" pulso={pendientes.length > 0} />
+                <MiniStat label="En curso" valor={enCurso.length} icon="⏱️" tono="slate" />
+                <MiniStat label="Facturado hoy" valor={fmt(facturadoHoy)} icon="💰" tono="green" />
             </div>
 
             <div className="flex gap-2 flex-wrap">

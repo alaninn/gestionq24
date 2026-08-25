@@ -60,7 +60,7 @@ function NombreNegocio() {
   return <span className="font-bold text-white text-lg">{nombre}</span>;
 }
 
-function NavLink({ to, icon, label, exact = false }) {
+function NavLink({ to, icon, label, exact = false, badge = null }) {
   const location = useLocation();
   const activo = exact ? location.pathname === to : location.pathname.startsWith(to);
   return (
@@ -70,8 +70,20 @@ function NavLink({ to, icon, label, exact = false }) {
         activo ? 'text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
       }`}>
       <span className="text-lg">{icon}</span>
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge}
     </Link>
+  );
+}
+
+// Distintivo de "categoría especial" (función Premium). Aparece al lado del
+// nombre tanto cuando la función ya está activa como cuando está bloqueada.
+function BadgePro() {
+  return (
+    <span title="Categoría especial · Plan Premium"
+      className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-gradient-to-r from-amber-300 to-yellow-400 text-amber-950 shadow-sm whitespace-nowrap">
+      ★ PRO
+    </span>
   );
 }
 
@@ -82,7 +94,7 @@ function NavLinkPremium({ icon, label }) {
       className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 cursor-not-allowed opacity-60 select-none">
       <span className="text-lg">{icon}</span>
       <span className="flex-1">{label}</span>
-      <span className="text-yellow-500 text-xs font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded">★ PRO</span>
+      <BadgePro />
     </div>
   );
 }
@@ -210,10 +222,10 @@ function Admin() {
             <NavLink to="/admin/stock" icon="📉" label="Stock" />
           )}
           {puedeVer('stock') && puedeUsarFuncion('prediccion_compras') && (
-            <NavLink to="/admin/prediccion-compras" icon="🛒" label="Predicción de compras" />
+            <NavLink to="/admin/prediccion-compras" icon="🛒" label="Predicción de compras" badge={<BadgePro />} />
           )}
           {puedeUsarFuncion('multinegocio') && (
-            <NavLink to="/admin/movimientos" icon="🔁" label="Movimiento de mercadería" />
+            <NavLink to="/admin/movimientos" icon="🔁" label="Movimiento de mercadería" badge={<BadgePro />} />
           )}
 
           {(puedeVer('caja') || puedeVer('clientes') || puedeVer('proveedores') || puedeVer('gastos') || puedeVer('resumen_fiscal')) && (
@@ -249,7 +261,7 @@ function Admin() {
           {['admin', 'superadmin'].includes(usuario?.rol) && (
             <>
               {puedeUsarFuncion('tienda_online')
-                ? <NavLink to="/admin/tienda" icon="🛍️" label="Tienda Online" />
+                ? <NavLink to="/admin/tienda" icon="🛍️" label="Tienda Online" badge={<BadgePro />} />
                 : <NavLinkPremium icon="🛍️" label="Tienda Online" />}
               <NavLink to="/admin/usuarios" icon="👤" label="Usuarios" />
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
