@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.48.2';
+export const VERSION_ACTUAL = '2.49.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.49.0',
+    fecha: '2026-08-24',
+    titulo: 'Tienda / Venta Online (premium)',
+    cambios: [
+      { t: 'Nuevo módulo Tienda Online: cada negocio puede tener una página pública para compartir (gestionq24.store/su-nombre) con catálogo de productos, carrito y pedidos. Función premium que se activa por negocio desde el panel maestro.', super: true },
+      { t: 'Configurable: colores, logo, portada y fondo, horarios de la tienda y del delivery, takeaway/delivery, alias de transferencia, y aviso sonoro en el POS cuando llega un pedido.', super: true },
+      { t: 'Los pedidos descuentan stock y se gestionan aparte. Integración con WhatsApp (por QR) para avisar automáticamente a los clientes. Las fotos se comprimen solas para no ocupar espacio.', super: true },
+    ],
+  },
   {
     version: '2.48.2',
     fecha: '2026-08-17',

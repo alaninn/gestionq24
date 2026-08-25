@@ -11,6 +11,7 @@ export const MODULOS_PLAN = [
   { key: 'resumen_fiscal', label: 'Resumen Fiscal', icon: '🧾' },
   { key: 'reportes', label: 'Reportes', icon: '📈' },
   { key: 'soporte', label: 'Soporte', icon: '🎫' },
+  { key: 'tienda', label: 'Tienda Online', icon: '🛍️' },
 ];
 
 // Módulos siempre habilitados (no se pueden quitar de ningún plan).

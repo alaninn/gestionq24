@@ -676,6 +676,108 @@ CREATE UNIQUE INDEX IF NOT EXISTS negocios_email_revendedor_uniq
 ON negocios (COALESCE(revendedor_id, 0), lower(email))
 WHERE email IS NOT NULL;
 
+-- =============================================
+-- MODULO TIENDA / VENTA ONLINE
+-- Catalogo publico compartible por slug (gestionq24.store/<slug>). Los pedidos
+-- online descuentan stock y se gestionan aparte (no tocan la caja/turno).
+-- Funcion premium (planes_config.tienda_online).
+-- =============================================
+
+-- Slug del negocio para la URL publica de su tienda.
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS slug VARCHAR(60);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_negocios_slug ON negocios(slug) WHERE slug IS NOT NULL;
+
+-- Capacidad de tienda por plan. Arranca APAGADA por defecto (como multinegocio):
+-- es una función premium que el superadmin activa por negocio, no se enciende
+-- sola para todos los premium.
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS tienda_online BOOLEAN;
+UPDATE planes_config SET tienda_online = FALSE WHERE tienda_online IS NULL;
+
+-- Override por negocio (habilitar la tienda a un negocio puntual aunque su plan
+-- no la incluya). Mismo patron que multinegocio_habilitado. Lo activa el superadmin.
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_online_habilitado BOOLEAN;
+
+-- Configuracion de la tienda (una fila por negocio).
+CREATE TABLE IF NOT EXISTS tienda_config (
+    negocio_id INTEGER PRIMARY KEY REFERENCES negocios(id) ON DELETE CASCADE,
+    habilitada BOOLEAN DEFAULT FALSE,
+    titulo VARCHAR(120),
+    descripcion TEXT,
+    logo TEXT,
+    banner TEXT,
+    color_primario VARCHAR(20) DEFAULT '#f97316',
+    color_fondo VARCHAR(20) DEFAULT '#0b0f1a',
+    abierta_siempre BOOLEAN DEFAULT TRUE,
+    horarios JSONB,
+    alias_transferencia VARCHAR(120),
+    titular_cuenta VARCHAR(120),
+    mostrar_transferencia BOOLEAN DEFAULT TRUE,
+    mostrar_efectivo BOOLEAN DEFAULT TRUE,
+    whatsapp VARCHAR(40),
+    recargo_pct NUMERIC(6,2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Productos del catalogo online (subconjunto del stock, con datos propios).
+CREATE TABLE IF NOT EXISTS tienda_productos (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    activo BOOLEAN DEFAULT TRUE,
+    precio_online NUMERIC(12,2),
+    foto TEXT,
+    descripcion TEXT,
+    orden INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tienda_productos_uniq ON tienda_productos(negocio_id, producto_id);
+CREATE INDEX IF NOT EXISTS idx_tienda_productos_negocio ON tienda_productos(negocio_id);
+
+-- Pedidos online. items_json guarda el detalle para historial aunque cambien
+-- los productos. estado: pendiente | confirmado | entregado | cancelado.
+CREATE TABLE IF NOT EXISTS tienda_pedidos (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    cliente_nombre VARCHAR(120),
+    cliente_apellido VARCHAR(120),
+    direccion TEXT,
+    whatsapp VARCHAR(40),
+    metodo_pago VARCHAR(20),
+    total NUMERIC(12,2) NOT NULL DEFAULT 0,
+    items_json JSONB,
+    estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+    leido BOOLEAN DEFAULT FALSE,
+    notas TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tienda_pedidos_negocio ON tienda_pedidos(negocio_id, created_at DESC);
+
+-- Ampliaciones de la tienda: fondo de pagina, delivery/takeaway con horarios,
+-- sonido del aviso en el POS, y venta sin stock por producto.
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS fondo_imagen TEXT;
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS color_texto VARCHAR(20);
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS mostrar_takeaway BOOLEAN DEFAULT TRUE;
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS mostrar_delivery BOOLEAN DEFAULT TRUE;
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS delivery_abierto_siempre BOOLEAN DEFAULT TRUE;
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS delivery_horarios JSONB;
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS sonido_tipo VARCHAR(20) DEFAULT 'campana';
+ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS sonido_repeticiones INTEGER DEFAULT 2;
+ALTER TABLE tienda_productos ADD COLUMN IF NOT EXISTS permitir_sin_stock BOOLEAN DEFAULT FALSE;
+ALTER TABLE tienda_pedidos ADD COLUMN IF NOT EXISTS tipo_entrega VARCHAR(20);
+
+-- Integración de WhatsApp (Baileys). Estado de vinculación por negocio. La
+-- sesión real vive en disco (carpeta whatsapp-sessions), acá solo el estado.
+CREATE TABLE IF NOT EXISTS whatsapp_config (
+    negocio_id INTEGER PRIMARY KEY REFERENCES negocios(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'disconnected',
+    qr_code TEXT,
+    numero VARCHAR(30),
+    notificar_pedidos BOOLEAN DEFAULT TRUE,
+    last_activity TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 `;
 
 async function setupDB() {

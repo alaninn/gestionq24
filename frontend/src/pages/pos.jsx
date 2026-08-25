@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useConectividad } from '../context/ConectividadContext';
+import { reproducirSonido } from '../utils/sonidoTienda';
 import { ModalGasto } from '../components/admin/Gastos';
 import ModalDetalleVenta from '../components/admin/DetalleVenta';
 import { imprimirTicket, imprimirRemito } from '../components/ticket';
@@ -2434,7 +2435,7 @@ function SincronizacionExitosa({ ultimaSincronizacion }) {
 
 function POS() {
   const navigate = useNavigate();
-  const { logout, usuario } = useAuth();
+  const { logout, usuario, puedeUsarFuncion } = useAuth();
   const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
@@ -2461,6 +2462,8 @@ function POS() {
   const [mostrarModalMovimiento, setMostrarModalMovimiento] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [mensajeScanner, setMensajeScanner] = useState(null);
+  // Ventas online: cantidad de pedidos nuevos sin leer (para el aviso del POS).
+  const [ventasOnlineNuevas, setVentasOnlineNuevas] = useState(0);
   const [ultimaVenta, setUltimaVenta] = useState(null);
   const [mostrarModalVentaProducto, setMostrarModalVentaProducto] = useState(null);
   const [totalUltimaVenta, setTotalUltimaVenta] = useState(0);
@@ -2599,6 +2602,30 @@ function POS() {
     const id = setInterval(() => setAhora(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // Ventas online: sondear pedidos nuevos cada 25s (solo admin premium con tienda).
+  // Si aumentan, mostrar un aviso en la barra del POS.
+  useEffect(() => {
+    const esAdminTienda = ['admin', 'superadmin'].includes(usuario?.rol) && puedeUsarFuncion && puedeUsarFuncion('tienda_online');
+    if (!esAdminTienda) return;
+    let previo = -1;
+    const consultar = async () => {
+      try {
+        const r = await api.get('/api/tienda/pedidos/nuevos');
+        const n = r.data?.nuevos || 0;
+        setVentasOnlineNuevas(n);
+        if (previo >= 0 && n > previo) {
+          setMensajeScanner({ tipo: 'ok', texto: '🛍️ ¡Llegó una venta online!' });
+          try { reproducirSonido(r.data?.sonido_tipo || 'campana', r.data?.sonido_repeticiones ?? 2); } catch (e) {}
+          setTimeout(() => setMensajeScanner(null), 5000);
+        }
+        previo = n;
+      } catch (e) { /* sin conexión o sin permiso: ignorar */ }
+    };
+    consultar();
+    const id = setInterval(consultar, 25000);
+    return () => clearInterval(id);
+  }, [usuario, puedeUsarFuncion]);
 
   // Cachear el turno en localStorage para sobrevivir recargas SIN internet (así la
   // caja no se "cierra" sola al refrescar offline). Se limpia cuando no hay turno.
@@ -3623,6 +3650,16 @@ const imprimirTicketDesdeModal = () => {
           🔒 <span className="hidden sm:inline">Cierre</span>
           <span className="text-red-300 text-xs hidden lg:inline">[F4]</span>
         </button>
+
+        {['admin', 'superadmin'].includes(usuario?.rol) && puedeUsarFuncion && puedeUsarFuncion('tienda_online') && (
+          <button onClick={() => navigate('/admin/tienda')}
+            className="relative flex items-center gap-2 bg-pink-600 hover:bg-pink-500 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">
+            🛍️ <span className="hidden sm:inline">Ventas Online</span>
+            {ventasOnlineNuevas > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-yellow-400 text-black text-xs font-black w-5 h-5 rounded-full flex items-center justify-center animate-pulse">{ventasOnlineNuevas}</span>
+            )}
+          </button>
+        )}
 
         <button onClick={() => navigate('/admin')}
           className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex-shrink-0">

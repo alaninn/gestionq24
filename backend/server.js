@@ -135,6 +135,16 @@ app.use('/api/arca', require('./routes/arcaGateway'));
 // Facturación Electrónica ARCA — solo plan premium
 app.use('/api/arca', verificarToken, validarLimitePlan, puedeUsarFuncion('facturacion_electronica'), rutasArca);
 
+// Tienda / Venta Online (panel admin) — rol admin. La capacidad la define el
+// plan (premium) O un override por negocio (negocios.tienda_online_habilitado),
+// que activa el superadmin. El chequeo combinado vive dentro del router.
+// Los endpoints públicos de la tienda (catálogo/pedidos) viven en /api/publico.
+const { soloAdmin: soloAdminTienda } = require('./middleware/auth');
+app.use('/api/tienda', verificarToken, validarLimitePlan, soloAdminTienda, require('./routes/tienda'));
+
+// Integraciones: WhatsApp (Baileys) — vincular y avisos automáticos. Solo admin.
+app.use('/api/whatsapp', verificarToken, validarLimitePlan, soloAdminTienda, require('./routes/whatsapp'));
+
 // Multinegocio: vincular negocios propios y mover mercadería entre ellos.
 // La capacidad la define el plan (configurable por superadmin) o un override por
 // negocio; el chequeo vive dentro del router (verificarMultinegocio).

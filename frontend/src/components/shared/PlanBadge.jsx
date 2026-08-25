@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 // Se muestra una sola vez por sesión y se oculta solo a los pocos segundos.
@@ -7,6 +8,9 @@ const SEGUNDOS_VISIBLE = 5000;
 
 export default function PlanBadge() {
   const { usuario, esPremium, planInfo } = useAuth();
+  const location = useLocation();
+  // Solo dentro de la app (nunca en la tienda pública, landing, etc.).
+  const enApp = /^\/(admin|pos|superadmin)/.test(location.pathname);
   const [visible, setVisible] = useState(false);
   const [montado, setMontado] = useState(false);
 
@@ -30,7 +34,7 @@ export default function PlanBadge() {
     setTimeout(() => setMontado(false), 400);
   };
 
-  if (!usuario || usuario.rol === 'superadmin' || !montado) return null;
+  if (!enApp || !usuario || usuario.rol === 'superadmin' || !montado) return null;
 
   const isPremium = esPremium();
 

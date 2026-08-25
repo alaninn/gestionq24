@@ -10,3 +10,4 @@ backend/scripts/_tmp_*.js
 .vps-credenciales
 _auxiliar/
 backend/tools/informe-seguridad-*.md
+backend/whatsapp-sessions/

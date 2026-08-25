@@ -299,6 +299,19 @@ function Superadmin() {
     }
   };
 
+  const cambiarTiendaNegocio = async (negocioId, valor) => {
+    setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, tienda_online_habilitado: valor } : prev);
+    try {
+      await api.put(`/api/superadmin/negocios/${negocioId}`, { tienda_online_habilitado: valor });
+      setNegocios(prev => prev.map(n => n.id === negocioId ? { ...n, tienda_online_habilitado: valor } : n));
+      setExito(`Tienda Online ${valor ? 'habilitada' : 'deshabilitada'} para este negocio`);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, tienda_online_habilitado: !valor } : prev);
+      setError('Error al cambiar Tienda Online');
+    }
+  };
+
   const renovarSuscripcion = async (e) => {
     e.preventDefault();
     try {
@@ -947,6 +960,14 @@ function Superadmin() {
                   <input type="checkbox" checked={!!mostrarModalDetalleNegocio.prediccion_compras_habilitado}
                     onChange={(e) => cambiarPrediccionNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
                     className="w-5 h-5 accent-green-600 flex-shrink-0" />
+                </label>
+                <label className="mt-2 flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-pink-300 transition-colors">
+                  <span className="text-sm text-gray-700">🛍️ Tienda Online para este negocio
+                    <span className="block text-[11px] text-gray-400">Habilitala aunque su plan no la incluya (o dejala según el plan)</span>
+                  </span>
+                  <input type="checkbox" checked={!!mostrarModalDetalleNegocio.tienda_online_habilitado}
+                    onChange={(e) => cambiarTiendaNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
+                    className="w-5 h-5 accent-pink-600 flex-shrink-0" />
                 </label>
               </div>
 

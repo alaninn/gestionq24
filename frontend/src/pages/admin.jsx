@@ -5,6 +5,7 @@ import Categorias from '../components/admin/Categorias';
 import Gastos from '../components/admin/Gastos';
 import Configuracion from '../components/admin/Configuracion';
 import Reportes from '../components/admin/Reportes';
+import TiendaAdmin from './TiendaAdmin';
 import ControlCentral from '../components/admin/ControlCentral';
 import CuentasCorrientes from '../components/admin/cuentascorrientes';
 import ControlCaja from '../components/admin/controlcaja';
@@ -247,6 +248,9 @@ function Admin() {
           )}
           {['admin', 'superadmin'].includes(usuario?.rol) && (
             <>
+              {puedeUsarFuncion('tienda_online')
+                ? <NavLink to="/admin/tienda" icon="🛍️" label="Tienda Online" />
+                : <NavLinkPremium icon="🛍️" label="Tienda Online" />}
               <NavLink to="/admin/usuarios" icon="👤" label="Usuarios" />
               <NavLink to="/admin/configuracion" icon="⚙️" label="Configuración" />
             </>
@@ -341,6 +345,7 @@ function Admin() {
             <Route path="/reportes" element={<Reportes />} />
             <Route path="/centro-control" element={<ControlCentral />} />
             <Route path="/configuracion" element={<Configuracion />} />
+            <Route path="/tienda" element={<TiendaAdmin />} />
             <Route path="/cuentas-corrientes" element={<CuentasCorrientes />} />
             <Route path="/caja" element={<ControlCaja />} />
             <Route path="/proveedores" element={<Proveedores />} />

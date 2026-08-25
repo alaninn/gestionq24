@@ -15,6 +15,7 @@ const LIMITES_DEFAULT = {
     reportes_avanzados: false,
     multinegocio: false,
     prediccion_compras: false,
+    tienda_online: false,
     precio: 10000,
     modulos: null   // null = todos los módulos habilitados
   },
@@ -26,6 +27,8 @@ const LIMITES_DEFAULT = {
     // Multinegocio arranca APAGADO por defecto: se activa desde el superadmin.
     multinegocio: false,
     prediccion_compras: false,
+    // Tienda online: premium, pero APAGADA por defecto (se activa por negocio).
+    tienda_online: false,
     precio: 30000,
     modulos: null
   }
@@ -54,6 +57,9 @@ async function obtenerConfigPlanes() {
           multinegocio: row.multinegocio == null ? (row.plan === 'premium') : !!row.multinegocio,
           // prediccion_compras: apagado por defecto (solo si el superadmin lo marca).
           prediccion_compras: !!row.prediccion_compras,
+          // tienda_online: APAGADA por defecto (se activa por negocio desde el
+          // superadmin, igual que multinegocio/prediccion).
+          tienda_online: !!row.tienda_online,
           precio: row.precio ?? 0,
           // row.modulos es JSONB (array) o null (= todos habilitados)
           modulos: Array.isArray(row.modulos) ? row.modulos : null

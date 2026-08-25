@@ -6,6 +6,7 @@ import POS from './pages/pos';
 import Admin from './pages/admin';
 import Superadmin from './pages/Superadmin';
 import Revendedor from './pages/Revendedor';
+import Tienda from './pages/Tienda';
 import Landing from './pages/Landing';
 import { TemaProvider } from './context/TemaContext';
 import { ConectividadProvider } from './context/ConectividadContext';
@@ -118,6 +119,11 @@ function AppRoutes() {
           <Admin />
         </RutaProtegida>
       } />
+
+      {/* Tienda pública por slug (gestionq24.store/<slug>). Va ÚLTIMA: las rutas
+          fijas de arriba (login, admin, etc.) tienen prioridad en React Router,
+          así que un slug nunca pisa una ruta del sistema. */}
+      <Route path="/:slug" element={<Tienda />} />
       </Routes>
     </>
   );
