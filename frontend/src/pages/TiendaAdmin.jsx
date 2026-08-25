@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { SONIDOS, reproducirSonido } from '../utils/sonidoTienda';
 import { comprimirImagen, PRESETS } from '../utils/imagen';
@@ -429,63 +429,273 @@ function Integraciones() {
 }
 
 // ---------------- PEDIDOS ----------------
-const ESTADOS = { pendiente: ['bg-amber-100 text-amber-700', 'Pendiente'], confirmado: ['bg-blue-100 text-blue-700', 'Confirmado'], entregado: ['bg-green-100 text-green-700', 'Entregado'], cancelado: ['bg-gray-100 text-gray-500', 'Cancelado'] };
+const ESTADO_META = {
+    pendiente: { label: 'Pendiente', chip: 'bg-amber-100 text-amber-700' },
+    confirmado: { label: 'Confirmado', chip: 'bg-blue-100 text-blue-700' },
+    en_camino: { label: 'En camino', chip: 'bg-indigo-100 text-indigo-700' },
+    entregado: { label: 'Entregado', chip: 'bg-green-100 text-green-700' },
+    cancelado: { label: 'Cancelado', chip: 'bg-gray-100 text-gray-500' },
+};
+// El estado "en_camino" se muestra distinto según el tipo de entrega.
+function estadoLabel(estado, tipoEntrega) {
+    if (estado === 'en_camino') return tipoEntrega === 'takeaway' ? 'Listo para retirar' : 'En camino';
+    return ESTADO_META[estado]?.label || estado;
+}
+function tiempoRelativo(iso) {
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 60) return 'recién';
+    if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+    if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+    const d = Math.floor(s / 86400);
+    return d === 1 ? 'ayer' : `hace ${d} días`;
+}
+function esHoy(iso) { return new Date(iso).toDateString() === new Date().toDateString(); }
+const soloDigitos = (t) => String(t || '').replace(/\D/g, '');
+
+// Imprime una comanda (ticket) del pedido para la cocina / preparación.
+function imprimirComanda(p, subtotal) {
+    const items = Array.isArray(p.items_json) ? p.items_json : [];
+    const esDelivery = p.tipo_entrega !== 'takeaway';
+    const envio = parseFloat(p.costo_envio) || 0;
+    const total = esDelivery ? subtotal + envio : subtotal;
+    const filas = items.map(it => `<tr><td>${it.cantidad}x</td><td>${it.nombre}</td><td class="r">${fmt(it.subtotal)}</td></tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pedido #${p.id}</title>
+      <style>*{font-family:monospace;color:#000}body{width:280px;margin:0 auto;padding:8px}h2{margin:4px 0;text-align:center}table{width:100%;border-collapse:collapse;font-size:12px}td{padding:2px 0}.r{text-align:right}hr{border:none;border-top:1px dashed #000}.tot{font-weight:bold;font-size:14px}.h{font-size:12px}.c{text-align:center}</style></head>
+      <body>
+        <h2>PEDIDO #${p.id}</h2>
+        <div class="h c">${new Date(p.created_at).toLocaleString('es-AR')}</div>
+        <hr>
+        <div class="h"><b>${p.cliente_nombre || ''} ${p.cliente_apellido || ''}</b></div>
+        <div class="h"><b>${esDelivery ? 'DELIVERY' : 'RETIRO EN LOCAL'}</b></div>
+        ${esDelivery && p.direccion ? `<div class="h">Dir: ${p.direccion}</div>` : ''}
+        <div class="h">Tel: ${p.whatsapp || ''}</div>
+        <div class="h">Pago: ${p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</div>
+        ${p.notas ? `<div class="h">Nota: ${p.notas}</div>` : ''}
+        <hr>
+        <table>${filas}</table>
+        <hr>
+        <table>
+          <tr><td>Subtotal</td><td></td><td class="r">${fmt(subtotal)}</td></tr>
+          ${esDelivery && envio > 0 ? `<tr><td>Envio</td><td></td><td class="r">${fmt(envio)}</td></tr>` : ''}
+          <tr class="tot"><td>TOTAL</td><td></td><td class="r">${fmt(total)}</td></tr>
+        </table>
+        <hr>
+        <div class="h c">Gracias por tu compra!</div>
+        <script>window.onload=function(){window.print();setTimeout(function(){window.close()},300)}</script>
+      </body></html>`;
+    const w = window.open('', '_blank', 'width=340,height=620');
+    if (w) { w.document.write(html); w.document.close(); }
+}
+
+function MiniStat({ label, valor, destacado }) {
+    return (
+        <div className={`rounded-xl border p-3 ${destacado ? 'bg-amber-50 border-amber-200' : 'bg-white'}`}>
+            <p className="text-xs text-gray-500">{label}</p>
+            <p className={`text-lg sm:text-xl font-bold ${destacado ? 'text-amber-700' : 'text-gray-800'}`}>{valor}</p>
+        </div>
+    );
+}
 
 function Pedidos() {
     const [pedidos, setPedidos] = useState([]);
     const [cargando, setCargando] = useState(true);
+    const [filtro, setFiltro] = useState('activos');
+    const [sel, setSel] = useState(null); // { pedido, confirmar? }
+    const sonido = useRef({ tipo: 'campana', veces: 2 });
+    const maxId = useRef(0);
+    const primera = useRef(true);
 
-    const cargar = async () => {
-        setCargando(true);
-        try { const r = await api.get('/api/tienda/pedidos'); setPedidos(r.data); await api.put('/api/tienda/pedidos/marcar-leidos'); }
-        finally { setCargando(false); }
+    const cargar = async (silencioso = false) => {
+        if (!silencioso) setCargando(true);
+        try {
+            const r = await api.get('/api/tienda/pedidos');
+            const data = r.data || [];
+            // Si entró un pedido nuevo mientras miramos la recepción, suena el aviso.
+            const top = data.reduce((m, p) => Math.max(m, p.id), 0);
+            if (!primera.current && top > maxId.current) reproducirSonido(sonido.current.tipo, sonido.current.veces);
+            maxId.current = top;
+            primera.current = false;
+            setPedidos(data);
+            await api.put('/api/tienda/pedidos/marcar-leidos').catch(() => {});
+        } finally { if (!silencioso) setCargando(false); }
     };
-    useEffect(() => { cargar(); }, []);
 
-    const cambiar = async (id, estado) => { await api.put(`/api/tienda/pedidos/${id}/estado`, { estado }); await cargar(); };
+    useEffect(() => {
+        api.get('/api/tienda/pedidos/nuevos')
+            .then(r => { sonido.current = { tipo: r.data?.sonido_tipo || 'campana', veces: r.data?.sonido_repeticiones ?? 2 }; })
+            .catch(() => {});
+        cargar();
+        const t = setInterval(() => cargar(true), 18000);
+        return () => clearInterval(t);
+    }, []);
+
+    const cambiar = async (id, estado, extra = {}) => {
+        await api.put(`/api/tienda/pedidos/${id}/estado`, { estado, ...extra });
+        setSel(null);
+        await cargar(true);
+    };
+
+    const pendientes = pedidos.filter(p => p.estado === 'pendiente');
+    const enCurso = pedidos.filter(p => p.estado === 'confirmado' || p.estado === 'en_camino');
+    const hoy = pedidos.filter(p => esHoy(p.created_at) && p.estado !== 'cancelado');
+    const facturadoHoy = pedidos.filter(p => esHoy(p.created_at) && p.estado === 'entregado').reduce((a, p) => a + (parseFloat(p.total) || 0), 0);
+
+    const FILTROS = [
+        ['activos', 'Activos', pendientes.length + enCurso.length],
+        ['pendiente', 'Nuevos', pendientes.length],
+        ['entregado', 'Entregados', pedidos.filter(p => p.estado === 'entregado').length],
+        ['cancelado', 'Cancelados', pedidos.filter(p => p.estado === 'cancelado').length],
+        ['todos', 'Todos', pedidos.length],
+    ];
+    const visibles = pedidos.filter(p => {
+        if (filtro === 'todos') return true;
+        if (filtro === 'activos') return p.estado === 'pendiente' || p.estado === 'confirmado' || p.estado === 'en_camino';
+        return p.estado === filtro;
+    });
 
     if (cargando) return <div className="text-gray-500">Cargando…</div>;
-    if (pedidos.length === 0) return <p className="text-gray-400 text-center py-10 bg-white rounded-xl border">Todavía no hay pedidos online.</p>;
 
     return (
-        <div className="space-y-3">
-            {pedidos.map((p) => {
-                const items = Array.isArray(p.items_json) ? p.items_json : [];
-                const [chip, label] = ESTADOS[p.estado] || ESTADOS.pendiente;
-                return (
-                    <div key={p.id} className="bg-white rounded-xl border p-4">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="font-bold text-gray-800">{p.cliente_nombre} {p.cliente_apellido}</p>
-                                <p className="text-xs text-gray-500">{new Date(p.created_at).toLocaleString('es-AR')} · Pedido #{p.id}</p>
-                            </div>
-                            <span className={`text-xs font-semibold px-2 py-1 rounded ${chip}`}>{label}</span>
-                        </div>
-                        <div className="text-sm text-gray-600 mt-2 space-y-0.5">
-                            <p className="font-medium">{p.tipo_entrega === 'takeaway' ? '🏪 Retiro en el local' : '🛵 Delivery'}</p>
-                            {p.tipo_entrega !== 'takeaway' && p.direccion && <p>📍 {p.direccion}</p>}
-                            <p>📱 <a className="text-orange-600" href={`https://wa.me/${String(p.whatsapp).replace(/\D/g, '')}`} target="_blank" rel="noreferrer">{p.whatsapp}</a></p>
-                            <p>💳 {p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo (al recibir)'}</p>
-                            {p.notas && <p>📝 {p.notas}</p>}
-                        </div>
-                        <div className="mt-2 bg-gray-50 rounded-lg p-2 text-sm">
-                            {items.map((it, i) => <div key={i} className="flex justify-between"><span>{it.cantidad}× {it.nombre}</span><span className="text-gray-500">{fmt(it.subtotal)}</span></div>)}
-                            <div className="flex justify-between font-bold border-t mt-1 pt-1"><span>Total</span><span>{fmt(p.total)}</span></div>
-                        </div>
-                        <div className="flex gap-2 mt-3 flex-wrap items-center">
-                            {p.estado !== 'cancelado' && (
-                                <a href={`https://wa.me/${String(p.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente_nombre}! Tu pedido #${p.id} está confirmado ✅. Total: ${fmt(p.total)}. ${p.tipo_entrega === 'takeaway' ? 'Podés pasar a retirarlo.' : 'Te lo enviamos a domicilio.'} ¡Gracias!`)}`}
-                                    target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-white text-xs font-medium" style={{ background: '#25D366' }}>💬 Avisar al cliente</a>
-                            )}
-                            {p.estado !== 'cancelado' && p.estado !== 'entregado' && <>
-                                {p.estado === 'pendiente' && <button onClick={() => cambiar(p.id, 'confirmado')} className="px-3 py-1.5 rounded-lg text-white text-xs font-medium bg-blue-600">Confirmar</button>}
-                                <button onClick={() => cambiar(p.id, 'entregado')} className="px-3 py-1.5 rounded-lg text-white text-xs font-medium bg-green-600">Marcar entregado</button>
-                                <button onClick={() => { if (confirm('¿Cancelar el pedido? Se devuelve el stock.')) cambiar(p.id, 'cancelado'); }} className="px-3 py-1.5 rounded-lg text-xs font-medium border text-red-500">Cancelar</button>
-                            </>}
-                        </div>
+        <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <MiniStat label="Pedidos hoy" valor={hoy.length} />
+                <MiniStat label="Sin atender" valor={pendientes.length} destacado={pendientes.length > 0} />
+                <MiniStat label="En curso" valor={enCurso.length} />
+                <MiniStat label="Facturado hoy" valor={fmt(facturadoHoy)} />
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+                {FILTROS.map(([id, label, n]) => (
+                    <button key={id} onClick={() => setFiltro(id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${filtro === id ? 'text-white border-transparent' : 'bg-white text-gray-600'}`}
+                        style={filtro === id ? { background: 'var(--color-primario)' } : {}}>
+                        {label}{n > 0 && <span className={filtro === id ? 'opacity-90' : 'text-gray-400'}> ({n})</span>}
+                    </button>
+                ))}
+            </div>
+
+            {visibles.length === 0
+                ? <p className="text-gray-400 text-center py-10 bg-white rounded-xl border">No hay pedidos en esta vista.</p>
+                : <div className="space-y-3">
+                    {visibles.map(p => (
+                        <PedidoCard key={p.id} p={p}
+                            onVer={() => setSel({ pedido: p })}
+                            onEstado={cambiar}
+                            onConfirmar={() => (p.tipo_entrega !== 'takeaway' ? setSel({ pedido: p, confirmar: true }) : cambiar(p.id, 'confirmado'))} />
+                    ))}
+                </div>}
+
+            {sel && <ModalPedido sel={sel} onCerrar={() => setSel(null)} onEstado={cambiar} />}
+        </div>
+    );
+}
+
+function PedidoCard({ p, onVer, onEstado, onConfirmar }) {
+    const items = Array.isArray(p.items_json) ? p.items_json : [];
+    const nItems = items.reduce((a, it) => a + (parseInt(it.cantidad) || 0), 0);
+    const meta = ESTADO_META[p.estado] || ESTADO_META.pendiente;
+    const esDelivery = p.tipo_entrega !== 'takeaway';
+    const nuevo = p.estado === 'pendiente';
+    const wa = soloDigitos(p.whatsapp);
+    return (
+        <div className={`bg-white rounded-xl border p-4 ${nuevo ? 'ring-2 ring-amber-300' : ''}`}>
+            <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-800">#{p.id} · {p.cliente_nombre} {p.cliente_apellido}</span>
+                        {nuevo && <span className="text-[10px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse">NUEVO</span>}
                     </div>
-                );
-            })}
+                    <p className="text-xs text-gray-500">{tiempoRelativo(p.created_at)} · {new Date(p.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</p>
+                </div>
+                <span className={`text-xs font-semibold px-2 py-1 rounded whitespace-nowrap ${meta.chip}`}>{estadoLabel(p.estado, p.tipo_entrega)}</span>
+            </div>
+
+            <div className="flex items-center gap-2 mt-2 text-sm flex-wrap">
+                <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${esDelivery ? 'bg-indigo-50 text-indigo-700' : 'bg-teal-50 text-teal-700'}`}>{esDelivery ? '🛵 Delivery' : '🏪 Retiro'}</span>
+                <span className="text-gray-500">{nItems} art.</span>
+                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600">{p.metodo_pago === 'transferencia' ? '🏦 Transferencia' : '💵 Efectivo'}</span>
+                <span className="ml-auto font-bold text-gray-800">{fmt(p.total)}</span>
+            </div>
+
+            {esDelivery && p.direccion && <p className="text-sm text-gray-600 mt-1 truncate">📍 {p.direccion}</p>}
+
+            <div className="flex gap-2 mt-3 flex-wrap items-center">
+                <button onClick={onVer} className="px-3 py-1.5 rounded-lg text-xs font-medium border text-gray-700">Ver detalle</button>
+                {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-white text-xs font-medium" style={{ background: '#25D366' }}>💬 Chat</a>}
+                {p.estado === 'pendiente' && <button onClick={onConfirmar} className="px-3 py-1.5 rounded-lg text-white text-xs font-medium bg-blue-600">Confirmar</button>}
+                {p.estado === 'confirmado' && <button onClick={() => onEstado(p.id, 'en_camino')} className="px-3 py-1.5 rounded-lg text-white text-xs font-medium bg-indigo-600">{esDelivery ? 'En camino' : 'Listo'}</button>}
+                {(p.estado === 'confirmado' || p.estado === 'en_camino') && <button onClick={() => onEstado(p.id, 'entregado')} className="px-3 py-1.5 rounded-lg text-white text-xs font-medium bg-green-600">Entregado</button>}
+                {p.estado !== 'cancelado' && p.estado !== 'entregado' && <button onClick={() => { if (confirm('¿Cancelar el pedido? Se devuelve el stock.')) onEstado(p.id, 'cancelado'); }} className="px-3 py-1.5 rounded-lg text-xs font-medium border text-red-500 ml-auto">Cancelar</button>}
+            </div>
+        </div>
+    );
+}
+
+function ModalPedido({ sel, onCerrar, onEstado }) {
+    const p = sel.pedido;
+    const items = Array.isArray(p.items_json) ? p.items_json : [];
+    const esDelivery = p.tipo_entrega !== 'takeaway';
+    const subtotal = items.reduce((a, it) => a + (parseFloat(it.subtotal) || 0), 0);
+    const [envio, setEnvio] = useState(parseFloat(p.costo_envio) > 0 ? String(p.costo_envio) : '');
+    const wa = soloDigitos(p.whatsapp);
+    const totalConEnvio = subtotal + (parseFloat(envio) || 0);
+    const editable = p.estado !== 'entregado' && p.estado !== 'cancelado';
+    const confirmar = () => onEstado(p.id, 'confirmado', esDelivery ? { costo_envio: envio === '' ? 0 : envio } : {});
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onCerrar}>
+            <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+                    <div>
+                        <h3 className="font-bold text-gray-800">Pedido #{p.id}</h3>
+                        <p className="text-xs text-gray-500">{new Date(p.created_at).toLocaleString('es-AR')} · {tiempoRelativo(p.created_at)}</p>
+                    </div>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${(ESTADO_META[p.estado] || ESTADO_META.pendiente).chip}`}>{estadoLabel(p.estado, p.tipo_entrega)}</span>
+                </div>
+                <div className="p-4 space-y-3">
+                    <div className="rounded-lg border p-3">
+                        <p className="font-semibold text-gray-800">{p.cliente_nombre} {p.cliente_apellido}</p>
+                        <p className="text-sm mt-1 font-medium">{esDelivery ? '🛵 Delivery' : '🏪 Retiro en el local'}</p>
+                        {esDelivery && p.direccion && <p className="text-sm text-gray-600 mt-1">📍 {p.direccion} · <a className="text-blue-600 underline" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.direccion)}`} target="_blank" rel="noreferrer">Ver mapa</a></p>}
+                        {wa && <p className="text-sm mt-1">📱 <a className="text-green-600 font-medium" href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer">{p.whatsapp}</a></p>}
+                        <p className="text-sm mt-1">💳 {p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo (al recibir)'}</p>
+                        {p.notas && <p className="text-sm text-gray-600 mt-1">📝 {p.notas}</p>}
+                    </div>
+
+                    <div className="rounded-lg border p-3 text-sm">
+                        {items.map((it, i) => (
+                            <div key={i} className="flex justify-between py-0.5">
+                                <span>{it.cantidad}× {it.nombre}</span>
+                                <span className="text-gray-500">{fmt(it.subtotal)}</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between border-t mt-1 pt-1"><span className="text-gray-500">Subtotal</span><span>{fmt(subtotal)}</span></div>
+                        {esDelivery && (parseFloat(envio) > 0) && <div className="flex justify-between"><span className="text-gray-500">Envío</span><span>{fmt(parseFloat(envio))}</span></div>}
+                        <div className="flex justify-between font-bold text-base mt-1"><span>Total</span><span>{fmt(esDelivery ? totalConEnvio : subtotal)}</span></div>
+                    </div>
+
+                    {esDelivery && editable && (
+                        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                            <label className="block text-xs font-semibold text-indigo-800 mb-1">Costo del envío</label>
+                            <div className="flex items-center gap-2">
+                                <span className="text-gray-500">$</span>
+                                <input type="number" min="0" className="inp3 flex-1" placeholder="0" value={envio} onChange={(e) => setEnvio(e.target.value)} />
+                            </div>
+                            <p className="text-[11px] text-indigo-700 mt-1">Se lo informamos al cliente por WhatsApp al confirmar el pedido.</p>
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 flex-wrap items-center">
+                        {p.estado === 'pendiente' && <button onClick={confirmar} className="px-4 py-2 rounded-lg text-white text-sm font-semibold bg-blue-600">Confirmar{esDelivery ? ' con envío' : ''}</button>}
+                        {p.estado === 'confirmado' && esDelivery && <button onClick={confirmar} className="px-3 py-2 rounded-lg text-sm font-medium border">Actualizar envío</button>}
+                        {p.estado === 'confirmado' && <button onClick={() => onEstado(p.id, 'en_camino')} className="px-4 py-2 rounded-lg text-white text-sm font-semibold bg-indigo-600">{esDelivery ? 'En camino' : 'Marcar listo'}</button>}
+                        {(p.estado === 'confirmado' || p.estado === 'en_camino') && <button onClick={() => onEstado(p.id, 'entregado')} className="px-4 py-2 rounded-lg text-white text-sm font-semibold bg-green-600">Entregado</button>}
+                        <button onClick={() => imprimirComanda(p, subtotal)} className="px-3 py-2 rounded-lg text-sm font-medium border">🖨️ Imprimir</button>
+                        {editable && <button onClick={() => { if (confirm('¿Cancelar el pedido? Se devuelve el stock.')) onEstado(p.id, 'cancelado'); }} className="px-3 py-2 rounded-lg text-sm font-medium border text-red-500 ml-auto">Cancelar</button>}
+                    </div>
+                </div>
+                <style>{`.inp3{padding:0.4rem 0.5rem;border:1px solid #e5e7eb;border-radius:0.4rem;font-size:0.9rem;outline:none;width:100%}`}</style>
+            </div>
         </div>
     );
 }

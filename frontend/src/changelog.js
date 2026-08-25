@@ -14,9 +14,19 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.49.0';
+export const VERSION_ACTUAL = '2.49.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.49.1',
+    fecha: '2026-08-25',
+    titulo: 'Tienda Online: mejoras en la recepción de pedidos',
+    cambios: [
+      { t: 'Nueva pantalla de recepción de pedidos: resumen del día, filtros por estado (nuevos, en curso, entregados), y aviso sonoro en vivo cuando llega un pedido mientras la mirás.', super: true },
+      { t: 'Al confirmar un pedido con envío podés cargar el costo del delivery: se recalcula el total y se le informa al cliente por WhatsApp automáticamente.', super: true },
+      { t: 'Detalle completo de cada pedido con enlace al mapa de la dirección, ticket para imprimir (comanda), nuevo estado "En camino / Listo para retirar" y avisos al cliente en cada paso.', super: true },
+    ],
+  },
   {
     version: '2.49.0',
     fecha: '2026-08-24',

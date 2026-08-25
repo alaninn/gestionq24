@@ -11,6 +11,8 @@ const router = express.Router();
 const db = require('../config/database');
 const { ajustarStock } = require('../helpers/stock');
 
+const fmtPeso = (n) => '$' + new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Math.round(n || 0));
+
 // Aviso al cliente por WhatsApp cuando cambia el estado del pedido (si está
 // vinculado y con avisos activos). Nunca lanza.
 async function avisarEstadoWhatsapp(negocio_id, pedido, estado) {
@@ -19,12 +21,26 @@ async function avisarEstadoWhatsapp(negocio_id, pedido, estado) {
         const wc = await db.query('SELECT status, notificar_pedidos FROM whatsapp_config WHERE negocio_id = $1', [negocio_id]);
         if (!wc.rows[0] || wc.rows[0].status !== 'connected' || wc.rows[0].notificar_pedidos === false) return;
         const nombre = pedido.cliente_nombre || '';
-        const msgs = {
-            confirmado: `¡Hola ${nombre}! Tu pedido *#${pedido.id}* fue confirmado ✅. ${pedido.tipo_entrega === 'takeaway' ? 'Podés pasar a retirarlo cuando quieras.' : 'Ya lo estamos preparando para enviártelo.'}`,
-            entregado: `¡Tu pedido *#${pedido.id}* fue entregado! 🎉 ¡Gracias por tu compra!`,
-            cancelado: `Hola ${nombre}, tu pedido *#${pedido.id}* fue cancelado. Si tenés dudas, escribinos. 🙏`,
-        };
-        const msg = msgs[estado];
+        const esDelivery = pedido.tipo_entrega !== 'takeaway';
+        const envio = parseFloat(pedido.costo_envio) || 0;
+        let msg = null;
+        if (estado === 'confirmado') {
+            const l = [`¡Hola ${nombre}! Tu pedido *#${pedido.id}* fue confirmado ✅.`];
+            if (esDelivery && envio > 0) {
+                l.push(`Costo de envío: *${fmtPeso(envio)}*.`);
+                l.push(`Total con envío: *${fmtPeso(pedido.total)}*.`);
+            }
+            l.push(esDelivery ? 'Ya lo estamos preparando para enviártelo. 🛵' : 'Te avisamos apenas esté listo para retirar. 🏪');
+            msg = l.join('\n');
+        } else if (estado === 'en_camino') {
+            msg = esDelivery
+                ? `🛵 ¡Tu pedido *#${pedido.id}* ya salió y está en camino! Total: *${fmtPeso(pedido.total)}*.`
+                : `🏪 ¡Tu pedido *#${pedido.id}* ya está listo para retirar! Te esperamos.`;
+        } else if (estado === 'entregado') {
+            msg = `¡Tu pedido *#${pedido.id}* fue entregado! 🎉 ¡Gracias por tu compra!`;
+        } else if (estado === 'cancelado') {
+            msg = `Hola ${nombre}, tu pedido *#${pedido.id}* fue cancelado. Si tenés dudas, escribinos. 🙏`;
+        }
         if (!msg) return;
         require('../services/whatsappService').sendMessage(negocio_id, pedido.whatsapp, msg).catch(() => {});
     } catch (e) { /* nunca romper por el aviso */ }
@@ -337,14 +353,17 @@ router.put('/pedidos/marcar-leidos', async (req, res) => {
 
 // -----------------------------------------------
 // PUT /api/tienda/pedidos/:id/estado — cambiar estado (cancelar restaura stock)
+// Acepta costo_envio opcional: recalcula el total (subtotal + envío) y lo avisa.
 // -----------------------------------------------
 router.put('/pedidos/:id/estado', async (req, res) => {
     const negocio_id = req.negocio_id || req.usuario?.negocio_id;
     if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
     const nuevo = req.body?.estado;
-    if (!['pendiente', 'confirmado', 'entregado', 'cancelado'].includes(nuevo)) {
+    if (!['pendiente', 'confirmado', 'en_camino', 'entregado', 'cancelado'].includes(nuevo)) {
         return res.status(400).json({ error: 'Estado inválido' });
     }
+    const tieneEnvio = req.body?.costo_envio != null && req.body.costo_envio !== '';
+    const envio = tieneEnvio ? Math.max(0, parseFloat(req.body.costo_envio) || 0) : null;
     const cliente = await db.pool.connect();
     try {
         await cliente.query('BEGIN');
@@ -359,7 +378,19 @@ router.put('/pedidos/:id/estado', async (req, res) => {
                 if (it.producto_id) await ajustarStock(negocio_id, it.producto_id, it.cantidad, +1, cliente);
             }
         }
-        const r = await cliente.query('UPDATE tienda_pedidos SET estado = $1, leido = TRUE WHERE id = $2 RETURNING *', [nuevo, req.params.id]);
+
+        // Si se informa el costo de envío, se recalcula el total: subtotal de los
+        // productos (del detalle guardado) + envío.
+        let extra = '';
+        const params = [nuevo, req.params.id];
+        if (envio != null) {
+            const items = Array.isArray(p.items_json) ? p.items_json : [];
+            const subtotal = items.reduce((a, it) => a + (parseFloat(it.subtotal) || 0), 0);
+            const nuevoTotal = Math.round((subtotal + envio) * 100) / 100;
+            extra = ', costo_envio = $3, total = $4';
+            params.push(envio, nuevoTotal);
+        }
+        const r = await cliente.query(`UPDATE tienda_pedidos SET estado = $1, leido = TRUE${extra} WHERE id = $2 RETURNING *`, params);
         await cliente.query('COMMIT');
         // Aviso automático al cliente por WhatsApp según el nuevo estado.
         avisarEstadoWhatsapp(negocio_id, r.rows[0], nuevo).catch(() => {});

@@ -765,6 +765,7 @@ ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS sonido_tipo VARCHAR(20) DEFAU
 ALTER TABLE tienda_config ADD COLUMN IF NOT EXISTS sonido_repeticiones INTEGER DEFAULT 2;
 ALTER TABLE tienda_productos ADD COLUMN IF NOT EXISTS permitir_sin_stock BOOLEAN DEFAULT FALSE;
 ALTER TABLE tienda_pedidos ADD COLUMN IF NOT EXISTS tipo_entrega VARCHAR(20);
+ALTER TABLE tienda_pedidos ADD COLUMN IF NOT EXISTS costo_envio NUMERIC(12,2) DEFAULT 0;
 
 -- Integración de WhatsApp (Baileys). Estado de vinculación por negocio. La
 -- sesión real vive en disco (carpeta whatsapp-sessions), acá solo el estado.
