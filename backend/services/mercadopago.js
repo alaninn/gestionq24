@@ -58,6 +58,45 @@ async function crearPreferenciaTokens({ revendedorId, cantidad, precioUnitario, 
     };
 }
 
+// Crea una preferencia de pago para RENOVAR la membresía de un negocio.
+// external_reference = mem:<negocioId>:<dias>, para que el webhook sepa a qué
+// negocio acreditarle los días al aprobarse el pago.
+async function crearPreferenciaMembresia({ negocioId, negocioNombre, plan, precio, dias, emailPagador }) {
+    if (!habilitado()) {
+        const err = new Error('Mercado Pago no está configurado');
+        err.mpDeshabilitado = true;
+        throw err;
+    }
+    const monto = Math.round((parseFloat(precio) || 0) * 100) / 100;
+    const externalRef = `mem:${negocioId}:${dias}`;
+
+    const body = {
+        items: [{
+            title: `Membresía GestiónQ24 — plan ${plan} (${dias} días)`,
+            description: negocioNombre ? `Renovación de ${negocioNombre}` : undefined,
+            quantity: 1,
+            unit_price: monto,
+            currency_id: 'ARS',
+        }],
+        payer: emailPagador ? { email: emailPagador } : undefined,
+        external_reference: externalRef,
+        notification_url: `${baseUrl()}/api/pagos/mp-webhook`,
+        back_urls: {
+            success: `${baseUrl()}/pago-membresia?estado=ok`,
+            failure: `${baseUrl()}/pago-membresia?estado=error`,
+            pending: `${baseUrl()}/pago-membresia?estado=pendiente`,
+        },
+        auto_return: 'approved',
+        metadata: { negocio_id: negocioId, dias, tipo: 'membresia' },
+    };
+
+    const { data } = await axios.post(`${MP_API}/checkout/preferences`, body, {
+        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
+        timeout: 15000,
+    });
+    return { preference_id: data.id, init_point: data.init_point, total: monto };
+}
+
 // Consulta un pago por id para verificar su estado real (no confiar en el webhook).
 async function obtenerPago(pagoId) {
     if (!habilitado()) return null;
@@ -68,4 +107,4 @@ async function obtenerPago(pagoId) {
     return data;
 }
 
-module.exports = { habilitado, crearPreferenciaTokens, obtenerPago };
+module.exports = { habilitado, crearPreferenciaTokens, crearPreferenciaMembresia, obtenerPago };

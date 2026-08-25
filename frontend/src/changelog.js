@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.51.1';
+export const VERSION_ACTUAL = '2.52.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.52.0',
+    fecha: '2026-08-25',
+    titulo: 'Autopago de membresía por Mercado Pago',
+    cambios: [
+      { t: 'Los negocios pueden renovar la suscripción solos por Mercado Pago: cuando faltan pocos días para vencer (o si ya venció) aparece el botón "Pagar" y, al abonar, la cuenta se reactiva sola al instante. Sigue disponible renovar por WhatsApp. Queda listo; se activa al cargar las credenciales de Mercado Pago en el servidor.', super: true },
+    ],
+  },
   {
     version: '2.51.1',
     fecha: '2026-08-25',

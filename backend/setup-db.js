@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS pagos_historial (
 CREATE INDEX IF NOT EXISTS idx_pagos_negocio ON pagos_historial(negocio_id);
 CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos_historial(fecha DESC);
 
+-- Referencia del pago externo (ej. mp:<id>) para idempotencia del autopago por
+-- Mercado Pago: el webhook y la confirmacion no pueden acreditar dos veces.
+ALTER TABLE pagos_historial ADD COLUMN IF NOT EXISTS pago_ref VARCHAR(120);
+-- Indice unico plano: en Postgres los NULL son distintos entre si, asi que las
+-- filas viejas (pago_ref NULL) conviven sin problema y ON CONFLICT (pago_ref)
+-- puede usarlo como arbitro. Se dropea el parcial anterior por si quedo creado.
+DROP INDEX IF EXISTS uq_pagos_historial_pago_ref;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pagos_historial_pago_ref ON pagos_historial(pago_ref);
+
 -- =============================================
 -- Agregar columnas a tabla negocios si no existen
 -- =============================================

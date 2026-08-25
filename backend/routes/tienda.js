@@ -72,7 +72,7 @@ function normalizarSlug(s) {
 }
 
 // Palabras que NO pueden ser slug de tienda (chocan con rutas del sistema).
-const SLUG_RESERVADOS = new Set(['login', 'admin', 'superadmin', 'revendedor', 'r', 'pos', 'api', 'assets', 'tienda', 'favicon']);
+const SLUG_RESERVADOS = new Set(['login', 'admin', 'superadmin', 'revendedor', 'r', 'pos', 'api', 'assets', 'tienda', 'favicon', 'pago-membresia']);
 
 // Tope de seguridad para imágenes en base64. Las imágenes se comprimen en el
 // navegador antes de subir (quedan en ~60-260KB), así que este límite es solo

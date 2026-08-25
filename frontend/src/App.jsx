@@ -8,6 +8,7 @@ import Superadmin from './pages/Superadmin';
 import Revendedor from './pages/Revendedor';
 import Tienda from './pages/Tienda';
 import Landing from './pages/Landing';
+import PagoMembresia from './pages/PagoMembresia';
 import { TemaProvider } from './context/TemaContext';
 import { ConectividadProvider } from './context/ConectividadContext';
 
@@ -119,6 +120,9 @@ function AppRoutes() {
           <Admin />
         </RutaProtegida>
       } />
+
+      {/* Retorno del checkout de Mercado Pago (autopago de la membresía). Pública. */}
+      <Route path="/pago-membresia" element={<PagoMembresia />} />
 
       {/* Tienda pública por slug (gestionq24.store/<slug>). Va ÚLTIMA: las rutas
           fijas de arriba (login, admin, etc.) tienen prioridad en React Router,

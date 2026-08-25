@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTema } from '../context/TemaContext';
 import { linkRenovarWhatsApp } from '../utils/contacto';
+import { iniciarPagoMembresia, estadoAutopago } from '../utils/autopago';
 
 // Inicial del nombre del negocio para el "avatar" de la pantalla 2
 const inicial = (txt) => (txt || '?').trim().charAt(0).toUpperCase();
@@ -236,12 +237,15 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
   const [verPass, setVerPass] = useState(false);
   const [error, setError] = useState('');
   const [bloqueoRenovar, setBloqueoRenovar] = useState(false);
+  const [datosBloqueo, setDatosBloqueo] = useState(null); // body del 403 (vencido)
+  const [precioBloqueo, setPrecioBloqueo] = useState(null);
+  const [pagando, setPagando] = useState(false);
   const [cargando, setCargando] = useState(false);
   const color = negocio?.color_primario || '#16a34a';
 
   const enviar = async (e) => {
     e.preventDefault();
-    setError(''); setBloqueoRenovar(false); setCargando(true);
+    setError(''); setBloqueoRenovar(false); setDatosBloqueo(null); setPrecioBloqueo(null); setCargando(true);
     try {
       const usuario = await login(username.trim(), password);
       await cargarTema();
@@ -256,13 +260,31 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
         navigate(tienePermisoAdmin ? '/admin' : '/pos');
       }
     } catch (err) {
-      const msg = err.response?.data?.error || 'Usuario o contraseña incorrectos';
+      const data = err.response?.data;
+      const msg = data?.error || 'Usuario o contraseña incorrectos';
       setError(msg);
-      // Suscripción vencida o cuenta bloqueada: ofrecer renovar por WhatsApp.
-      setBloqueoRenovar(err.response?.status === 403 && /vencid|bloquead/i.test(msg));
+      // Suscripción vencida o cuenta bloqueada: ofrecer pagar / renovar.
+      const bloqueo = err.response?.status === 403 && /vencid|bloquead/i.test(msg);
+      setBloqueoRenovar(bloqueo);
+      setDatosBloqueo(bloqueo ? data : null);
+      // Si puede pagar por Mercado Pago (solo vencido, negocio directo), traemos el precio.
+      if (bloqueo && data?.puede_autopago && data?.negocio_id) {
+        estadoAutopago(data.negocio_id).then(e => setPrecioBloqueo(e?.disponible ? e.precio : null));
+      }
     } finally {
       setCargando(false);
     }
+  };
+
+  const pagarMembresia = async () => {
+    if (!datosBloqueo?.negocio_id) return;
+    setPagando(true);
+    const ok = await iniciarPagoMembresia(datosBloqueo.negocio_id);
+    if (!ok) {
+      setPagando(false);
+      window.open(linkRenovarWhatsApp({ negocio: negocio?.nombre, estado: 'vencido' }), '_blank');
+    }
+    // Si ok, el navegador se redirige a Mercado Pago.
   };
 
   return (
@@ -291,14 +313,31 @@ function LoginUsuario({ negocio, login, cargarTema, navigate, salirNegocio }) {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm">
             <p>{error}</p>
             {bloqueoRenovar && (
-              <a
-                href={linkRenovarWhatsApp({ negocio: negocio?.nombre, estado: 'vencido' })}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2.5 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg px-3 py-2 transition-colors"
-              >
-                <span className="text-base">💬</span> Renovar por WhatsApp
-              </a>
+              <div className="mt-2.5 space-y-2">
+                {datosBloqueo?.puede_autopago && (
+                  <button
+                    type="button"
+                    onClick={pagarMembresia}
+                    disabled={pagando}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <span className="text-base">💳</span>
+                    {pagando
+                      ? 'Abriendo Mercado Pago…'
+                      : `Pagar ${precioBloqueo ? '$ ' + Number(precioBloqueo).toLocaleString('es-AR') + ' ' : ''}y reactivar`}
+                  </button>
+                )}
+                <a
+                  href={linkRenovarWhatsApp({ negocio: negocio?.nombre, estado: 'vencido' })}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 font-semibold transition-colors ${datosBloqueo?.puede_autopago
+                    ? 'text-green-700 hover:text-green-900 underline'
+                    : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                >
+                  <span className="text-base">💬</span> {datosBloqueo?.puede_autopago ? 'o renovar por WhatsApp' : 'Renovar por WhatsApp'}
+                </a>
+              </div>
             )}
           </div>
         )}

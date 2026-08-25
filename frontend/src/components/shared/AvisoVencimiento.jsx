@@ -2,13 +2,14 @@
 // AVISO DE VENCIMIENTO DE SUSCRIPCION (para el usuario del negocio)
 // - Faltando 5 dias o menos: banner de aviso arriba (se puede cerrar por el dia).
 // - Faltando 24 hs o menos: alerta FIJA en la esquina, con cuenta regresiva, no se cierra.
-// En ambos casos, al tocar se abre WhatsApp con el administrador para renovar.
-// El superadmin no ve estos avisos.
+// El admin puede PAGAR directo por Mercado Pago (autopago); el resto de los
+// usuarios ven la opcion de renovar por WhatsApp. El superadmin no ve avisos.
 // =============================================
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { linkRenovarWhatsApp } from '../../utils/contacto';
+import { estadoAutopago, iniciarPagoMembresia } from '../../utils/autopago';
 
 // Clave de "oculto por hoy" para el banner (reaparece al día siguiente).
 function claveOcultoHoy() {
@@ -27,22 +28,23 @@ function fmtCuentaRegresiva(ms) {
   return `${p(h)}:${p(m)}:${p(s)}`;
 }
 
+const fmtP = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR');
+
 export default function AvisoVencimiento() {
   const { usuario, refrescarUsuario } = useAuth();
   const [ocultoBanner, setOcultoBanner] = useState(
     () => localStorage.getItem(claveOcultoHoy()) === '1'
   );
-  // Reloj que actualiza la cuenta regresiva cada segundo.
   const [ahora, setAhora] = useState(Date.now());
+  const [autopago, setAutopago] = useState(null); // { disponible, precio } | null
   useEffect(() => {
     const id = setInterval(() => setAhora(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
   // Mientras el aviso puede estar visible (faltan <= 5 días), refrescamos la fecha
-  // de vencimiento desde el servidor cada 45s. Así, si el superadmin renueva la
-  // suscripción, el cartel (incluida la alerta fija de 24 hs) desaparece solo, sin
-  // necesidad de recargar la página.
+  // de vencimiento desde el servidor cada 45s. Así, si se renueva la suscripción,
+  // el cartel desaparece solo, sin recargar la página.
   useEffect(() => {
     if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return;
     const v = new Date(usuario.fecha_vencimiento);
@@ -52,6 +54,19 @@ export default function AvisoVencimiento() {
     const id = setInterval(() => { refrescarUsuario && refrescarUsuario(); }, 45000);
     return () => clearInterval(id);
   }, [usuario?.fecha_vencimiento, usuario?.rol, refrescarUsuario]);
+
+  // Autopago: solo el admin, y solo dentro de la ventana de aviso, consulta si
+  // puede pagar por Mercado Pago y a qué precio.
+  useEffect(() => {
+    if (!usuario || usuario.rol !== 'admin' || !usuario.fecha_vencimiento || !usuario.negocio_id) return;
+    const v = new Date(usuario.fecha_vencimiento);
+    const corte = new Date(v.getFullYear(), v.getMonth(), v.getDate() + 1).getTime();
+    const diasAprox = Math.ceil((corte - Date.now()) / 86400000);
+    if (diasAprox > 5) return;
+    let vivo = true;
+    estadoAutopago(usuario.negocio_id).then(d => { if (vivo) setAutopago(d); });
+    return () => { vivo = false; };
+  }, [usuario?.fecha_vencimiento, usuario?.rol, usuario?.negocio_id]);
 
   // El superadmin no ve avisos; tampoco si no hay fecha de vencimiento.
   if (!usuario || usuario.rol === 'superadmin' || !usuario.fecha_vencimiento) return null;
@@ -70,28 +85,44 @@ export default function AvisoVencimiento() {
     negocio: usuario.negocio_nombre,
     estado: critico ? '24h' : dias,
   });
+  const puedePagar = autopago?.disponible === true && usuario.rol === 'admin';
+  const pagar = async () => {
+    const ok = await iniciarPagoMembresia(usuario.negocio_id);
+    if (!ok) window.open(url, '_blank'); // si Mercado Pago falla, cae a WhatsApp
+  };
 
   // -------- Alerta fija en la esquina (24 hs o menos), con cuenta regresiva --------
   if (critico) {
     return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="fixed bottom-4 right-4 z-[9999] flex items-center gap-3 max-w-xs
-                   bg-red-600 text-white rounded-2xl shadow-2xl px-4 py-3
-                   ring-2 ring-red-300 hover:bg-red-700 transition-colors cursor-pointer"
-        title="Tocá para renovar por WhatsApp"
-      >
-        <span className="text-2xl leading-none animate-pulse">⏰</span>
-        <span className="text-sm leading-tight">
-          <strong className="block">Tu suscripción vence en</strong>
-          <span className="block font-mono text-lg font-bold tabular-nums tracking-wide">
-            {fmtCuentaRegresiva(msRestantes)}
+      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-xs
+                      bg-red-600 text-white rounded-2xl shadow-2xl px-4 py-3 ring-2 ring-red-300">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl leading-none animate-pulse">⏰</span>
+          <span className="text-sm leading-tight">
+            <strong className="block">Tu suscripción vence en</strong>
+            <span className="block font-mono text-lg font-bold tabular-nums tracking-wide">
+              {fmtCuentaRegresiva(msRestantes)}
+            </span>
           </span>
-          <span className="opacity-90 text-xs">Tocá acá para renovar por WhatsApp</span>
-        </span>
-      </a>
+        </div>
+        {puedePagar ? (
+          <>
+            <button onClick={pagar}
+              className="w-full bg-white text-red-700 hover:bg-gray-100 font-bold rounded-lg px-3 py-2 text-sm transition-colors">
+              💳 Pagar {autopago.precio ? fmtP(autopago.precio) : ''} y reactivar
+            </button>
+            <a href={url} target="_blank" rel="noreferrer" className="text-center text-xs text-white/90 underline">
+              o renovar por WhatsApp
+            </a>
+          </>
+        ) : (
+          <a href={url} target="_blank" rel="noreferrer"
+            className="w-full bg-white text-red-700 hover:bg-gray-100 font-bold rounded-lg px-3 py-2 text-sm text-center transition-colors"
+            title="Tocá para renovar por WhatsApp">
+            💬 Renovar por WhatsApp
+          </a>
+        )}
+      </div>
     );
   }
 
@@ -113,14 +144,22 @@ export default function AvisoVencimiento() {
           Tu suscripción vence en <strong>{dias} {dias === 1 ? 'día' : 'días'}</strong>.
           Renovala para no perder el servicio.
         </p>
+        {puedePagar && (
+          <button onClick={pagar}
+            className="flex-shrink-0 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold
+                       rounded-lg px-3 py-1.5 transition-colors whitespace-nowrap">
+            💳 Pagar {autopago.precio ? fmtP(autopago.precio) : 'ahora'}
+          </button>
+        )}
         <a
           href={url}
           target="_blank"
           rel="noreferrer"
-          className="flex-shrink-0 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold
-                     rounded-lg px-3 py-1.5 transition-colors whitespace-nowrap"
+          className={`flex-shrink-0 whitespace-nowrap ${puedePagar
+            ? 'text-green-700 hover:text-green-900 underline text-sm'
+            : 'bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg px-3 py-1.5 transition-colors'}`}
         >
-          Renovar por WhatsApp
+          {puedePagar ? 'WhatsApp' : 'Renovar por WhatsApp'}
         </a>
         <button
           onClick={cerrarPorHoy}

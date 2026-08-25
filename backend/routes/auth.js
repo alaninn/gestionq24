@@ -8,6 +8,7 @@ const router = express.Router();
 const db = require('../config/database');
 const jwt = require('jsonwebtoken');
 const { diaVencido } = require('../helpers/vencimiento');
+const mp = require('../services/mercadopago');
 
 // Lee el token de dispositivo (header x-device-token). Ese token se emite en el
 // Paso 1 (acceso del negocio) y deja el equipo fijado a un negocio. Devuelve el
@@ -110,7 +111,8 @@ router.post('/login', async (req, res) => {
                 n.nombre AS negocio_nombre,
                 n.estado AS negocio_estado,
                 n.fecha_vencimiento,
-                n.plan
+                n.plan,
+                n.revendedor_id AS negocio_revendedor_id
             FROM usuarios u
             LEFT JOIN negocios n ON u.negocio_id = n.id
             WHERE u.username = $1
@@ -150,8 +152,14 @@ router.post('/login', async (req, res) => {
             }
             if (usuario.negocio_estado === 'vencido' ||
                 diaVencido(usuario.fecha_vencimiento)) {
-                return res.status(403).json({ 
-                    error: 'Tu suscripción ha vencido. Contactá al administrador.' 
+                return res.status(403).json({
+                    error: 'Tu suscripción ha vencido. Contactá al administrador.',
+                    vencido: true,
+                    negocio_id: usuario.negocio_id,
+                    negocio_nombre: usuario.negocio_nombre,
+                    plan: usuario.plan || null,
+                    // Autopago solo para negocios directos (no de revendedor) y si MP está activo.
+                    puede_autopago: usuario.negocio_revendedor_id == null && mp.habilitado(),
                 });
             }
         }
