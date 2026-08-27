@@ -14,9 +14,18 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.52.0';
+export const VERSION_ACTUAL = '2.52.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.52.1',
+    fecha: '2026-08-27',
+    titulo: 'Arreglos de estabilidad',
+    cambios: [
+      { t: 'Las funciones de tu plan (como la Tienda Online) quedan disponibles apenas iniciás sesión, sin tener que refrescar la página para que aparezcan.' },
+      { t: 'La web toma siempre la última versión después de cada actualización, evitando pantallas que "a veces salían y a veces no".' },
+    ],
+  },
   {
     version: '2.52.0',
     fecha: '2026-08-25',

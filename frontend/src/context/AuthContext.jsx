@@ -8,7 +8,11 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
-  const [planInfo, setPlanInfo] = useState(null);
+  const [planInfo, setPlanInfo] = useState(() => {
+    // Restaurar del caché: así, en una recarga, las funciones por plan (Tienda
+    // Online, etc.) están al instante y no aparecen un segundo deshabilitadas.
+    try { const c = localStorage.getItem('plan_info'); return c ? JSON.parse(c) : null; } catch { return null; }
+  });
   const [cargando, setCargando] = useState(true);
   // Negocio "fijado" en esta PC (Paso 1: Acceso del negocio). Mientras exista,
   // el login de usuarios queda atado a este negocio.
@@ -22,6 +26,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     verificarSesion();
   }, []);
+
+  // Mantener el caché del plan al día (para la restauración inmediata en recargas).
+  useEffect(() => {
+    try {
+      if (planInfo) localStorage.setItem('plan_info', JSON.stringify(planInfo));
+    } catch { /* storage lleno o bloqueado: se ignora */ }
+  }, [planInfo]);
 
   const verificarSesion = async () => {
     try {
@@ -92,7 +103,20 @@ const login = async (username, password) => {
     const res = await api.post('/api/auth/login', { username, password });
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
-   setUsuario(res.data.usuario);
+    setUsuario(res.data.usuario);
+
+    // Cargar la info del plan ANTES de devolver, así las funciones por plan
+    // (Tienda Online, Predicción, Multinegocio, etc.) quedan disponibles apenas
+    // entra, sin tener que refrescar la página. Si falla, no bloquea el login.
+    const impersonando = !!localStorage.getItem('acceso_superadmin_negocio');
+    if (res.data.usuario.rol !== 'superadmin' || impersonando) {
+      try {
+        const planRes = await api.get('/api/usuarios/plan-info');
+        setPlanInfo(planRes.data);
+      } catch (planErr) {
+        console.error('Error cargando información del plan tras login:', planErr);
+      }
+    }
     return res.data.usuario;
   };
 
@@ -115,6 +139,7 @@ const login = async (username, password) => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     localStorage.removeItem('config_negocio');
+    localStorage.removeItem('plan_info');
     localStorage.removeItem('pos_turno');
     setNegocioFijado(null);
     setUsuario(null);
@@ -138,6 +163,7 @@ const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     localStorage.removeItem('config_negocio');
+    localStorage.removeItem('plan_info');
     localStorage.removeItem('pos_pestanas');
     localStorage.removeItem('pos_pestana_activa');
     localStorage.removeItem('pos_contador_ventas');
@@ -163,7 +189,7 @@ const logout = () => {
   };
 
   const puedeUsarFuncion = (funcion) => {
-    if (!planInfo) return false;
+    if (!usuario || !planInfo) return false;
     if (usuario.rol === 'superadmin') return true;
     return planInfo.caracteristicas[funcion] === true;
   };

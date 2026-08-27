@@ -166,9 +166,23 @@ const rutaFrontend = process.env.RENDER
     ? path.join('/opt/render/project/src', 'frontend/dist')
     : path.join(__dirname, '../frontend/dist');
 
-app.use(express.static(rutaFrontend));
+app.use(express.static(rutaFrontend, {
+    setHeaders: (res, filePath) => {
+        const p = filePath.replace(/\\/g, '/');
+        if (p.endsWith('/index.html')) {
+            // Nunca cachear duro el HTML: tras un deploy el navegador toma siempre
+            // el index nuevo (que apunta al bundle nuevo) y no queda pidiendo un JS
+            // viejo que ya no existe (pantalla en blanco / cosas que "a veces salen").
+            res.setHeader('Cache-Control', 'no-cache');
+        } else if (p.includes('/assets/')) {
+            // Archivos con hash en el nombre: inmutables, se cachean a largo plazo.
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+    }
+}));
 app.use((req, res, next) => {
     if (!req.path.startsWith('/api')) {
+        res.set('Cache-Control', 'no-cache');
         res.sendFile(path.join(rutaFrontend, 'index.html'));
     } else {
         next();
