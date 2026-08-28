@@ -385,9 +385,9 @@ function VencimientoBanner({ data, historico, esMono }) {
       <div className={`rounded-2xl p-5 text-white shadow-lg bg-gradient-to-br ${aPagar > 0 ? 'from-orange-500 to-rose-600' : 'from-emerald-500 to-teal-600'}`}>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-white/70 font-semibold">{aPagar > 0 ? 'IVA a pagar de este período' : 'Saldo de IVA a favor'}</p>
+            <p className="text-[11px] uppercase tracking-wide text-white/70 font-semibold">{aPagar > 0 ? 'IVA a pagar de este período' : 'Saldo de IVA a favor (acumulado)'}</p>
             <p className="text-3xl font-extrabold mt-0.5">{fmt(aPagar > 0 ? aPagar : saldoFavor)}</p>
-            {saldoFavor > 0 && aPagar === 0 && <p className="text-xs text-white/80 mt-1">Se traslada al mes siguiente (saldo técnico)</p>}
+            {saldoFavor > 0 && aPagar === 0 && <p className="text-xs text-white/80 mt-1">No tenés que pagar IVA este mes. Este saldo se traslada al siguiente.</p>}
           </div>
           <div className="text-right">
             <p className="text-[11px] text-white/70 uppercase tracking-wide">Vence</p>
