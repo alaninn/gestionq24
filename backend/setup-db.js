@@ -475,6 +475,46 @@ ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS regimen_fiscal VARCHAR(50) DE
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS punto_venta_arca INTEGER DEFAULT 1;
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS tipo_comprobante_default INTEGER DEFAULT 1;
 
+-- =============================================
+-- Módulo "Tu Contador": situación fiscal (categoría + tope monotributo + IVA).
+-- =============================================
+-- Categoría de monotributo (A-K) como respaldo si ARCA no la puede traer.
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS categoria_monotributo VARCHAR(2);
+
+-- Comprobantes importados de "Mis Comprobantes" de AFIP (emitidos y recibidos).
+-- Los recibidos (compras) no tienen web service por certificado, se traen del CSV oficial.
+CREATE TABLE IF NOT EXISTS comprobantes_importados (
+    id SERIAL PRIMARY KEY,
+    negocio_id INTEGER NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+    tipo VARCHAR(10) NOT NULL,
+    fecha DATE,
+    tipo_cbte INTEGER,
+    punto_venta INTEGER,
+    numero BIGINT,
+    cuit_contraparte VARCHAR(15),
+    nombre_contraparte VARCHAR(200),
+    neto NUMERIC(14,2) DEFAULT 0,
+    iva NUMERIC(14,2) DEFAULT 0,
+    total NUMERIC(14,2) DEFAULT 0,
+    origen VARCHAR(10) DEFAULT 'csv',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_imp_negocio ON comprobantes_importados(negocio_id, tipo, fecha);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_comprobantes_imp ON comprobantes_importados(negocio_id, tipo, tipo_cbte, punto_venta, numero, cuit_contraparte);
+
+-- Topes de facturación anual del monotributo por categoría. Los edita el
+-- superadmin porque AFIP los actualiza. Se siembran valores de referencia.
+CREATE TABLE IF NOT EXISTS monotributo_topes (
+    categoria VARCHAR(2) PRIMARY KEY,
+    tope_anual NUMERIC(14,2) NOT NULL,
+    actualizado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO monotributo_topes (categoria, tope_anual) VALUES
+    ('A', 8992597.87), ('B', 13175201.52), ('C', 18473166.15), ('D', 22934610.05),
+    ('E', 26977793.60), ('F', 33809379.57), ('G', 40431835.35), ('H', 61344853.64),
+    ('I', 68664410.05), ('J', 78632948.76), ('K', 94805682.90)
+ON CONFLICT (categoria) DO NOTHING;
+
 -- Columna nueva en ventas para tipo de facturación
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS tipo_facturacion VARCHAR(20) DEFAULT 'x'; -- 'electronica' o 'x'
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS comprobante_electronico_id INTEGER REFERENCES comprobantes_electronicos(id);

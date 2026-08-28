@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.52.1';
+export const VERSION_ACTUAL = '2.53.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.53.0',
+    fecha: '2026-08-27',
+    titulo: 'Nuevo módulo: Tu Contador',
+    cambios: [
+      { t: 'Nuevo "🧮 Tu Contador": ves en tiempo real cuánto facturaste y cuánto compraste, con tu categoría (monotributo o responsable). Si sos monotributo te muestra cómo venís contra el tope para no pasarte (semáforo + proyección); si sos responsable te calcula el IVA (débito vs crédito). Además podés traer tus compras reales subiendo el CSV de "Mis Comprobantes" de AFIP. Función premium.' },
+    ],
+  },
   {
     version: '2.52.1',
     fecha: '2026-08-27',

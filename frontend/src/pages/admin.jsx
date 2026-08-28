@@ -18,6 +18,7 @@ import Soporte from '../components/admin/Soporte';
 import Proveedores from '../components/admin/Proveedores';
 import Stock from '../components/admin/Stock';
 import ResumenFiscal from '../components/admin/ResumenFiscal';
+import TuContador from '../components/admin/TuContador';
 import MisNegocios from '../components/admin/MisNegocios';
 import MovimientosMercaderia from '../components/admin/MovimientosMercaderia';
 import PrediccionCompras from '../components/admin/PrediccionCompras';
@@ -248,6 +249,11 @@ function Admin() {
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
+          {puedeVer('resumen_fiscal') && (
+            esPremium
+              ? <NavLink to="/admin/tu-contador" icon="🧮" label="Tu Contador" badge={<BadgePro />} />
+              : <NavLinkPremium icon="🧮" label="Tu Contador" />
+          )}
 
           {(puedeVer('reportes') || puedeVer('soporte') || (puedeUsarFuncion('tienda_online') && tienePermiso('tienda', 'ver'))) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>
@@ -366,6 +372,7 @@ function Admin() {
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/soporte" element={<Soporte />} />
             <Route path="/resumen-fiscal" element={<ResumenFiscal />} />
+            <Route path="/tu-contador" element={<TuContador />} />
             <Route path="/mis-negocios" element={<MisNegocios />} />
             <Route path="/movimientos" element={<MovimientosMercaderia />} />
             <Route path="/prediccion-compras" element={<PrediccionCompras />} />
