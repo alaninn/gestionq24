@@ -502,18 +502,42 @@ CREATE TABLE IF NOT EXISTS comprobantes_importados (
 CREATE INDEX IF NOT EXISTS idx_comprobantes_imp_negocio ON comprobantes_importados(negocio_id, tipo, fecha);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_comprobantes_imp ON comprobantes_importados(negocio_id, tipo, tipo_cbte, punto_venta, numero, cuit_contraparte);
 
--- Topes de facturación anual del monotributo por categoría. Los edita el
--- superadmin porque AFIP los actualiza. Se siembran valores de referencia.
+-- Topes de facturación anual del monotributo por categoría + cuota mensual. Los
+-- edita el superadmin porque AFIP/ARCA los actualiza. Se siembra la escala vigente.
 CREATE TABLE IF NOT EXISTS monotributo_topes (
     categoria VARCHAR(2) PRIMARY KEY,
     tope_anual NUMERIC(14,2) NOT NULL,
     actualizado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO monotributo_topes (categoria, tope_anual) VALUES
-    ('A', 8992597.87), ('B', 13175201.52), ('C', 18473166.15), ('D', 22934610.05),
-    ('E', 26977793.60), ('F', 33809379.57), ('G', 40431835.35), ('H', 61344853.64),
-    ('I', 68664410.05), ('J', 78632948.76), ('K', 94805682.90)
+ALTER TABLE monotributo_topes ADD COLUMN IF NOT EXISTS cuota_servicios NUMERIC(14,2);
+ALTER TABLE monotributo_topes ADD COLUMN IF NOT EXISTS cuota_bienes NUMERIC(14,2);
+ALTER TABLE monotributo_topes ADD COLUMN IF NOT EXISTS vigencia VARCHAR(30);
+-- Instalaciones nuevas: escala vigente ago-2026 → ene-2027 (topes unificados serv/bienes).
+INSERT INTO monotributo_topes (categoria, tope_anual, cuota_servicios, cuota_bienes, vigencia) VALUES
+    ('A', 12009410.45, 49527.18, 49527.18, 'ago-2026'), ('B', 17595182.74, 56379.08, 56379.08, 'ago-2026'),
+    ('C', 24670494.31, 66020.12, 64530.58, 'ago-2026'), ('D', 30628651.43, 84612.93, 82564.81, 'ago-2026'),
+    ('E', 36028231.33, 119811.45, 108267.51, 'ago-2026'), ('F', 45151659.41, 150784.21, 129930.65, 'ago-2026'),
+    ('G', 53995798.87, 230312.94, 158815.05, 'ago-2026'), ('H', 81924660.37, 522706.68, 317895.01, 'ago-2026'),
+    ('I', 91699761.90, 963747.86, 474992.78, 'ago-2026'), ('J', 105012519.20, 1167299.76, 580793.69, 'ago-2026'),
+    ('K', 126610838.75, 1614446.04, 702103.24, 'ago-2026')
 ON CONFLICT (categoria) DO NOTHING;
+-- Instalaciones existentes: actualizar a la escala ago-2026 SOLO si siguen los
+-- valores viejos sembrados (no pisa ediciones hechas por el superadmin).
+UPDATE monotributo_topes t SET tope_anual = v.nuevo, cuota_servicios = v.cs, cuota_bienes = v.cb, vigencia = 'ago-2026', actualizado = NOW()
+FROM (VALUES
+    ('A', 8992597.87::numeric, 12009410.45::numeric, 49527.18::numeric, 49527.18::numeric),
+    ('B', 13175201.52, 17595182.74, 56379.08, 56379.08),
+    ('C', 18473166.15, 24670494.31, 66020.12, 64530.58),
+    ('D', 22934610.05, 30628651.43, 84612.93, 82564.81),
+    ('E', 26977793.60, 36028231.33, 119811.45, 108267.51),
+    ('F', 33809379.57, 45151659.41, 150784.21, 129930.65),
+    ('G', 40431835.35, 53995798.87, 230312.94, 158815.05),
+    ('H', 61344853.64, 81924660.37, 522706.68, 317895.01),
+    ('I', 68664410.05, 91699761.90, 963747.86, 474992.78),
+    ('J', 78632948.76, 105012519.20, 1167299.76, 580793.69),
+    ('K', 94805682.90, 126610838.75, 1614446.04, 702103.24)
+) AS v(categoria, viejo, nuevo, cs, cb)
+WHERE t.categoria = v.categoria AND t.tope_anual = v.viejo;
 
 -- Clave Fiscal de AFIP para bajar "Mis Comprobantes" (compras) automáticamente.
 -- Usuario y contraseña se guardan CIFRADOS (helpers/cripto). Beta/best-effort.

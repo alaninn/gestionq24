@@ -37,6 +37,44 @@ const FACTURAS = [1, 6, 11];   // Factura A, B, C
 const NOTAS_CREDITO = [3, 8, 13]; // NC A, B, C (restan)
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 const primerDiaMes = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
+const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+// Rango (desde/hasta) de un mes calendario (y, m con m 0-indexado).
+function rangoMes(y, m) {
+    const p2 = (n) => String(n).padStart(2, '0');
+    const ultimo = new Date(y, m + 1, 0).getDate();
+    return { desde: `${y}-${p2(m + 1)}-01`, hasta: `${y}-${p2(m + 1)}-${p2(ultimo)}`, periodo: `${y}-${p2(m + 1)}`, label: `${MESES_CORTOS[m]} ${y}` };
+}
+// Últimos n meses (del más viejo al más nuevo), incluyendo el actual.
+function ultimosMeses(n) {
+    const hoy = new Date(); const arr = [];
+    for (let i = n - 1; i >= 0; i--) { const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1); arr.push({ y: d.getFullYear(), m: d.getMonth(), ...rangoMes(d.getFullYear(), d.getMonth()) }); }
+    return arr;
+}
+// Vencimiento aproximado de la DDJJ/pago de IVA (Responsable): mes siguiente al
+// período, día según la terminación del CUIT. Las fechas exactas las publica AFIP
+// cada año y se corren por fines de semana/feriados; esto es una guía.
+const DIA_VENC_IVA = { 0: 18, 1: 18, 2: 19, 3: 19, 4: 20, 5: 20, 6: 21, 7: 21, 8: 22, 9: 22 };
+function vencimientoIVA(cuit, y, m) {
+    const dig = parseInt(String(cuit || '').replace(/\D/g, '').slice(-1));
+    const dia = DIA_VENC_IVA[isNaN(dig) ? 0 : dig] || 20;
+    return new Date(y, m + 1, dia).toISOString().slice(0, 10);
+}
+// Vencimiento de la cuota de Monotributo: aprox. el día 20 del propio mes.
+function vencimientoMonotributo(y, m) { return new Date(y, m, 20).toISOString().slice(0, 10); }
+// Próxima recategorización del monotributo: cierra ~5/feb y ~5/ago (evalúa los
+// últimos 12 meses). Las fechas exactas las publica ARCA cada semestre.
+function proximaRecategorizacion() {
+    const hoy = new Date(), y = hoy.getFullYear();
+    const feb = new Date(y, 1, 5), ago = new Date(y, 7, 5);
+    const fecha = hoy <= feb ? feb : (hoy <= ago ? ago : new Date(y + 1, 1, 5));
+    return fecha.toISOString().slice(0, 10);
+}
+// CUIT configurado del negocio (para calcular vencimientos por terminación).
+async function cuitDelNegocio(negocioId) {
+    const r = await db.query('SELECT cuit FROM configuracion WHERE negocio_id = $1', [negocioId]);
+    return String(r.rows[0]?.cuit || '').replace(/\D/g, '') || null;
+}
 
 // Ventas facturadas reales (comprobantes autorizados por ARCA) en un rango.
 async function ventasEnRango(negocioId, desde, hasta) {
@@ -135,6 +173,8 @@ router.get('/resumen', async (req, res) => {
         const cat = await obtenerCategoria(negocioId);
         const ventas = await ventasEnRango(negocioId, desde, hasta);
         const compras = await comprasEnRango(negocioId, desde, hasta);
+        const cuit = await cuitDelNegocio(negocioId);
+        const [yPer, mPer] = desde.split('-').map(Number);
 
         // Año en curso (para las tarjetas) y últimos 12 meses (para el tope mono).
         const anio = new Date().getFullYear();
@@ -145,35 +185,43 @@ router.get('/resumen', async (req, res) => {
         let monotributo = null, responsable = null;
 
         if (cat.regimen === 'monotributista') {
-            const topesR = await db.query('SELECT categoria, tope_anual FROM monotributo_topes ORDER BY tope_anual ASC');
-            const topes = topesR.rows.map(t => ({ categoria: t.categoria, tope: +t.tope_anual }));
+            const topesR = await db.query('SELECT categoria, tope_anual, cuota_servicios, cuota_bienes FROM monotributo_topes ORDER BY tope_anual ASC');
+            const topes = topesR.rows.map(t => ({ categoria: t.categoria, tope: +t.tope_anual, cuota_servicios: +t.cuota_servicios || null, cuota_bienes: +t.cuota_bienes || null }));
             const acumulado = ventas12.total;
             // Categoría que le correspondería según lo facturado.
             const sugerida = topes.find(t => acumulado <= t.tope) || topes[topes.length - 1] || null;
             const propia = cat.categoria_monotributo ? topes.find(t => t.categoria === cat.categoria_monotributo) : null;
             // El tope de referencia: el de su categoría declarada, o el de exclusión (última).
+            const refCat = propia || sugerida;
             const refTope = propia?.tope || (topes.length ? topes[topes.length - 1].tope : 0);
             const restante = +(refTope - acumulado).toFixed(2);
             const uso = refTope > 0 ? acumulado / refTope : 0;
-            const estado = uso >= 1 ? 'rojo' : (uso >= 0.85 ? 'amarillo' : 'verde');
+            const estado = uso >= 0.95 ? 'rojo' : (uso >= 0.80 ? 'amarillo' : 'verde');
             const rateMensual = acumulado / 12;
             const proyeccion_meses = rateMensual > 0 && restante > 0 ? +(restante / rateMensual).toFixed(1) : null;
             monotributo = {
                 acumulado_12m: acumulado,
                 categoria_declarada: cat.categoria_monotributo || null,
                 categoria_sugerida: sugerida?.categoria || null,
+                debe_recategorizar: !!(cat.categoria_monotributo && sugerida && sugerida.categoria !== cat.categoria_monotributo),
                 tope_referencia: refTope,
                 restante,
                 uso_pct: +(uso * 100).toFixed(1),
                 estado,
                 proyeccion_meses,
+                cuota_servicios: refCat?.cuota_servicios || null,
+                cuota_bienes: refCat?.cuota_bienes || null,
+                vencimiento_cuota: vencimientoMonotributo(new Date().getFullYear(), new Date().getMonth()),
+                proxima_recategorizacion: proximaRecategorizacion(),
                 topes,
             };
         } else {
+            const posicion = +(ventas.iva - compras.iva).toFixed(2);
             responsable = {
                 iva_debito: ventas.iva,
                 iva_credito: compras.iva,
-                posicion: +(ventas.iva - compras.iva).toFixed(2),
+                posicion,
+                vencimiento: vencimientoIVA(cuit, yPer, mPer - 1),
             };
         }
 
@@ -187,6 +235,61 @@ router.get('/resumen', async (req, res) => {
     } catch (e) {
         console.error('Error contador/resumen:', e);
         res.status(500).json({ error: 'No se pudo calcular el resumen fiscal' });
+    }
+});
+
+// GET /api/contador/historico?meses=12 — evolución mes a mes (para el dashboard).
+router.get('/historico', async (req, res) => {
+    try {
+        const negocioId = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        const n = Math.min(24, Math.max(3, parseInt(req.query.meses) || 12));
+        const cat = await obtenerCategoria(negocioId);
+        const cuit = await cuitDelNegocio(negocioId);
+        const meses = ultimosMeses(n);
+
+        if (cat.regimen === 'monotributista') {
+            const topesR = await db.query('SELECT categoria, tope_anual FROM monotributo_topes ORDER BY tope_anual ASC');
+            const topes = topesR.rows.map(t => ({ categoria: t.categoria, tope: +t.tope_anual }));
+            const propia = cat.categoria_monotributo ? topes.find(t => t.categoria === cat.categoria_monotributo) : null;
+            const out = [];
+            for (const mi of meses) {
+                const facturadoMes = await ventasEnRango(negocioId, mi.desde, mi.hasta);
+                const ini12 = new Date(mi.y, mi.m - 11, 1).toISOString().slice(0, 10);
+                const ac = await ventasEnRango(negocioId, ini12, mi.hasta);
+                const sugerida = topes.find(t => ac.total <= t.tope) || topes[topes.length - 1];
+                const refTope = propia?.tope || sugerida?.tope || 0;
+                const uso = refTope > 0 ? ac.total / refTope : 0;
+                out.push({
+                    periodo: mi.periodo, label: mi.label, facturado: facturadoMes.total, acumulado_12m: ac.total,
+                    categoria_sugerida: sugerida?.categoria || null, tope: refTope, uso_pct: +(uso * 100).toFixed(1),
+                    estado: uso >= 0.95 ? 'rojo' : (uso >= 0.80 ? 'amarillo' : 'verde'),
+                });
+            }
+            return res.json({ regimen: cat.regimen, meses: out });
+        }
+
+        // Responsable: posición de IVA mes a mes, arrastrando el saldo a favor técnico.
+        let saldoFavor = 0;
+        const out = [];
+        for (const mi of meses) {
+            const v = await ventasEnRango(negocioId, mi.desde, mi.hasta);
+            const c = await comprasEnRango(negocioId, mi.desde, mi.hasta);
+            const posicion = +(v.iva - c.iva).toFixed(2);
+            const saldoPrevio = saldoFavor;
+            const neto = +(posicion - saldoPrevio).toFixed(2);
+            const aPagar = neto >= 0 ? neto : 0;
+            saldoFavor = neto >= 0 ? 0 : +(-neto).toFixed(2);
+            out.push({
+                periodo: mi.periodo, label: mi.label, ventas_total: v.total, compras_total: c.total,
+                iva_debito: v.iva, iva_credito: c.iva, posicion, saldo_favor_previo: saldoPrevio,
+                a_pagar: aPagar, saldo_favor: saldoFavor, vencimiento: vencimientoIVA(cuit, mi.y, mi.m),
+            });
+        }
+        res.json({ regimen: cat.regimen, meses: out });
+    } catch (e) {
+        console.error('Error contador/historico:', e);
+        res.status(500).json({ error: 'No se pudo calcular el histórico' });
     }
 });
 
@@ -298,8 +401,12 @@ router.get('/afip-estado', async (req, res) => {
         const negocioId = req.negocio_id || req.usuario?.negocio_id;
         if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
         const r = await db.query('SELECT cuit, estado, ultima_sync, ultimo_error, (password_cifrado IS NOT NULL) AS configurado FROM afip_clave_fiscal WHERE negocio_id = $1', [negocioId]);
+        const cfg = await db.query('SELECT cuit FROM configuracion WHERE negocio_id = $1', [negocioId]);
+        const cuitNegocio = String(cfg.rows[0]?.cuit || '').replace(/\D/g, '') || null;
         const x = r.rows[0];
-        res.json(x ? { configurado: x.configurado, cuit: x.cuit, estado: x.estado, ultima_sync: x.ultima_sync, ultimo_error: x.ultimo_error } : { configurado: false });
+        res.json(x
+            ? { configurado: x.configurado, cuit: x.cuit, cuit_negocio: cuitNegocio, estado: x.estado, ultima_sync: x.ultima_sync, ultimo_error: x.ultimo_error }
+            : { configurado: false, cuit_negocio: cuitNegocio });
     } catch (e) {
         res.json({ configurado: false });
     }

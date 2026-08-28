@@ -11,11 +11,13 @@ import api from '../../api/axios';
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const fmt = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n || 0);
+const diasHasta = (iso) => { if (!iso) return null; const d = new Date(iso + 'T00:00:00'); const h = new Date(); h.setHours(0, 0, 0, 0); return Math.round((d - h) / 86400000); };
+const fmtFechaLarga = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'long' }) : '';
 
 const SEMAFORO = {
   verde: { color: '#10b981', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', label: 'Vas bien' },
   amarillo: { color: '#f59e0b', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', label: 'Ojo, te estás acercando' },
-  rojo: { color: '#ef4444', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', label: 'Te pasaste del tope' },
+  rojo: { color: '#ef4444', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', label: 'Estás al límite del tope' },
 };
 
 function Stat({ label, valor, sub, color = 'text-gray-800', icon }) {
@@ -36,18 +38,25 @@ export default function TuContador() {
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [mes, setMes] = useState(hoy.getMonth());
   const [data, setData] = useState(null);
+  const [historico, setHistorico] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [msg, setMsg] = useState('');
   const [importando, setImportando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [afip, setAfip] = useState(null);
   const [formAfip, setFormAfip] = useState({ cuit: '', usuario: '', password: '' });
+  const [verClave, setVerClave] = useState(false);
   const [guardandoAfip, setGuardandoAfip] = useState(false);
   const [syncCompras, setSyncCompras] = useState(false);
   const fileRef = useRef(null);
 
   const cargarAfip = useCallback(async () => {
-    try { const r = await api.get('/api/contador/afip-estado'); setAfip(r.data); } catch { setAfip({ configurado: false }); }
+    try {
+      const r = await api.get('/api/contador/afip-estado');
+      setAfip(r.data);
+      // Prefill del CUIT con el del negocio para evitar cargar el de otra persona.
+      if (!r.data.configurado && r.data.cuit_negocio) setFormAfip(f => (f.cuit ? f : { ...f, cuit: r.data.cuit_negocio }));
+    } catch { setAfip({ configurado: false }); }
   }, []);
   useEffect(() => { cargarAfip(); }, [cargarAfip]);
 
@@ -68,7 +77,7 @@ export default function TuContador() {
     try {
       const r = await api.post('/api/contador/sincronizar-compras', { desde, hasta });
       setMsg(`✅ Compras sincronizadas: ${r.data.insertados} nuevas.`);
-      await cargar(); await cargarAfip();
+      await cargar(); await cargarAfip(); await cargarHistorico();
     } catch (e) {
       setMsg('⚠️ ' + (e.response?.data?.error || 'No se pudo sincronizar con AFIP'));
       await cargarAfip();
@@ -97,6 +106,11 @@ export default function TuContador() {
   }, [desde, hasta]);
   useEffect(() => { cargar(); }, [cargar]);
 
+  const cargarHistorico = useCallback(async () => {
+    try { const r = await api.get('/api/contador/historico?meses=12'); setHistorico(r.data.meses || []); } catch { setHistorico([]); }
+  }, []);
+  useEffect(() => { cargarHistorico(); }, [cargarHistorico]);
+
   const importar = async (file) => {
     if (!file) return;
     setImportando(true); setMsg('');
@@ -104,7 +118,7 @@ export default function TuContador() {
       const csv = await file.text();
       const r = await api.post('/api/contador/importar', { tipo: 'recibido', csv });
       setMsg(`✅ Importadas ${r.data.insertados} compras nuevas (de ${r.data.leidos} leídas).`);
-      await cargar();
+      await cargar(); await cargarHistorico();
     } catch (e) {
       setMsg(e.response?.data?.error || 'No se pudo importar el archivo');
     } finally { setImportando(false); if (fileRef.current) fileRef.current.value = ''; }
@@ -171,6 +185,9 @@ export default function TuContador() {
         <div className="bg-white rounded-2xl border p-8 text-center text-red-500">{msg || 'Error'}</div>
       ) : (
         <>
+          {/* Vencimiento / número norte */}
+          <VencimientoBanner data={data} historico={historico} esMono={esMono} />
+
           {/* Tarjetas en tiempo real */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="Ventas facturadas (mes)" valor={fmt(data.ventas.total)} sub={`${data.ventas.cantidad} comprobantes`} color="text-emerald-600" icon="🧾" />
@@ -188,6 +205,9 @@ export default function TuContador() {
             <ResponsablePanel r={data.responsable} ventas={data.ventas} compras={data.compras} />
           ) : null}
 
+          {/* Histórico mes a mes */}
+          {historico && historico.length > 0 && (esMono ? <HistoricoMono meses={historico} /> : <HistoricoResp meses={historico} />)}
+
           {/* Automatizar compras con Clave Fiscal (BETA) */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -202,8 +222,15 @@ export default function TuContador() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
                   <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="CUIT" value={formAfip.cuit} onChange={e => setFormAfip(f => ({ ...f, cuit: e.target.value }))} />
                   <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Usuario (si es distinto al CUIT)" value={formAfip.usuario} onChange={e => setFormAfip(f => ({ ...f, usuario: e.target.value }))} />
-                  <input type="password" autoComplete="new-password" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Clave fiscal" value={formAfip.password} onChange={e => setFormAfip(f => ({ ...f, password: e.target.value }))} />
+                  <div className="relative">
+                    <input type={verClave ? 'text' : 'password'} autoComplete="new-password" className="border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm w-full" placeholder="Clave fiscal" value={formAfip.password} onChange={e => setFormAfip(f => ({ ...f, password: e.target.value }))} />
+                    <button type="button" onClick={() => setVerClave(v => !v)} tabIndex={-1} title={verClave ? 'Ocultar clave' : 'Ver clave'}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600">{verClave ? '🙈' : '👁️'}</button>
+                  </div>
                 </div>
+                {formAfip.cuit && afip?.cuit_negocio && formAfip.cuit.replace(/\D/g, '') !== afip.cuit_negocio && (
+                  <p className="text-[11px] text-amber-600 mt-2">⚠️ El CUIT ingresado no coincide con el del negocio ({afip.cuit_negocio}). Verificá que sea la clave fiscal de <b>este</b> negocio.</p>
+                )}
                 <button onClick={guardarClaveFiscal} disabled={guardandoAfip} className="mt-3 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-indigo-600 disabled:opacity-60">{guardandoAfip ? 'Guardando…' : 'Guardar y vincular'}</button>
                 <p className="text-[11px] text-gray-400 mt-2">🔒 Tu clave se guarda cifrada y solo se usa para consultar tus comprobantes en AFIP.</p>
               </>
@@ -320,6 +347,140 @@ function Fila({ label, valor, color = 'text-gray-800', muted }) {
     <div className="flex justify-between items-center py-2 border-b border-gray-100">
       <span className={`text-sm ${muted ? 'text-gray-400' : 'text-gray-600'}`}>{label}</span>
       <span className={`font-bold ${muted ? 'text-gray-500' : color}`}>{valor}</span>
+    </div>
+  );
+}
+
+// Banner principal: el "número norte" (qué te vence y cuánto) según el régimen.
+function VencimientoBanner({ data, historico, esMono }) {
+  if (esMono && data.monotributo) {
+    const m = data.monotributo;
+    const d = diasHasta(m.vencimiento_cuota);
+    const dRecat = diasHasta(m.proxima_recategorizacion);
+    return (
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="rounded-2xl p-4 bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg">
+          <p className="text-[11px] uppercase tracking-wide text-white/70 font-semibold">Cuota de este mes</p>
+          <p className="text-2xl font-extrabold mt-0.5">{m.cuota_bienes ? fmt(m.cuota_bienes) : '—'}</p>
+          <p className="text-xs text-white/80 mt-1">Vence el {fmtFechaLarga(m.vencimiento_cuota)}{d != null && d >= 0 ? ` · faltan ${d} días` : ''}</p>
+        </div>
+        <div className="rounded-2xl p-4 bg-white border border-gray-100 shadow-sm">
+          <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Próxima recategorización</p>
+          <p className="text-lg font-bold text-gray-800 mt-0.5">{fmtFechaLarga(m.proxima_recategorizacion)}</p>
+          <p className={`text-xs mt-1 ${m.debe_recategorizar ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+            {m.debe_recategorizar ? `⚠️ Deberías pasar a Cat. ${m.categoria_sugerida}` : 'Tu categoría está en orden'}{dRecat != null && dRecat >= 0 ? ` · en ${dRecat} días` : ''}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (data.responsable) {
+    const r = data.responsable;
+    const hist = (historico || []).find(h => h.periodo === data.periodo.desde.slice(0, 7));
+    const aPagar = hist ? hist.a_pagar : Math.max(0, r.posicion);
+    const saldoFavor = hist ? hist.saldo_favor : Math.max(0, -r.posicion);
+    const d = diasHasta(r.vencimiento);
+    const urgente = d != null && d <= 5 && d >= 0 && aPagar > 0;
+    return (
+      <div className={`rounded-2xl p-5 text-white shadow-lg bg-gradient-to-br ${aPagar > 0 ? 'from-orange-500 to-rose-600' : 'from-emerald-500 to-teal-600'}`}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-white/70 font-semibold">{aPagar > 0 ? 'IVA a pagar de este período' : 'Saldo de IVA a favor'}</p>
+            <p className="text-3xl font-extrabold mt-0.5">{fmt(aPagar > 0 ? aPagar : saldoFavor)}</p>
+            {saldoFavor > 0 && aPagar === 0 && <p className="text-xs text-white/80 mt-1">Se traslada al mes siguiente (saldo técnico)</p>}
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] text-white/70 uppercase tracking-wide">Vence</p>
+            <p className="text-lg font-bold">{fmtFechaLarga(r.vencimiento)}</p>
+            {d != null && <p className="text-xs text-white/80">{d >= 0 ? `faltan ${d} días` : `venció hace ${-d} días`}</p>}
+          </div>
+        </div>
+        {urgente && <p className="text-xs bg-white/20 rounded-lg px-3 py-1.5 mt-3 font-medium">⏰ El vencimiento está cerca. Tené la plata reservada.</p>}
+      </div>
+    );
+  }
+  return null;
+}
+
+// Histórico de IVA mes a mes (Responsable).
+function HistoricoResp({ meses }) {
+  const max = Math.max(1, ...meses.map(m => Math.max(m.a_pagar, m.saldo_favor)));
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <h3 className="font-bold text-gray-800 mb-1">📅 Tu IVA mes a mes</h3>
+      <p className="text-xs text-gray-400 mb-4">IVA Débito (ventas) − Crédito (compras). El saldo a favor se traslada al mes siguiente.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[520px]">
+          <thead>
+            <tr className="text-[11px] uppercase text-gray-400 border-b">
+              <th className="text-left py-2 font-semibold">Mes</th>
+              <th className="text-right font-semibold">Déb. IVA</th>
+              <th className="text-right font-semibold">Créd. IVA</th>
+              <th className="text-right font-semibold">A pagar</th>
+              <th className="text-left pl-3 font-semibold w-1/3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {meses.map(m => {
+              const aFavor = m.a_pagar === 0 && m.saldo_favor > 0;
+              const w = Math.round((aFavor ? m.saldo_favor : m.a_pagar) / max * 100);
+              return (
+                <tr key={m.periodo} className="border-b border-gray-50">
+                  <td className="py-2 text-gray-700 font-medium">{m.label}</td>
+                  <td className="text-right text-orange-600">{fmt(m.iva_debito)}</td>
+                  <td className="text-right text-blue-600">{fmt(m.iva_credito)}</td>
+                  <td className={`text-right font-bold ${aFavor ? 'text-emerald-600' : 'text-gray-800'}`}>{aFavor ? `${fmt(m.saldo_favor)} a favor` : fmt(m.a_pagar)}</td>
+                  <td className="pl-3">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${w}%`, background: aFavor ? '#10b981' : '#f97316' }} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Histórico de facturación mes a mes (Monotributo).
+function HistoricoMono({ meses }) {
+  const max = Math.max(1, ...meses.map(m => m.facturado));
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <h3 className="font-bold text-gray-800 mb-1">📅 Tu facturación mes a mes</h3>
+      <p className="text-xs text-gray-400 mb-4">Lo facturado por mes y cómo venís contra el tope (acumulado de 12 meses).</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[480px]">
+          <thead>
+            <tr className="text-[11px] uppercase text-gray-400 border-b">
+              <th className="text-left py-2 font-semibold">Mes</th>
+              <th className="text-right font-semibold">Facturado</th>
+              <th className="text-left pl-3 font-semibold w-1/3"></th>
+              <th className="text-right font-semibold">% tope</th>
+            </tr>
+          </thead>
+          <tbody>
+            {meses.map(m => {
+              const col = SEMAFORO[m.estado]?.color || '#10b981';
+              return (
+                <tr key={m.periodo} className="border-b border-gray-50">
+                  <td className="py-2 text-gray-700 font-medium">{m.label}</td>
+                  <td className="text-right text-gray-800 font-semibold">{fmt(m.facturado)}</td>
+                  <td className="pl-3">
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${Math.round(m.facturado / max * 100)}%`, background: '#6366f1' }} />
+                    </div>
+                  </td>
+                  <td className="text-right font-bold" style={{ color: col }}>{m.uso_pct}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

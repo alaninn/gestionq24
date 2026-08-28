@@ -14,9 +14,20 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.54.0';
+export const VERSION_ACTUAL = '2.55.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.55.0',
+    fecha: '2026-08-28',
+    titulo: 'Tu Contador: tu IVA mes a mes y vencimientos',
+    cambios: [
+      { t: 'Tu Contador te muestra, mes a mes, cuánto IVA tenés que pagar (o el saldo a favor que se traslada al mes siguiente), con la fecha de vencimiento según tu CUIT y un aviso cuando está cerca.' },
+      { t: 'Nuevo panel con el histórico de los últimos 12 meses para comparar cómo venís y ver los meses anteriores de un vistazo.' },
+      { t: 'Monotributo: te muestra la cuota del mes, la fecha de la próxima recategorización y un semáforo de cuánto facturaste contra el tope de tu categoría (con la escala actualizada a la vigente).' },
+      { t: 'Al vincular la Clave Fiscal ahora podés ver la clave con un ojito 👁️ y el CUIT viene precargado con el de tu negocio para no confundirte de cuenta.' },
+    ],
+  },
   {
     version: '2.54.0',
     fecha: '2026-08-28',
