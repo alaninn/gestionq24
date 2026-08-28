@@ -12,6 +12,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const arcaPadron = require('../services/arcaPadron');
+const { cifrar } = require('../helpers/cripto');
+const misComprobantes = require('../services/misComprobantes');
 
 // Capacidad del módulo: la habilita el PLAN (premium) o un OVERRIDE por negocio
 // (negocios.contador_habilitado), que activa el superadmin. Mismo criterio que la
@@ -285,6 +287,86 @@ router.post('/importar', async (req, res) => {
     } catch (e) {
         console.error('Error contador/importar:', e);
         res.status(500).json({ error: 'No se pudo importar el archivo. Verificá que sea el CSV de Mis Comprobantes.' });
+    }
+});
+
+// ================= AFIP Clave Fiscal (automatizar compras) — BETA =================
+
+// GET /api/contador/afip-estado — ¿está configurada la clave fiscal? (sin exponerla)
+router.get('/afip-estado', async (req, res) => {
+    try {
+        const negocioId = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        const r = await db.query('SELECT cuit, estado, ultima_sync, ultimo_error, (password_cifrado IS NOT NULL) AS configurado FROM afip_clave_fiscal WHERE negocio_id = $1', [negocioId]);
+        const x = r.rows[0];
+        res.json(x ? { configurado: x.configurado, cuit: x.cuit, estado: x.estado, ultima_sync: x.ultima_sync, ultimo_error: x.ultimo_error } : { configurado: false });
+    } catch (e) {
+        res.json({ configurado: false });
+    }
+});
+
+// PUT /api/contador/afip-credenciales — guardar (cifradas) CUIT + usuario + clave
+router.put('/afip-credenciales', async (req, res) => {
+    try {
+        const negocioId = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        const cuit = String(req.body?.cuit || '').replace(/\D/g, '');
+        const usuario = req.body?.usuario ? String(req.body.usuario) : cuit;
+        const password = req.body?.password ? String(req.body.password) : null;
+        if (!cuit || !password) return res.status(400).json({ error: 'Ingresá tu CUIT y clave fiscal' });
+        await db.query(`
+            INSERT INTO afip_clave_fiscal (negocio_id, cuit, usuario_cifrado, password_cifrado, estado, ultimo_error, updated_at)
+            VALUES ($1, $2, $3, $4, 'configurado', NULL, NOW())
+            ON CONFLICT (negocio_id) DO UPDATE SET cuit = $2, usuario_cifrado = $3, password_cifrado = $4, estado = 'configurado', ultimo_error = NULL, updated_at = NOW()
+        `, [negocioId, cuit, cifrar(usuario), cifrar(password)]);
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('Error guardando clave fiscal:', e.message);
+        res.status(500).json({ error: 'No se pudo guardar la clave fiscal' });
+    }
+});
+
+// DELETE /api/contador/afip-credenciales — desvincular
+router.delete('/afip-credenciales', async (req, res) => {
+    try {
+        const negocioId = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        await db.query('DELETE FROM afip_clave_fiscal WHERE negocio_id = $1', [negocioId]);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: 'No se pudo desvincular' });
+    }
+});
+
+// POST /api/contador/sincronizar-compras — bajar recibidos de Mis Comprobantes (BETA)
+router.post('/sincronizar-compras', async (req, res) => {
+    const negocioId = req.negocio_id || req.usuario?.negocio_id;
+    if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+    const desde = /^\d{4}-\d{2}-\d{2}$/.test(req.body?.desde || '') ? req.body.desde : `${new Date().getFullYear()}-01-01`;
+    const hasta = /^\d{4}-\d{2}-\d{2}$/.test(req.body?.hasta || '') ? req.body.hasta : hoyISO();
+    try {
+        const comprobantes = await misComprobantes.sincronizarRecibidos(negocioId, desde, hasta);
+        let insertados = 0;
+        const cliente = await db.pool.connect();
+        try {
+            await cliente.query('BEGIN');
+            for (const c of (comprobantes || [])) {
+                const r = await cliente.query(`
+                    INSERT INTO comprobantes_importados (negocio_id, tipo, fecha, tipo_cbte, punto_venta, numero, cuit_contraparte, nombre_contraparte, neto, iva, total, origen)
+                    VALUES ($1,'recibido',$2,$3,$4,$5,$6,$7,$8,$9,$10,'afip')
+                    ON CONFLICT (negocio_id, tipo, tipo_cbte, punto_venta, numero, cuit_contraparte) DO NOTHING
+                    RETURNING id
+                `, [negocioId, c.fecha, c.tipo_cbte, c.punto_venta, c.numero, c.cuit_contraparte, c.nombre_contraparte, c.neto || 0, c.iva || 0, c.total || 0]);
+                if (r.rows[0]) insertados++;
+            }
+            await cliente.query('COMMIT');
+        } catch (e) { await cliente.query('ROLLBACK').catch(() => {}); throw e; } finally { cliente.release(); }
+        await db.query('UPDATE afip_clave_fiscal SET estado = $2, ultima_sync = NOW(), ultimo_error = NULL WHERE negocio_id = $1', [negocioId, 'ok']);
+        res.json({ ok: true, insertados, leidos: (comprobantes || []).length });
+    } catch (e) {
+        const msg = e.message || 'Error desconocido';
+        await db.query('UPDATE afip_clave_fiscal SET estado = $2, ultimo_error = $3 WHERE negocio_id = $1', [negocioId, 'error', msg.slice(0, 500)]).catch(() => {});
+        res.status(422).json({ ok: false, error: msg });
     }
 });
 

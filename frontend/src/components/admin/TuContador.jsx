@@ -40,7 +40,46 @@ export default function TuContador() {
   const [msg, setMsg] = useState('');
   const [importando, setImportando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  const [afip, setAfip] = useState(null);
+  const [formAfip, setFormAfip] = useState({ cuit: '', usuario: '', password: '' });
+  const [guardandoAfip, setGuardandoAfip] = useState(false);
+  const [syncCompras, setSyncCompras] = useState(false);
   const fileRef = useRef(null);
+
+  const cargarAfip = useCallback(async () => {
+    try { const r = await api.get('/api/contador/afip-estado'); setAfip(r.data); } catch { setAfip({ configurado: false }); }
+  }, []);
+  useEffect(() => { cargarAfip(); }, [cargarAfip]);
+
+  const guardarClaveFiscal = async () => {
+    if (!formAfip.cuit || !formAfip.password) { setMsg('Ingresá tu CUIT y clave fiscal'); return; }
+    setGuardandoAfip(true); setMsg('');
+    try {
+      await api.put('/api/contador/afip-credenciales', formAfip);
+      setFormAfip({ cuit: '', usuario: '', password: '' });
+      setMsg('✅ Clave fiscal guardada de forma cifrada.');
+      await cargarAfip();
+    } catch (e) { setMsg(e.response?.data?.error || 'No se pudo guardar'); }
+    finally { setGuardandoAfip(false); }
+  };
+
+  const sincronizarCompras = async () => {
+    setSyncCompras(true); setMsg('');
+    try {
+      const r = await api.post('/api/contador/sincronizar-compras', { desde, hasta });
+      setMsg(`✅ Compras sincronizadas: ${r.data.insertados} nuevas.`);
+      await cargar(); await cargarAfip();
+    } catch (e) {
+      setMsg('⚠️ ' + (e.response?.data?.error || 'No se pudo sincronizar con AFIP'));
+      await cargarAfip();
+    } finally { setSyncCompras(false); }
+  };
+
+  const desvincularAfip = async () => {
+    if (!confirm('¿Quitar la clave fiscal guardada?')) return;
+    try { await api.delete('/api/contador/afip-credenciales'); await cargarAfip(); setMsg('Clave fiscal desvinculada.'); }
+    catch { setMsg('No se pudo desvincular'); }
+  };
 
   const desde = `${anio}-${String(mes + 1).padStart(2, '0')}-01`;
   const ultimoDia = new Date(anio, mes + 1, 0).getDate();
@@ -149,9 +188,37 @@ export default function TuContador() {
             <ResponsablePanel r={data.responsable} ventas={data.ventas} compras={data.compras} />
           ) : null}
 
+          {/* Automatizar compras con Clave Fiscal (BETA) */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">🤖 Compras automáticas (AFIP)
+                <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">BETA</span>
+              </h3>
+              {afip?.configurado && <button onClick={desvincularAfip} className="text-xs text-red-500 hover:underline">Desvincular</button>}
+            </div>
+            {!afip?.configurado ? (
+              <>
+                <p className="text-sm text-gray-500 mt-1">Guardá tu Clave Fiscal (cifrada) y el sistema baja tus compras de "Mis Comprobantes" solo, sin descargar nada. Si tenés 2FA en AFIP, esta opción no funciona todavía (usá el CSV de abajo).</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                  <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="CUIT" value={formAfip.cuit} onChange={e => setFormAfip(f => ({ ...f, cuit: e.target.value }))} />
+                  <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Usuario (si es distinto al CUIT)" value={formAfip.usuario} onChange={e => setFormAfip(f => ({ ...f, usuario: e.target.value }))} />
+                  <input type="password" autoComplete="new-password" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Clave fiscal" value={formAfip.password} onChange={e => setFormAfip(f => ({ ...f, password: e.target.value }))} />
+                </div>
+                <button onClick={guardarClaveFiscal} disabled={guardandoAfip} className="mt-3 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-indigo-600 disabled:opacity-60">{guardandoAfip ? 'Guardando…' : 'Guardar y vincular'}</button>
+                <p className="text-[11px] text-gray-400 mt-2">🔒 Tu clave se guarda cifrada y solo se usa para consultar tus comprobantes en AFIP.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mt-1">Vinculado con CUIT <b>{afip.cuit}</b>. {afip.ultima_sync ? `Última sincronización: ${new Date(afip.ultima_sync).toLocaleString('es-AR')}.` : 'Todavía no sincronizaste.'}</p>
+                {afip.ultimo_error && <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mt-2">⚠️ {afip.ultimo_error}</p>}
+                <button onClick={sincronizarCompras} disabled={syncCompras} className="mt-3 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-indigo-600 disabled:opacity-60">{syncCompras ? 'Sincronizando con AFIP…' : '↻ Sincronizar compras ahora'}</button>
+              </>
+            )}
+          </div>
+
           {/* Importar compras de ARCA */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">📥 Traer mis compras de ARCA</h3>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">📥 Traer mis compras de ARCA (CSV)</h3>
             <p className="text-sm text-gray-500 mt-1">
               AFIP no tiene un servicio automático para las compras (comprobantes recibidos). Bajá el CSV desde
               <b> AFIP → Mis Comprobantes → Recibidos → Descargar</b> y subilo acá para sumar tus compras reales.

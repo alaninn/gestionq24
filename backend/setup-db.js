@@ -515,6 +515,19 @@ INSERT INTO monotributo_topes (categoria, tope_anual) VALUES
     ('I', 68664410.05), ('J', 78632948.76), ('K', 94805682.90)
 ON CONFLICT (categoria) DO NOTHING;
 
+-- Clave Fiscal de AFIP para bajar "Mis Comprobantes" (compras) automáticamente.
+-- Usuario y contraseña se guardan CIFRADOS (helpers/cripto). Beta/best-effort.
+CREATE TABLE IF NOT EXISTS afip_clave_fiscal (
+    negocio_id INTEGER PRIMARY KEY REFERENCES negocios(id) ON DELETE CASCADE,
+    cuit VARCHAR(15),
+    usuario_cifrado TEXT,
+    password_cifrado TEXT,
+    estado VARCHAR(20) DEFAULT 'configurado',
+    ultima_sync TIMESTAMP,
+    ultimo_error TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Columna nueva en ventas para tipo de facturación
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS tipo_facturacion VARCHAR(20) DEFAULT 'x'; -- 'electronica' o 'x'
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS comprobante_electronico_id INTEGER REFERENCES comprobantes_electronicos(id);

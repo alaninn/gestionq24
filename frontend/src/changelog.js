@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.53.1';
+export const VERSION_ACTUAL = '2.54.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.54.0',
+    fecha: '2026-08-28',
+    titulo: 'Tu Contador: compras automáticas (beta)',
+    cambios: [
+      { t: 'En Tu Contador se puede vincular la Clave Fiscal (guardada cifrada) para bajar las compras de "Mis Comprobantes" de AFIP automáticamente, sin descargar el CSV. Función en beta; el CSV sigue como respaldo.', super: true },
+    ],
+  },
   {
     version: '2.53.1',
     fecha: '2026-08-28',
