@@ -413,10 +413,11 @@ router.get('/plan-info', async (req, res) => {
         const countProductos = await db.query('SELECT COUNT(*) FROM productos WHERE negocio_id = $1 AND activo = TRUE', [negocio_id]);
 
         // Capacidades premium por plan O habilitadas puntualmente al negocio.
-        const ovr = await db.query('SELECT multinegocio_habilitado, prediccion_compras_habilitado, tienda_online_habilitado FROM negocios WHERE id = $1', [negocio_id]);
+        const ovr = await db.query('SELECT multinegocio_habilitado, prediccion_compras_habilitado, tienda_online_habilitado, contador_habilitado FROM negocios WHERE id = $1', [negocio_id]);
         const multinegocio = limites.multinegocio === true || ovr.rows[0]?.multinegocio_habilitado === true;
         const prediccion_compras = limites.prediccion_compras === true || ovr.rows[0]?.prediccion_compras_habilitado === true;
         const tienda_online = limites.tienda_online === true || ovr.rows[0]?.tienda_online_habilitado === true;
+        const contador = limites.contador === true || ovr.rows[0]?.contador_habilitado === true;
 
         res.json({
             plan_actual: plan,
@@ -431,6 +432,7 @@ router.get('/plan-info', async (req, res) => {
                 multinegocio: multinegocio,
                 prediccion_compras: prediccion_compras,
                 tienda_online: tienda_online,
+                contador: contador,
                 // Módulos del menú admin habilitados para este plan.
                 // null = todos habilitados (sin restricción configurada).
                 modulos: Array.isArray(limites.modulos) ? limites.modulos : null

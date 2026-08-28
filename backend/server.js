@@ -147,9 +147,10 @@ app.use('/api/tienda', verificarToken, validarLimitePlan, verificarPermiso('tien
 // permiso que la tienda (es parte del panel de la Tienda Online).
 app.use('/api/whatsapp', verificarToken, validarLimitePlan, verificarPermiso('tienda', 'ver'), require('./routes/whatsapp'));
 
-// Tu Contador: situación fiscal (categoría ARCA, IVA/tope). Mismo permiso que el
-// Resumen Fiscal (ambos son la parte contable/fiscal del negocio).
-app.use('/api/contador', verificarToken, validarLimitePlan, verificarPermiso('resumen_fiscal', 'ver'), require('./routes/contador'));
+// Tu Contador: situación fiscal (categoría ARCA, IVA/tope). Función premium que
+// activa el superadmin por negocio; el permiso 'contador' lo da el admin a sus
+// usuarios. La capacidad (plan/override) se chequea dentro del router.
+app.use('/api/contador', verificarToken, validarLimitePlan, verificarPermiso('contador', 'ver'), require('./routes/contador'));
 
 // Multinegocio: vincular negocios propios y mover mercadería entre ellos.
 // La capacidad la define el plan (configurable por superadmin) o un override por

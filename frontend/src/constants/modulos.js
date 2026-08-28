@@ -12,6 +12,7 @@ export const MODULOS_PLAN = [
   { key: 'reportes', label: 'Reportes', icon: '📈' },
   { key: 'soporte', label: 'Soporte', icon: '🎫' },
   { key: 'tienda', label: 'Tienda Online', icon: '🛍️' },
+  { key: 'contador', label: 'Tu Contador', icon: '🧮' },
 ];
 
 // Módulos siempre habilitados (no se pueden quitar de ningún plan).

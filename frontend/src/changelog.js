@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.53.0';
+export const VERSION_ACTUAL = '2.53.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.53.1',
+    fecha: '2026-08-28',
+    titulo: 'Tu Contador: activación por negocio',
+    cambios: [
+      { t: 'Tu Contador ahora se activa por negocio desde el panel maestro (como la Tienda Online), y el administrador puede dárselo a sus usuarios desde Usuarios (permiso "Tu Contador").', super: true },
+    ],
+  },
   {
     version: '2.53.0',
     fecha: '2026-08-27',

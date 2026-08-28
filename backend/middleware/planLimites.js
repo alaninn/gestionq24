@@ -16,6 +16,7 @@ const LIMITES_DEFAULT = {
     multinegocio: false,
     prediccion_compras: false,
     tienda_online: false,
+    contador: false,
     precio: 10000,
     modulos: null   // null = todos los módulos habilitados
   },
@@ -29,6 +30,8 @@ const LIMITES_DEFAULT = {
     prediccion_compras: false,
     // Tienda online: premium, pero APAGADA por defecto (se activa por negocio).
     tienda_online: false,
+    // Tu Contador: premium, apagado por defecto (se activa por negocio).
+    contador: false,
     precio: 30000,
     modulos: null
   }
@@ -60,6 +63,8 @@ async function obtenerConfigPlanes() {
           // tienda_online: APAGADA por defecto (se activa por negocio desde el
           // superadmin, igual que multinegocio/prediccion).
           tienda_online: !!row.tienda_online,
+          // Tu Contador: apagado por defecto (se activa por negocio).
+          contador: !!row.contador,
           precio: row.precio ?? 0,
           // row.modulos es JSONB (array) o null (= todos habilitados)
           modulos: Array.isArray(row.modulos) ? row.modulos : null

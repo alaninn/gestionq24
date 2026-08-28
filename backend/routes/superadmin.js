@@ -80,12 +80,13 @@ router.post('/negocios', async (req, res) => {
 router.put('/negocios/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { estado, dias_uso, plan, nombre, telefono, direccion, multinegocio_habilitado, prediccion_compras_habilitado, tienda_online_habilitado } = req.body;
+        const { estado, dias_uso, plan, nombre, telefono, direccion, multinegocio_habilitado, prediccion_compras_habilitado, tienda_online_habilitado, contador_habilitado } = req.body;
         const diasNum = dias_uso ? parseInt(dias_uso) : null;
         // Overrides por negocio (true/false). Si no vienen, no se tocan.
         const multiOverride = typeof multinegocio_habilitado === 'boolean' ? multinegocio_habilitado : null;
         const predOverride = typeof prediccion_compras_habilitado === 'boolean' ? prediccion_compras_habilitado : null;
         const tiendaOverride = typeof tienda_online_habilitado === 'boolean' ? tienda_online_habilitado : null;
+        const contadorOverride = typeof contador_habilitado === 'boolean' ? contador_habilitado : null;
 
         const resultado = await db.query(`
             UPDATE negocios SET
@@ -101,10 +102,11 @@ router.put('/negocios/:id', async (req, res) => {
                 dias_uso = COALESCE($6::integer, dias_uso),
                 multinegocio_habilitado = COALESCE($8::boolean, multinegocio_habilitado),
                 prediccion_compras_habilitado = COALESCE($9::boolean, prediccion_compras_habilitado),
-                tienda_online_habilitado = COALESCE($10::boolean, tienda_online_habilitado)
+                tienda_online_habilitado = COALESCE($10::boolean, tienda_online_habilitado),
+                contador_habilitado = COALESCE($11::boolean, contador_habilitado)
             WHERE id = $7
             RETURNING *
-        `, [nombre, telefono, direccion, plan, estado, diasNum, id, multiOverride, predOverride, tiendaOverride]);
+        `, [nombre, telefono, direccion, plan, estado, diasNum, id, multiOverride, predOverride, tiendaOverride, contadorOverride]);
 
         invalidarCacheNegocio(id);
         res.json(resultado.rows[0]);

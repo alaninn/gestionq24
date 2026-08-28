@@ -754,6 +754,12 @@ UPDATE planes_config SET tienda_online = FALSE WHERE tienda_online IS NULL;
 -- no la incluya). Mismo patron que multinegocio_habilitado. Lo activa el superadmin.
 ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_online_habilitado BOOLEAN;
 
+-- Modulo "Tu Contador": misma logica que la tienda (premium apagado por defecto,
+-- el superadmin lo activa por negocio, el admin lo da a sus usuarios por permiso).
+ALTER TABLE planes_config ADD COLUMN IF NOT EXISTS contador BOOLEAN;
+UPDATE planes_config SET contador = FALSE WHERE contador IS NULL;
+ALTER TABLE negocios ADD COLUMN IF NOT EXISTS contador_habilitado BOOLEAN;
+
 -- Configuracion de la tienda (una fila por negocio).
 CREATE TABLE IF NOT EXISTS tienda_config (
     negocio_id INTEGER PRIMARY KEY REFERENCES negocios(id) ON DELETE CASCADE,

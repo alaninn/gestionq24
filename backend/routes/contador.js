@@ -13,6 +13,24 @@ const router = express.Router();
 const db = require('../config/database');
 const arcaPadron = require('../services/arcaPadron');
 
+// Capacidad del módulo: la habilita el PLAN (premium) o un OVERRIDE por negocio
+// (negocios.contador_habilitado), que activa el superadmin. Mismo criterio que la
+// Tienda Online. El superadmin siempre pasa.
+router.use(async (req, res, next) => {
+    try {
+        if (req.usuario?.rol === 'superadmin' || req.esSuperadmin) return next();
+        if (req.limitesPlan?.contador === true) return next();
+        const negocio_id = req.negocio_id || req.usuario?.negocio_id;
+        if (negocio_id) {
+            const r = await db.query('SELECT contador_habilitado FROM negocios WHERE id = $1', [negocio_id]);
+            if (r.rows[0]?.contador_habilitado === true) return next();
+        }
+        return res.status(403).json({ error: 'Tu Contador no está habilitado en tu plan.', requierePremium: true });
+    } catch (e) {
+        return res.status(403).json({ error: 'Tu Contador no está habilitado.' });
+    }
+});
+
 const FACTURAS = [1, 6, 11];   // Factura A, B, C
 const NOTAS_CREDITO = [3, 8, 13]; // NC A, B, C (restan)
 const hoyISO = () => new Date().toISOString().slice(0, 10);

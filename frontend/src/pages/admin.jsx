@@ -249,11 +249,9 @@ function Admin() {
               ? <NavLink to="/admin/resumen-fiscal" icon="🧾" label="Resumen Fiscal" />
               : <NavLinkPremium icon="🧾" label="Resumen Fiscal" />
           )}
-          {puedeVer('resumen_fiscal') && (
-            esPremium
-              ? <NavLink to="/admin/tu-contador" icon="🧮" label="Tu Contador" badge={<BadgePro />} />
-              : <NavLinkPremium icon="🧮" label="Tu Contador" />
-          )}
+          {puedeUsarFuncion('contador')
+            ? (tienePermiso('contador', 'ver') && <NavLink to="/admin/tu-contador" icon="🧮" label="Tu Contador" badge={<BadgePro />} />)
+            : (['admin', 'superadmin'].includes(usuario?.rol) && <NavLinkPremium icon="🧮" label="Tu Contador" />)}
 
           {(puedeVer('reportes') || puedeVer('soporte') || (puedeUsarFuncion('tienda_online') && tienePermiso('tienda', 'ver'))) && (
             <p className="text-xs text-gray-500 uppercase font-semibold px-4 pt-4 pb-1 tracking-wider">General</p>

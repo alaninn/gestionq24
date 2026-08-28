@@ -315,6 +315,19 @@ function Superadmin() {
     }
   };
 
+  const cambiarContadorNegocio = async (negocioId, valor) => {
+    setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, contador_habilitado: valor } : prev);
+    try {
+      await api.put(`/api/superadmin/negocios/${negocioId}`, { contador_habilitado: valor });
+      setNegocios(prev => prev.map(n => n.id === negocioId ? { ...n, contador_habilitado: valor } : n));
+      setExito(`Tu Contador ${valor ? 'habilitado' : 'deshabilitado'} para este negocio`);
+      setTimeout(() => setExito(''), 3000);
+    } catch (err) {
+      setMostrarModalDetalleNegocio(prev => prev && prev.id === negocioId ? { ...prev, contador_habilitado: !valor } : prev);
+      setError('Error al cambiar Tu Contador');
+    }
+  };
+
   const renovarSuscripcion = async (e) => {
     e.preventDefault();
     try {
@@ -976,6 +989,14 @@ function Superadmin() {
                   <input type="checkbox" checked={!!mostrarModalDetalleNegocio.tienda_online_habilitado}
                     onChange={(e) => cambiarTiendaNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
                     className="w-5 h-5 accent-pink-600 flex-shrink-0" />
+                </label>
+                <label className="mt-2 flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-gray-200 cursor-pointer hover:border-indigo-300 transition-colors">
+                  <span className="text-sm text-gray-700">🧮 Tu Contador para este negocio
+                    <span className="block text-[11px] text-gray-400">Habilitalo aunque su plan no lo incluya (o dejalo según el plan)</span>
+                  </span>
+                  <input type="checkbox" checked={!!mostrarModalDetalleNegocio.contador_habilitado}
+                    onChange={(e) => cambiarContadorNegocio(mostrarModalDetalleNegocio.id, e.target.checked)}
+                    className="w-5 h-5 accent-indigo-600 flex-shrink-0" />
                 </label>
               </div>
 
