@@ -88,4 +88,11 @@ async function consultarConstancia(negocioId) {
     return data;
 }
 
-module.exports = { consultarConstancia };
+// Devuelve SOLO lo cacheado (sin pegarle a ARCA). Para usar en el camino rápido
+// (resumen) sin bloquear con la consulta lenta al WSAA.
+function constanciaCacheada(negocioId) {
+    const c = cache.get(negocioId);
+    return c ? c.data : null;
+}
+
+module.exports = { consultarConstancia, constanciaCacheada };

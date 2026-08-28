@@ -39,6 +39,7 @@ export default function TuContador() {
   const [cargando, setCargando] = useState(true);
   const [msg, setMsg] = useState('');
   const [importando, setImportando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const fileRef = useRef(null);
 
   const desde = `${anio}-${String(mes + 1).padStart(2, '0')}-01`;
@@ -70,6 +71,17 @@ export default function TuContador() {
     } finally { setImportando(false); if (fileRef.current) fileRef.current.value = ''; }
   };
 
+  const sincronizarArca = async () => {
+    setSincronizando(true); setMsg('');
+    try {
+      const r = await api.post('/api/contador/categoria/sincronizar');
+      if (r.data.ok) { setMsg('✅ Categoría actualizada desde ARCA'); await cargar(); }
+      else setMsg(r.data.mensaje || 'No se pudo traer de ARCA');
+    } catch (e) {
+      setMsg('No se pudo consultar ARCA en este momento');
+    } finally { setSincronizando(false); }
+  };
+
   const irMes = (delta) => {
     let m = mes + delta, a = anio;
     if (m < 0) { m = 11; a--; } else if (m > 11) { m = 0; a++; }
@@ -96,6 +108,10 @@ export default function TuContador() {
             <span className="text-[11px] text-gray-400" title={cat.fuente === 'arca' ? 'Traído de ARCA' : 'Configurado en el sistema'}>
               {cat.fuente === 'arca' ? '● ARCA' : '○ manual'}
             </span>
+            <button onClick={sincronizarArca} disabled={sincronizando}
+              className="text-[11px] text-blue-600 hover:underline disabled:opacity-50" title="Consultar tu categoría en ARCA">
+              {sincronizando ? 'Consultando ARCA…' : '↻ ARCA'}
+            </button>
           </div>
         )}
       </div>

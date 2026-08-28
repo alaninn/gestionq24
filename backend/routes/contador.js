@@ -61,17 +61,16 @@ async function comprasEnRango(negocioId, desde, hasta) {
     };
 }
 
-// Régimen + categoría: intenta ARCA, cae al respaldo configurado.
+// Régimen + categoría — CAMINO RÁPIDO: config + lo que haya cacheado de ARCA.
+// No le pega a ARCA (esa consulta es lenta y se hace explícita en /sincronizar).
 async function obtenerCategoria(negocioId) {
     const cfg = await db.query('SELECT regimen_fiscal, categoria_monotributo FROM configuracion WHERE negocio_id = $1', [negocioId]);
     const base = cfg.rows[0] || {};
     let regimen = base.regimen_fiscal || 'responsable_inscripto';
     let categoria = base.categoria_monotributo || null;
     let fuente = 'config';
-    try {
-        const arca = await arcaPadron.consultarConstancia(negocioId);
-        if (arca) { regimen = arca.regimen; categoria = arca.categoria_monotributo || categoria; fuente = 'arca'; }
-    } catch { /* fail-soft */ }
+    const arca = arcaPadron.constanciaCacheada(negocioId);
+    if (arca) { regimen = arca.regimen; categoria = arca.categoria_monotributo || categoria; fuente = 'arca'; }
     return { regimen, categoria_monotributo: categoria, fuente };
 }
 
@@ -84,6 +83,23 @@ router.get('/categoria', async (req, res) => {
     } catch (e) {
         console.error('Error contador/categoria:', e);
         res.status(500).json({ error: 'No se pudo obtener la categoría' });
+    }
+});
+
+// POST /api/contador/categoria/sincronizar — consulta ARCA (padrón) EXPLÍCITA.
+// Puede tardar (WSAA). Si el servicio no está autorizado en AFIP, devuelve la
+// configurada avisando que no se pudo traer de ARCA.
+router.post('/categoria/sincronizar', async (req, res) => {
+    try {
+        const negocioId = req.negocio_id || req.usuario?.negocio_id;
+        if (!negocioId) return res.status(400).json({ error: 'negocio_id requerido' });
+        const arca = await arcaPadron.consultarConstancia(negocioId);
+        if (arca) return res.json({ ok: true, ...arca });
+        const base = await obtenerCategoria(negocioId);
+        res.json({ ok: false, mensaje: 'No se pudo traer de ARCA (verificá que tu certificado tenga autorizado el servicio de Padrón). Se usa la categoría configurada.', ...base });
+    } catch (e) {
+        console.error('Error contador/sincronizar:', e.message);
+        res.status(500).json({ error: 'No se pudo consultar ARCA' });
     }
 });
 
