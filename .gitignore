@@ -11,3 +11,4 @@ backend/scripts/_tmp_*.js
 _auxiliar/
 backend/tools/informe-seguridad-*.md
 backend/whatsapp-sessions/
+_recuperado-claude/

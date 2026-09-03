@@ -14,9 +14,25 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.55.0';
+export const VERSION_ACTUAL = '2.56.0';
 
 export const CHANGELOG = [
+  {
+    version: '2.56.0',
+    fecha: '2026-09-03',
+    titulo: 'Sigue vendiendo sin internet + copias de seguridad fuera del servidor',
+    cambios: [
+      { t: 'Si se corta internet, la caja sigue funcionando: podés seguir vendiendo y las ventas se guardan en el equipo. Cuando vuelve la conexión se sincronizan solas (y se emiten las facturas que habían quedado pendientes). Un cartel te avisa si quedaron ventas por sincronizar, con un botón para hacerlo al instante.' },
+      { t: 'La app ahora abre aunque no haya internet (queda instalada en el equipo) y no te saca de la sesión por un corte momentáneo.' },
+      { t: 'Las copias de seguridad diarias de la base ahora también se guardan cifradas fuera del servidor. Si el servidor llegara a fallar, se puede levantar el sistema desde esa copia sin perder la información.', super: true },
+    ],
+    destacados: [
+      {
+        titulo: 'Modo sin conexión',
+        detalle: 'El sistema detecta de verdad si el servidor está accesible (no solo si hay wifi). Ante un corte, la caja pasa a modo offline con el catálogo cacheado; al volver, reconcilia turno, configuración y ventas pendientes automáticamente.',
+      },
+    ],
+  },
   {
     version: '2.55.0',
     fecha: '2026-08-28',

@@ -40,9 +40,12 @@ function redireccionInicio(usuario) {
 
 function RutaProtegida({ children, soloSuperadmin = false, requiereAdmin = false }) {
   const { usuario, cargando } = useAuth();
-  const { cargado } = useTema();
 
-  if (cargando || !cargado) {
+  // Solo mostramos "Cargando..." cuando de verdad todavía no hay usuario (primer
+  // login en este equipo). Si `usuario` ya está (hidratado del caché de forma
+  // síncrona), renderizamos y dejamos que la revalidación ocurra en segundo
+  // plano — así no hay un rebote a /login en el primer render.
+  if (cargando && !usuario) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <p className="text-white">Cargando...</p>
@@ -71,7 +74,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 function AppRoutes() {
   const { usuario, cargando } = useAuth();
 
-  if (cargando) {
+  if (cargando && !usuario) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <p className="text-white text-lg">Cargando...</p>
@@ -92,7 +95,7 @@ function AppRoutes() {
       <Route path="/" element={
         usuario
           ? <Navigate to={redireccionInicio(usuario)} replace />
-          : <Landing />
+          : (import.meta.env.VITE_SIN_LANDING ? <Navigate to="/login" replace /> : <Landing />)
       } />
 
       <Route path="/superadmin" element={

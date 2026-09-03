@@ -2436,7 +2436,7 @@ function SincronizacionExitosa({ ultimaSincronizacion }) {
 function POS() {
   const navigate = useNavigate();
   const { logout, usuario, puedeUsarFuncion, tienePermiso } = useAuth();
-  const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
+  const { online, sincronizando, pendientes, ultimaSincronizacion, agregarVentaOffline, sincronizarPendientes, buscarEnCatalogo, buscarCodigoEnCatalogo } = useConectividad();
   const modalVentaRef = useRef(null);
   const [turno, setTurno] = useState(null);
   const [cajasAbiertas, setCajasAbiertas] = useState([]);
@@ -2596,6 +2596,22 @@ function POS() {
   };
 
   useEffect(() => { verificarTurno(); cargarConfig(); }, []);
+
+  // Al recuperar la conexión: reconciliar turno/config y drenar la cola de ventas.
+  const onlinePrevRef = useRef(online);
+  useEffect(() => {
+    if (online && !onlinePrevRef.current) {
+      verificarTurno({ silencioso: true });
+      cargarConfig();
+      if (pendientes.length > 0) sincronizarPendientes();
+    }
+    onlinePrevRef.current = online;
+  }, [online]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Si al abrir el POS quedaron ventas sin sincronizar y hay conexión, drenarlas.
+  useEffect(() => {
+    if (online && pendientes.length > 0) sincronizarPendientes();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reloj: se refresca cada 30s para evaluar el fin del día comercial.
   useEffect(() => {
@@ -2809,15 +2825,25 @@ useEffect(() => {
     }
   };
 
-  const verificarTurno = async () => {
+  const verificarTurno = async ({ silencioso = false } = {}) => {
+    // CACHE-FIRST: si hay turno cacheado, mostrarlo YA y no bloquear la pantalla.
+    if (!silencioso) {
+      try {
+        const cache = localStorage.getItem('pos_turno');
+        if (cache) { setTurno(JSON.parse(cache)); setCargandoTurno(false); }
+      } catch { /* caché inválido */ }
+    }
+    // Sin conexión: no llamamos a la red (evita el stall de 10s). Ya quedó el
+    // turno cacheado si existía; al volver internet se reconcilia.
+    if (!online && !navigator.onLine) { setCargandoTurno(false); return; }
     try {
-      const res = await api.get('/api/turnos/actual');
+      const res = await api.get('/api/turnos/actual', { timeout: 6000 });
       setTurno(res.data);
       if (!res.data) {
         const [resCajas, resFijas, resUltimo] = await Promise.all([
-          api.get('/api/turnos/abiertas'),
-          api.get('/api/turnos/cajas-fijas').catch(() => ({ data: [] })),
-          api.get('/api/turnos/ultimo-cierre').catch(() => ({ data: { dinero_siguiente: 0 } })),
+          api.get('/api/turnos/abiertas', { timeout: 6000 }),
+          api.get('/api/turnos/cajas-fijas', { timeout: 6000 }).catch(() => ({ data: [] })),
+          api.get('/api/turnos/ultimo-cierre', { timeout: 6000 }).catch(() => ({ data: { dinero_siguiente: 0 } })),
         ]);
         setCajasAbiertas(resCajas.data);
         setCajasFijas(resFijas.data);
@@ -2836,7 +2862,17 @@ useEffect(() => {
   };
 
   const cargarConfig = async () => {
-    try { const res = await api.get('/api/configuracion'); setConfig(res.data); } catch { }
+    // Cache-first: mostrar la config cacheada al instante y reconciliar en fondo.
+    try {
+      const cache = localStorage.getItem('config_negocio');
+      if (cache && !config) setConfig(JSON.parse(cache));
+    } catch { /* noop */ }
+    if (!online && !navigator.onLine) return;
+    try {
+      const res = await api.get('/api/configuracion', { timeout: 6000 });
+      setConfig(res.data);
+      try { localStorage.setItem('config_negocio', JSON.stringify(res.data)); } catch { /* noop */ }
+    } catch { /* se sigue con lo cacheado */ }
   };
 
   const cargarProductos = async () => {
@@ -3238,9 +3274,11 @@ useEffect(() => {
       cargarProductos();
       inputBuscarRef.current?.focus();
     } catch (err) {
-      // Si falla por error de red, guardar offline automáticamente
+      // Si falla por error de red, guardar offline automáticamente. Incluimos los
+      // datos de factura para que, al sincronizar, la factura electrónica se
+      // emita igual (antes se perdían en este camino).
       if (!err.response) {
-        agregarVentaOffline(ventaPayload);
+        agregarVentaOffline({ ...ventaPayload, facturacion: datosFactura });
         const nuevoNumero = contadorVentas + 1;
         setContadorVentas(nuevoNumero);
         setPestanas(prev => prev.map(p =>
@@ -3528,6 +3566,19 @@ const imprimirTicketDesdeModal = () => {
         <div className="bg-blue-600 text-white px-4 py-2 flex items-center gap-2 text-sm flex-shrink-0">
           <span className="animate-spin">⏳</span>
           <span className="font-semibold">Sincronizando ventas offline...</span>
+        </div>
+      )}
+
+      {/* ---- BANNER PENDIENTES CON CONEXIÓN (botón manual) ---- */}
+      {online && !sincronizando && pendientes.length > 0 && (
+        <div className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between gap-2 text-sm flex-shrink-0">
+          <span className="font-semibold">
+            {pendientes.length} venta{pendientes.length > 1 ? 's' : ''} sin sincronizar
+          </span>
+          <button onClick={() => sincronizarPendientes()}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors">
+            Sincronizar ahora
+          </button>
         </div>
       )}
 

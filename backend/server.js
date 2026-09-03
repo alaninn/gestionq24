@@ -63,14 +63,19 @@ app.use(helmet({
     strictTransportSecurity: { maxAge: 15552000 }, // 180 días
     originAgentCluster: false,
 }));
-app.use(rateLimit({ 
+app.use(rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 500,
-    skip: (req) => !req.path.startsWith('/api')
+    // El /api/health lo consulta cada terminal cada ~15s para saber si hay
+    // conexión: no debe contar para el límite ni devolver 429.
+    skip: (req) => !req.path.startsWith('/api') || req.path === '/api/health'
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+
+// Chequeo de salud (para la detección de conexión del frontend). Público, sin DB.
+app.use('/api/health', require('./routes/health'));
 
 // Rutas públicas
 app.use('/api/auth', rutasAuth);

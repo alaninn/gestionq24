@@ -6,14 +6,27 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
+// ¿Hay una sesión cacheada (token + usuario) que se pueda usar al instante?
+function usuarioCacheadoInicial() {
+  try {
+    const t = localStorage.getItem('token');
+    const c = localStorage.getItem('usuario');
+    return (t && c) ? JSON.parse(c) : null;
+  } catch { return null; }
+}
+
 export function AuthProvider({ children }) {
-  const [usuario, setUsuario] = useState(null);
+  // Hidratación SÍNCRONA del caché: así `usuario` nunca es null en el primer
+  // render si el equipo ya se logueó (evita que RutaProtegida rebote a /login
+  // por una fracción de segundo). `verificarSesion` revalida en segundo plano.
+  const [usuario, setUsuario] = useState(usuarioCacheadoInicial);
   const [planInfo, setPlanInfo] = useState(() => {
     // Restaurar del caché: así, en una recarga, las funciones por plan (Tienda
     // Online, etc.) están al instante y no aparecen un segundo deshabilitadas.
     try { const c = localStorage.getItem('plan_info'); return c ? JSON.parse(c) : null; } catch { return null; }
   });
-  const [cargando, setCargando] = useState(true);
+  // Si ya hay sesión cacheada no arrancamos en "cargando" (no bloquea la UI).
+  const [cargando, setCargando] = useState(() => !usuarioCacheadoInicial());
   // Negocio "fijado" en esta PC (Paso 1: Acceso del negocio). Mientras exista,
   // el login de usuarios queda atado a este negocio.
   const [negocioFijado, setNegocioFijado] = useState(() => {
@@ -35,14 +48,20 @@ export function AuthProvider({ children }) {
   }, [planInfo]);
 
   const verificarSesion = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUsuario(null);
+      setCargando(false);
+      return;
+    }
+
+    // `usuario` y `cargando` ya se hidrataron del caché de forma síncrona en el
+    // useState (arriba). Acá solo revalidamos contra el backend en segundo plano.
+    const hidratadoDeCache = !!usuarioCacheadoInicial();
+
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCargando(false);
-        return;
-      }
       const res = await api.get('/api/auth/me');
-      
+
       // Verificar plan solo para usuarios de negocio (no superadmin)
       // El backend (/api/auth/me) ya bloquea negocios bloqueados/vencidos con 403.
       if (res.data.rol !== 'superadmin') {
@@ -50,6 +69,7 @@ export function AuthProvider({ children }) {
         if (!validPlans.includes(res.data.plan)) {
           localStorage.removeItem('token');
           localStorage.removeItem('usuario');
+          setUsuario(null);
           setCargando(false);
           return;
         }
@@ -73,18 +93,22 @@ export function AuthProvider({ children }) {
       }
 
     } catch (err) {
-      // 401 = token vencido/ inválido → cerrar sesión.
+      // 401 = token vencido/ inválido → cerrar sesión (aunque hayamos hidratado del caché).
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
         localStorage.removeItem('usuario');
+        setUsuario(null);
       } else if (!err.response) {
-        // Sin respuesta = error de RED (offline). No deslogueamos: restauramos la
-        // sesión desde el caché para que una recarga sin internet mantenga la caja
-        // abierta. Al volver internet, el próximo request revalida el token.
-        try {
-          const cache = localStorage.getItem('usuario');
-          if (cache) setUsuario(JSON.parse(cache));
-        } catch { /* caché inválido: queda como estaba */ }
+        // Sin respuesta = error de RED (offline). No deslogueamos: si no
+        // hidratamos del caché arriba, lo intentamos ahora para que una recarga
+        // sin internet mantenga la caja abierta. Al volver internet, el próximo
+        // request revalida el token.
+        if (!hidratadoDeCache) {
+          try {
+            const cache = localStorage.getItem('usuario');
+            if (cache) setUsuario(JSON.parse(cache));
+          } catch { /* caché inválido: queda como estaba */ }
+        }
       } else {
         console.error('Error verificando sesión:', err);
       }

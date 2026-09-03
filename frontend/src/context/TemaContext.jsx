@@ -13,6 +13,16 @@ export function TemaProvider({ children }) {
   useEffect(() => {
     const colorGuardado = localStorage.getItem('color_primario') || '#f97316';
     aplicarColor(colorGuardado);
+    // Aplicar el modo oscuro cacheado al instante (evita el flash y no depende de red).
+    try {
+      const cfg = JSON.parse(localStorage.getItem('config_negocio') || 'null');
+      if (cfg) document.documentElement.classList.toggle('dark', !!(cfg.modo_oscuro ?? true));
+    } catch { /* noop */ }
+    // Si ya hay config cacheada (o no hay sesión), no bloqueamos la app esperando
+    // la red: se reconcilia en segundo plano.
+    if (!localStorage.getItem('token') || localStorage.getItem('config_negocio')) {
+      setCargado(true);
+    }
     cargarTema();
   }, []);
 
