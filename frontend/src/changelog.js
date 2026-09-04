@@ -14,9 +14,17 @@
 //   El panel SuperAdmin muestra TODO.
 // =============================================
 
-export const VERSION_ACTUAL = '2.56.0';
+export const VERSION_ACTUAL = '2.56.1';
 
 export const CHANGELOG = [
+  {
+    version: '2.56.1',
+    fecha: '2026-09-03',
+    titulo: 'Aviso de vencimiento con más anticipación',
+    cambios: [
+      { t: 'El aviso fijo de "tu suscripción vence" ahora aparece durante los últimos 4 días (antes era solo el último día), con la cuenta regresiva mostrando también los días que faltan. Así hay tiempo de renovar sin llegar a último momento.' },
+    ],
+  },
   {
     version: '2.56.0',
     fecha: '2026-09-03',

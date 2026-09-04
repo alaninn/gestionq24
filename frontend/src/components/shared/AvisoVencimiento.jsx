@@ -1,7 +1,8 @@
 // =============================================
 // AVISO DE VENCIMIENTO DE SUSCRIPCION (para el usuario del negocio)
-// - Faltando 5 dias o menos: banner de aviso arriba (se puede cerrar por el dia).
-// - Faltando 24 hs o menos: alerta FIJA en la esquina, con cuenta regresiva, no se cierra.
+// - Faltando 5 dias: banner de aviso arriba (se puede cerrar por el dia).
+// - Faltando 4 dias o menos: alerta FIJA en la esquina, con cuenta regresiva,
+//   no se cierra (asi no llega a ultimo momento sin enterarse).
 // El admin puede PAGAR directo por Mercado Pago (autopago); el resto de los
 // usuarios ven la opcion de renovar por WhatsApp. El superadmin no ve avisos.
 // =============================================
@@ -17,15 +18,16 @@ function claveOcultoHoy() {
   return `aviso_venc_oculto_${hoy}`;
 }
 
-// Formatea milisegundos restantes como HH:MM:SS.
+// Formatea milisegundos restantes como HH:MM:SS (o "Nd HH:MM:SS" si falta más de un día).
 function fmtCuentaRegresiva(ms) {
   if (ms < 0) ms = 0;
   const totalSeg = Math.floor(ms / 1000);
-  const h = Math.floor(totalSeg / 3600);
+  const d = Math.floor(totalSeg / 86400);
+  const h = Math.floor((totalSeg % 86400) / 3600);
   const m = Math.floor((totalSeg % 3600) / 60);
   const s = totalSeg % 60;
   const p = (n) => String(n).padStart(2, '0');
-  return `${p(h)}:${p(m)}:${p(s)}`;
+  return `${d > 0 ? d + 'd ' : ''}${p(h)}:${p(m)}:${p(s)}`;
 }
 
 const fmtP = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR');
@@ -80,10 +82,11 @@ export default function AvisoVencimiento() {
   // Fuera de rango (ya venció -> el backend lo bloquea; o falta más de 5 días).
   if (dias <= 0 || dias > 5) return null;
 
-  const critico = dias <= 1;
+  // Alerta fija (no se cierra) durante los últimos 4 días.
+  const critico = dias <= 4;
   const url = linkRenovarWhatsApp({
     negocio: usuario.negocio_nombre,
-    estado: critico ? '24h' : dias,
+    estado: dias <= 1 ? '24h' : dias,
   });
   const puedePagar = autopago?.disponible === true && usuario.rol === 'admin';
   const pagar = async () => {
